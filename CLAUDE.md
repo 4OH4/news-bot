@@ -105,7 +105,7 @@ Development runs as one **lead** session coordinating up to **3 worker** agents 
 **Board.** The Project board (https://github.com/users/4OH4/projects/1) is the source of truth for status. Use `scripts/board.py` to read and move cards rather than editing them by hand:
 - `python3 scripts/board.py show`: issues grouped by status.
 - `python3 scripts/board.py set <issue> "<status>"`: statuses are Backlog, Ready, In progress, In review, Done.
-- `python3 scripts/board.py promote [--dry-run]`: moves open `agent-ready` issues from Backlog to Ready once every "Depends on #N" issue is closed. It never promotes `needs-human` issues.
+- `python3 scripts/board.py promote [--dry-run]`: moves closed issues to Done, then moves open `agent-ready` issues from Backlog to Ready once every "Depends on #N" issue is closed. It never promotes `needs-human` issues.
 
 **Workers** each take one issue:
 1. Set the card to In progress.
@@ -129,6 +129,7 @@ The lead also starts workers for `needs-human` issues that an agent can prepare,
 **Tooling notes.**
 - With the installed `gh` version, `gh issue view <n>` fails with a Projects (classic) deprecation error. Use `gh issue view <n> --json title,body,labels,state` instead. `gh pr edit` fails the same way; update a PR body with `gh api -X PATCH repos/4OH4/news-bot/pulls/<n> -F body=@<file>`.
 - Agent worktrees live under `.claude/worktrees/` (git-ignored). Never `git add` them.
+- In a worktree, install dependencies with `uv sync` (in `backend/`), **not** `make setup`. `pre-commit install` writes a hook into the shared `.git/hooks/`, which then points at that worktree's environment and breaks commits everywhere once the worktree is removed. The lead installs the hook once, from the main checkout.
 
 ## Things agents must not do
 
