@@ -1,0 +1,16 @@
+[project]
+name = "newsfeed"
+version = "0.1.0"
+description = "Self-hosted personalised news feed pipeline: ingest, extract, rank, publish."
+requires-python = ">=3.12"
+license = "MIT"
+dependencies = [
+    "typer>=0.27.3",
+]
+
+[project.scripts]
+newsfeed = "newsfeed.cli:app"
+
+[build-system]
+requires = ["uv_build>=0.13.0,<0.14.0"]
+build-backend = "uv_build"
