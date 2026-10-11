@@ -117,6 +117,8 @@ Phone: PWA → later native Android app + widget
 
 ### 5.4 Core data model (initial sketch)
 
+The authoritative definitions are the Pydantic models in `backend/src/newsfeed/models.py` (#6); this sketch is kept for orientation.
+
 ```
 Source       id, type (rss|google_news|hn|reddit), url/query, weight, enabled
 Article      id (hash of canonical_url), canonical_url, url, source_id, title,
