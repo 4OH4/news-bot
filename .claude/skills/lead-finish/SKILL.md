@@ -11,7 +11,7 @@ List any worker or reviewer agents still running. For each one, either:
 - wait for it to report, then continue its PR as in `/lead-start` step 4; or
 - if the user is leaving now, note it as still running. Its worktree will be kept and listed next session.
 
-Never remove a worktree that a running worker is using.
+Never remove a worktree that a running worker or reviewer is using.
 
 ## 2. Tidy
 
