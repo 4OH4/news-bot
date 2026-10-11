@@ -39,7 +39,7 @@ known-first-party = ["newsfeed"]
 [tool.mypy]
 python_version = "3.12"
 strict = true
-files = ["src"]
+files = ["src", "tests/fakes.py"]
 mypy_path = "src"
 
 [tool.pytest.ini_options]
