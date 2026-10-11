@@ -328,6 +328,9 @@ def canonical_from_html(html: str, base_url: str) -> str | None:
     legitimately point at the original, but it is logged with ``url``,
     ``canonical`` and ``stage="ingest"``. Returns None if no usable canonical is
     declared.
+
+    Raises:
+        ValueError: if ``base_url`` is not absolute (it has no scheme or no host).
     """
     parser = _CanonicalParser()
     parser.feed(html)
