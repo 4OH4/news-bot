@@ -9,9 +9,13 @@ Conventions:
 * All models are Pydantic v2 (ADR-0001). Unknown fields are rejected and
   assignments are validated, so typos and bad values fail loudly at the point
   they are introduced rather than several stages later.
-* Every datetime is timezone-aware UTC. Naive datetimes are rejected because
-  their meaning is ambiguous; aware datetimes in other zones are converted to
-  UTC. Use ``datetime.now(UTC)``, never ``datetime.now()`` or ``utcnow()``.
+* Every datetime is timezone-aware UTC, and aware datetimes in other zones are
+  converted to UTC. Timestamps we produce ourselves (``UtcDatetime``) reject
+  naive values, because a naive value there is a bug: use ``datetime.now(UTC)``,
+  never ``datetime.now()`` or ``utcnow()``. Third-party dates such as
+  ``published_at`` (``LenientUtcDatetime``) are lenient instead: naive means UTC,
+  a date means midnight UTC, and unparseable means None, so one messy metadata
+  field never fails an article.
 * URLs are plain ``str``. Pydantic's URL types rewrite URLs (e.g. adding a
   trailing slash), and URL normalisation belongs to ``ingest/canonical.py``.
 * Article content is not stored on the model: it lives in the ``BlobStore`` and
@@ -22,11 +26,12 @@ from __future__ import annotations
 
 import hashlib
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+from email.utils import parsedate_to_datetime
 from enum import StrEnum
 from typing import Annotated, Any, Self
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
+from pydantic import AfterValidator, BaseModel, BeforeValidator, ConfigDict, Field, model_validator
 
 __all__ = [
     "Article",
@@ -38,6 +43,7 @@ __all__ = [
     "FeedbackEvent",
     "FetchResult",
     "InterestRules",
+    "LenientUtcDatetime",
     "PipelineStage",
     "Profile",
     "RunStats",
@@ -70,7 +76,54 @@ def _ensure_utc(value: datetime) -> datetime:
 
 
 UtcDatetime = Annotated[datetime, AfterValidator(_ensure_utc)]
-"""A timezone-aware datetime, normalised to UTC. Naive datetimes are rejected."""
+"""A timezone-aware datetime, normalised to UTC. Naive datetimes are rejected.
+
+Used for timestamps our own code produces, where a naive value means a bug.
+"""
+
+
+def _lenient_utc(value: Any) -> datetime | None:
+    """Coerce a third-party date to aware UTC, or None if it can't be understood.
+
+    Publishers' dates are messy: Trafilatura returns date-only strings, and meta
+    tags often omit the offset. A wrong-by-hours date costs little, but raising
+    here would fail an otherwise good article, so naive values are assumed UTC,
+    dates become midnight UTC, and anything unparseable becomes None.
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    parsed: datetime | None = None
+    if isinstance(value, datetime):
+        parsed = value
+    elif isinstance(value, date):
+        parsed = datetime(value.year, value.month, value.day)
+    elif isinstance(value, int | float):
+        try:
+            return datetime.fromtimestamp(value, UTC)
+        except (OverflowError, OSError, ValueError):
+            return None
+    elif isinstance(value, str):
+        text = value.strip()
+        try:
+            parsed = datetime.fromisoformat(text)
+        except ValueError:
+            try:
+                parsed = parsedate_to_datetime(text)  # RFC 2822, e.g. HTTP/RSS dates
+            except (TypeError, ValueError, IndexError):
+                return None
+    if parsed is None:
+        return None
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+LenientUtcDatetime = Annotated[datetime | None, BeforeValidator(_lenient_utc)]
+"""An optional third-party date (e.g. ``published_at``), coerced to aware UTC.
+
+Naive values are assumed UTC, date-only values become midnight UTC, and
+unparseable values become None instead of failing validation.
+"""
 
 NonNegativeInt = Annotated[int, Field(ge=0)]
 
@@ -202,7 +255,7 @@ class ExtractionResult(_Model):
     method: str | None = Field(default=None, description="Extractor that produced the result.")
     title: str | None = None
     author: str | None = None
-    published_at: UtcDatetime | None = None
+    published_at: LenientUtcDatetime = None
     content_html: str | None = Field(default=None, description="Sanitised article HTML.")
     text: str | None = Field(default=None, description="Plain text, used for word counts.")
     lead_image: str | None = None
@@ -239,7 +292,7 @@ class Article(_Model):
     source_id: str
     title: str
     author: str | None = None
-    published_at: UtcDatetime | None = None
+    published_at: LenientUtcDatetime = None
     fetched_at: UtcDatetime = Field(description="When the article was first ingested.")
     summary: str | None = None
     lead_image: str | None = None

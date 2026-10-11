@@ -155,6 +155,64 @@ def test_datetimes_serialise_as_utc_iso() -> None:
     assert '"fetched_at":"2026-10-11T12:30:00Z"' in make_article().model_dump_json()
 
 
+# Third-party dates (published_at) are lenient: one messy field must not fail an article.
+LENIENT_CASES: list[tuple[str, object, datetime | None]] = [
+    ("aware ISO, Z", "2026-10-11T12:30:00Z", NOW),
+    ("aware ISO, offset", "2026-10-11T14:30:00+02:00", NOW),
+    ("naive ISO assumed UTC", "2026-10-11T12:30:00", NOW),
+    ("date only (Trafilatura)", "2026-10-11", datetime(2026, 10, 11, tzinfo=UTC)),
+    ("naive datetime (newspaper4k)", datetime(2026, 10, 11, 12, 30), NOW),
+    ("date object", datetime(2026, 10, 11).date(), datetime(2026, 10, 11, tzinfo=UTC)),
+    ("RFC 2822 (RSS/HTTP)", "Sun, 11 Oct 2026 12:30:00 GMT", NOW),
+    ("epoch seconds (HN)", int(NOW.timestamp()), NOW),
+    ("unparseable", "last Tuesday", None),
+    ("epoch out of range", 10**20, None),
+    ("unsupported type", ["2026-10-11"], None),
+    ("empty string", "", None),
+    ("None", None, None),
+]
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [(value, expected) for _, value, expected in LENIENT_CASES],
+    ids=[name for name, _, _ in LENIENT_CASES],
+)
+@pytest.mark.parametrize("model", ["extraction_result", "article"])
+def test_published_at_is_lenient(model: str, value: object, expected: datetime | None) -> None:
+    if model == "article":
+        published_at = make_article(published_at=value).published_at
+    else:
+        published_at = ExtractionResult(status="ok", published_at=value).published_at
+    assert published_at == expected
+    if published_at is not None:
+        assert published_at.tzinfo is UTC
+
+
+def test_published_at_assignment_is_lenient() -> None:
+    article = make_article()
+    article.published_at = "2026-10-11"  # type: ignore[assignment]
+    assert article.published_at == datetime(2026, 10, 11, tzinfo=UTC)
+
+
+@pytest.mark.parametrize(
+    ("model", "field"),
+    [
+        (RunStats, "started_at"),
+        (SourceState, "last_fetched_at"),
+        (Feedback, "created_at"),
+    ],
+)
+def test_own_timestamps_stay_strict(model: type[BaseModel], field: str) -> None:
+    base: dict[str, Any] = {
+        RunStats: {"run_id": "r1", "started_at": NOW},
+        SourceState: {"source_id": "example"},
+        Feedback: {"article_id": "a", "event": "open", "created_at": NOW},
+    }[model]
+    with pytest.raises(ValidationError, match="timezone-aware"):
+        model.model_validate({**base, field: "2026-10-11T12:30:00"})
+
+
 # --- enums ---------------------------------------------------------------------
 
 
