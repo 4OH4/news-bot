@@ -7,8 +7,8 @@ description: End a lead development session for news-bot cleanly. Waits for or a
 
 ## 1. Account for workers
 
-List any worker agents still running. For each one, either:
-- wait for it to report, then review its PR as in `/lead-start` step 4; or
+List any worker or reviewer agents still running. For each one, either:
+- wait for it to report, then continue its PR as in `/lead-start` step 4; or
 - if the user is leaving now, note it as still running. Its worktree will be kept and listed next session.
 
 Never remove a worktree that a running worker is using.
