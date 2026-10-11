@@ -1,0 +1,16 @@
+# Normalise line endings: commits may come from Windows, but everything runs on Linux
+# (Ubuntu dev machine, containers, CI), where CRLF breaks shell scripts and Makefiles.
+* text=auto eol=lf
+
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+*.ps1  text eol=crlf
+
+*.png  binary
+*.jpg  binary
+*.gif  binary
+*.webp binary
+*.gz   binary
+*.zip  binary
+*.db   binary
+*.sqlite binary

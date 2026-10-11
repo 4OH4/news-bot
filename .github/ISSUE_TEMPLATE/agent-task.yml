@@ -1,0 +1,152 @@
+name: Agent-ready task
+description: A fully specified task that a Claude Code agent can pick up and complete unsupervised.
+title: "[area] Short imperative description"
+labels: ["agent-ready"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for work an agent can complete without further input.
+        If you can't fill in every required section, label the issue `needs-human` instead and refine it later.
+        Keep the scope to one area/module where possible so parallel agents don't collide.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - ingest
+        - extract
+        - rank
+        - store
+        - api
+        - client
+        - infra
+        - eval
+        - docs
+    validations:
+      required: true
+
+  - type: dropdown
+    id: size
+    attributes:
+      label: Size
+      description: "L tasks should be split before being marked agent-ready."
+      options:
+        - S (under a couple of hours)
+        - M (roughly half a day)
+        - L (split this first)
+    validations:
+      required: true
+
+  - type: input
+    id: phase
+    attributes:
+      label: Phase
+      description: Which phase from PROJECT_PLAN.md §6 this belongs to.
+      placeholder: "Phase 1"
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Why this matters. Link the relevant PROJECT_PLAN.md section, requirement IDs (FR-x / NFR-x) and ADRs.
+      placeholder: |
+        Implements FR-5 (content extraction). See PROJECT_PLAN.md §5.2 and ADR-0001.
+        Trafilatura is the primary extractor; fallbacks come in #14.
+    validations:
+      required: true
+
+  - type: textarea
+    id: task
+    attributes:
+      label: Task
+      description: What to build, stated precisely. Include expected function/class names or behaviour if they matter.
+      placeholder: |
+        Implement `TrafilaturaExtractor` in `extract/trafilatura_extractor.py` conforming to the `Extractor` protocol.
+        It takes raw HTML plus URL and returns an `ExtractionResult` with title, author, published date,
+        sanitised body HTML, lead image and word count.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Testable checkboxes. The agent ticks these off in the PR.
+      value: |
+        - [ ]
+        - [ ] Unit tests cover the new behaviour using fixtures (no network)
+        - [ ] `make lint` and `make test` pass
+    validations:
+      required: true
+
+  - type: textarea
+    id: in_scope
+    attributes:
+      label: Files / modules in scope
+      description: Where the agent may make changes.
+      placeholder: |
+        - backend/src/newsfeed/extract/trafilatura_extractor.py (new)
+        - backend/tests/extract/test_trafilatura_extractor.py (new)
+        - backend/pyproject.toml (add trafilatura dependency)
+    validations:
+      required: true
+
+  - type: textarea
+    id: out_of_scope
+    attributes:
+      label: Out of scope
+      description: Explicitly excluded work, to stop scope creep and collisions with other agents.
+      placeholder: |
+        - Fallback extractors (#14)
+        - Changes to models.py or ports.py
+        - Any network fetching
+    validations:
+      required: true
+
+  - type: textarea
+    id: interfaces
+    attributes:
+      label: Interfaces touched
+      description: Contracts this uses or implements. Any change to models.py / ports.py must be a separate needs-human issue.
+      placeholder: |
+        Implements: `Extractor` protocol (ports.py)
+        Uses: `ExtractionResult` (models.py)
+        Changes to contracts: none
+    validations:
+      required: true
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: Issues that must be merged first, one per line as "Depends on #N". Write "None" if there are none.
+      placeholder: |
+        Depends on #6
+        Depends on #7
+    validations:
+      required: true
+
+  - type: textarea
+    id: verify
+    attributes:
+      label: How to verify
+      description: Commands to run and the expected results.
+      value: |
+        ```bash
+        make lint
+        make test
+        ```
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes / hints
+      description: Optional. Known gotchas, useful references, example inputs.
+    validations:
+      required: false

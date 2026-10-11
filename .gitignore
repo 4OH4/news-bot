@@ -218,3 +218,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ---- news-bot project ----
+# Local pipeline output (SQLite DB, article HTML, previews)
+data/
+# Evaluation snapshots are third-party content and live outside the repo
+# (NEWSFEED_FIXTURES_DIR); this is a safeguard against committing them.
+eval/fixtures/

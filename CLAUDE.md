@@ -1,0 +1,117 @@
+# CLAUDE.md
+
+Guidance for Claude Code agents working in this repository. Read this file and `PROJECT_PLAN.md` before starting any task.
+
+## Project summary
+
+A self-hosted, personalised news feed. A Python pipeline ingests articles from feeds and aggregators, extracts clean article content, ranks it against my interests, and publishes a feed for a mobile reader client. Development is local-first; production runs on GCP (Cloud Run Jobs, Scheduler, Firestore, Cloud Storage).
+
+The current phase and its goals are listed in `PROJECT_PLAN.md` §6. Don't build ahead of the current phase unless an issue asks you to.
+
+## Commands
+
+`make` commands run from the repo root. The Makefile sets `NEWSFEED_CONFIG_DIR` and `NEWSFEED_DATA_DIR` to absolute paths, so the pipeline finds `config/` wherever it's run from.
+
+**Environment:** development happens on Ubuntu, and CI and the containers are Linux too. Prerequisites: `make`, `git`, `uv`, Docker Engine and `gh`. Use `pathlib` for paths in Python rather than string concatenation.
+
+```bash
+make setup        # install deps with uv, install pre-commit hooks
+make lint         # ruff check + ruff format --check + type check
+make fmt          # auto-format
+make test         # pytest (unit tests, no network)
+make eval         # run extraction evaluation against saved fixtures
+make run          # run the full pipeline locally (SQLite + local filesystem)
+make docker       # build the backend Docker image
+```
+
+The CLI entry point is `newsfeed` (`backend/src/newsfeed/cli.py`). The uv project lives in `backend/`, so run these from `backend/`, or from the root with `uv run --project backend newsfeed ...`:
+
+```bash
+uv run newsfeed run            # ingest → extract → rank → publish
+uv run newsfeed ingest         # single stage
+uv run newsfeed extract --url <url>   # debug extraction for one page
+uv run newsfeed eval
+```
+
+Before opening a PR, `make lint` and `make test` must both pass. If you touched `extract/`, also run `make eval` and include the before/after summary in the PR.
+
+## Architecture rules
+
+These are hard rules. If a task seems to require breaking one, stop and say so in the issue or PR instead of working around it.
+
+1. **Ports and adapters.** Core code depends only on the interfaces in `backend/src/newsfeed/ports.py`. Cloud SDKs (`google.cloud.*`, `firebase_admin`, Vertex AI) may only be imported inside `backend/src/newsfeed/adapters/`.
+2. **`models.py` and `ports.py` are contracts.** Don't change them as a side effect of other work. A contract change is its own issue labelled `needs-human`.
+3. **Stages are independent.** `ingest`, `extract`, `rank` and `publish` communicate through the `Repository` and `BlobStore` interfaces, never by importing each other's internals.
+4. **Local adapters must keep working.** SQLite and local-filesystem adapters are the default for development and CI. Never make a cloud service a requirement for running tests.
+5. **Config lives in `config/`.** Sources and interest rules are YAML files in the repo, not code constants or database rows.
+6. **Polite fetching only.** All HTTP goes through the shared `Fetcher`, which applies robots.txt checks, per-domain rate limits, an identifiable User-Agent, conditional GETs and retries. Never bypass paywalls or access controls.
+
+## Code conventions
+
+- Python 3.12+, managed with `uv`. Add dependencies with `uv add`, never by editing the lockfile by hand.
+- Full type hints on all public functions. Code must pass the type checker with no new ignores unless justified in a comment.
+- Data models use Pydantic (or dataclasses where validation isn't needed); follow whatever `models.py` uses.
+- Use structured logging through the project logger (`newsfeed.logging.get_logger`), not `print`. Include context such as `source_id`, `url` and `stage`.
+- Errors: catch them at stage boundaries so one bad article or feed never fails a whole run. Record failures on the item (e.g. `extraction.status`, `extraction.error`) and continue.
+- Keep functions small and side-effect-free where practical; push I/O to the edges.
+- Docstrings on public modules, classes and functions. Comments explain *why*, not *what*.
+
+## Testing
+
+- Tests live in `backend/tests/`, mirroring the `src/` layout.
+- **No network in tests.** Use fixtures in `backend/tests/fixtures/` and the fakes in `backend/tests/fakes.py`. Mark any unavoidable live test with `@pytest.mark.live`; these are excluded by default.
+- New behaviour needs tests; bug fixes need a regression test.
+- **Test fixtures are synthetic.** This repo is public, so fixtures under `backend/tests/fixtures/` are hand-written HTML/XML that mimic real page and feed *structures* (cookie banners, lazy-loaded images, JS shells, Atom quirks) with invented text. Never paste real article text into them.
+- **Evaluation snapshots live outside the repo.** Real-page snapshots are stored in `NEWSFEED_FIXTURES_DIR` (default `~/.newsfeed/eval-fixtures`), shared by every worktree and never committed; `eval/fixtures/` is git-ignored as a safeguard. Don't hand-edit snapshots; re-snapshot with `newsfeed eval snapshot --refresh`. If the snapshot directory is empty or missing, `make eval` reports entries as "not snapshotted", so say so in the PR rather than treating it as a failure. Evaluation results (`eval/results/`) contain metrics only and are committed.
+
+## Workflow
+
+### Picking up work
+- Work only on issues in the `Ready` column labelled `agent-ready`, unless I've assigned you something directly.
+- Check "Depends on" in the issue. If a dependency isn't merged, don't start; comment on the issue instead.
+- Stay within the files and modules listed in the issue's scope. If you need to change something out of scope, stop and comment explaining why rather than expanding the change.
+
+### Branches and worktrees
+- One issue per branch, named `issue-<number>-<short-slug>` (e.g. `issue-13-trafilatura-extractor`).
+- When running in parallel with other agents, work in your own git worktree.
+- Rebase on `main` before opening a PR.
+
+### Commits
+- Conventional commits: `feat:`, `fix:`, `test:`, `refactor:`, `docs:`, `chore:`, `ci:`, with an optional scope, e.g. `feat(extract): add trafilatura extractor`.
+- Small, coherent commits. Don't mix formatting-only changes with logic changes.
+
+### Pull requests
+- The PR description includes `Closes #<issue>`, a summary of the change, how it was verified (commands and results) and any follow-up issues you suggest.
+- Tick off the issue's acceptance criteria in the PR description.
+- Update docs (`CLAUDE.md`, `PROJECT_PLAN.md`, ADRs, README) if your change affects them.
+- A human reviews and merges every PR. Never merge to `main` yourself.
+
+### When to stop and ask
+Stop and leave a comment on the issue, rather than guessing, when:
+- the acceptance criteria are ambiguous or contradict this file or the plan;
+- the work needs a contract change, a new external service, or a significant new dependency;
+- it would touch infrastructure, credentials, IAM or billing;
+- you find a design problem the issue doesn't anticipate.
+
+## Things agents must not do
+
+- Handle production credentials, service account keys or secrets. Never commit secrets; use `.env` locally (git-ignored) and Secret Manager in production.
+- Run `terraform apply`, `gcloud` commands that change resources, or production deploys. Infrastructure changes are `needs-human`.
+- Edit evaluation expectations in `eval/urls.yaml` to make results look better. Changes there require human review.
+- Commit third-party article content: page snapshots, extracted article text or full feed dumps. This is a public repo; short quoted snippets in `eval/urls.yaml` are the only exception.
+- Disable or weaken tests, lint rules or type checks to get CI passing.
+- Add tracking, analytics or third-party scripts to the client.
+
+## Decisions
+
+Architecture decisions are recorded in `docs/adr/`. Read the relevant ADRs before working in an area, and don't reverse a recorded decision without a new ADR approved by me. If you make a notable design choice within an issue, mention it in the PR so it can be captured as an ADR if needed.
+
+## Key references
+
+- `PROJECT_PLAN.md`: aims, requirements, architecture, phases, backlog strategy
+- `docs/adr/`: decision records
+- `config/sources.yaml`, `config/interests.yaml`: sources and ranking rules
+- `config/extraction.yaml`: per-domain extractor overrides
+- `eval/`: extraction evaluation set (`urls.yaml`) and results; snapshots live in `NEWSFEED_FIXTURES_DIR`
+- `.github/ISSUE_TEMPLATE/`: `agent-task.yml` and `needs-human.yml`, the shape every issue follows
+- `scripts/bootstrap_github.py`: creates labels, milestones and seed issues
