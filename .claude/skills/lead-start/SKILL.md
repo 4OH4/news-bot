@@ -33,9 +33,9 @@ For each chosen issue, use the Agent tool with `subagent_type: general-purpose`,
 For each finished PR:
 1. **Independent review.** Start a reviewer with the Agent tool, using `subagent_type: general-purpose`, `isolation: worktree` and `run_in_background: true`, and the reviewer brief below. Give it only the PR number, the issue number and the consuming issues. Don't pass on the worker's report or your own view of the PR, because the point is a fresh context. Only start it once that PR's worker has finished.
 2. **When the reviewer reports:**
-   - For larger defects it lists, use SendMessage to send the worker back with specific changes. Tell it to `git pull` first, because the reviewer may have pushed commits. If the rework changes behaviour, start a fresh reviewer afterwards.
+   - For larger defects it lists, use SendMessage to send the worker back with specific changes. Tell it to run `git pull --ff-only origin <branch>` first, because the reviewer may have pushed commits. If the rework changes behaviour, start a fresh reviewer afterwards.
    - Read the reviewer's fix commits and the "For human review" section, and correct anything that is wrong or unclear.
-3. **Re-run the checks.** In the worker's worktree, after `git pull`, run `uv sync` in `backend/`, then `make lint` and `make test`. Run `make eval` too if `extract/` was touched. Confirm CI is green.
+3. **Re-run the checks.** In the worker's worktree, after `git pull --ff-only origin <branch>`, run `uv sync` in `backend/`, then `make lint` and `make test`. Run `make eval` too if `extract/` was touched. Confirm CI is green.
 4. **Shared files.** If the PR shares `pyproject.toml` or `uv.lock` with another open PR, either stack it on that PR's branch (resolve `uv.lock` with `uv lock`) or tell the human the merge order.
 5. **Comment.** Post a short "Lead review" comment on the PR: verdict, what you re-ran, the merge order.
 
@@ -98,7 +98,7 @@ Review:
 3. Wider implications. Check fit with downstream issues, PROJECT_PLAN.md phases and requirements, ADRs, and the architecture rules and conventions in CLAUDE.md (contracts, ports, config in config/, polite fetching, logging, synthetic fixtures). Look for assumptions that will break on real data or later phases, things that will go stale, and scope creep or premature generality.
 
 Act:
-- Easy fixes: make them yourself. Easy means within the issue's scope, with no change to a public interface, contract or design decision, and a test for any behaviour change. Examples: inaccurate PR text, a missing test for a claimed behaviour, a missing log field, a small bug with an obvious fix. Commit with conventional commits ending with a blank line and `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`, then `git push origin HEAD:<branch>`. Never force-push.
+- Easy fixes: make them yourself. Easy means within the issue's scope, with no change to a public interface, contract or design decision, and a test for any behaviour change. Examples: inaccurate PR text, a missing test for a claimed behaviour, a missing log field, a small bug with an obvious fix. Re-run `make lint` and `make test` after your fixes. Commit with conventional commits ending with a blank line and `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`, then `git push origin HEAD:<branch>`. Never force-push.
 - Uncertain points: add or replace a `## For human review` section at the top of the PR body. For needs-human PRs, put it directly below "Decisions you approve by merging". Each item is one or two lines: what the human is implicitly approving, a risk, or an open question, each with your recommendation. Write "None" if there's nothing. Don't repeat what the PR already explains well. Edit the body with `gh pr edit <P> --repo 4OH4/news-bot --body-file <file>`, keeping the rest of the body and correcting anything inaccurate.
 - Larger defects: don't fix them. List them in your report for the lead.
 - Post one PR comment headed "Independent review", listing the fixes you pushed and the larger defects, if any.
