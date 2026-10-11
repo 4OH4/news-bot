@@ -70,29 +70,47 @@ TRACKING_PARAMS: frozenset[str] = frozenset(
         "oly_enc_id",
         "vero_id",
         "wt.mc_id",
-        # Publisher campaign and referral tags
+        # Matomo / Piwik campaign parameters
+        "pk_campaign",
+        "pk_kwd",
+        "pk_keyword",
+        "pk_source",
+        "pk_medium",
+        "pk_content",
+        "pk_cid",
+        "mtm_campaign",
+        "mtm_kwd",
+        "mtm_keyword",
+        "mtm_source",
+        "mtm_medium",
+        "mtm_content",
+        "mtm_cid",
+        "mtm_group",
+        "mtm_placement",
+        # Referral tags (required by #12) and other widely used campaign ids
         "ref",
         "ref_src",
         "cmpid",
         "ocid",
-        "smid",
-        "sr_share",
-        "ito",
-        "at_medium",
-        "at_campaign",
-        "at_custom1",
-        "at_custom2",
-        "at_custom3",
-        "at_custom4",
-        "s_cid",
-        "spm",
         "__twitter_impression",
     }
 )
-"""Query parameters (lowercase) that only track the click and never select content."""
+"""Query parameters (lowercase) that only track the click and never select content.
 
-TRACKING_PREFIXES: tuple[str, ...] = ("utm_", "pk_", "mtm_", "hsa_")
-"""Query parameter prefixes (lowercase) for whole families of tracking parameters."""
+Policy: only vendor-defined, unambiguous tracking parameters belong here, because
+these rules apply to every domain. Stripping a parameter that actually selects
+content would merge two articles under one id and dedupe would silently drop
+one, whereas missing a tracker only costs a duplicate (which the page's
+``rel=canonical`` usually fixes at extract time). Publisher-specific parameters
+(e.g. ``at_medium``, ``smid``, ``spm``) belong in per-domain config (#35).
+"""
+
+TRACKING_PREFIXES: tuple[str, ...] = ("utm_", "hsa_")
+"""Query parameter prefixes (lowercase) for vendor-defined families of tracking parameters.
+
+Matomo/Piwik names are listed exactly in ``TRACKING_PARAMS`` rather than by
+prefix, because sites use other ``pk_``/``mtm_`` names (e.g. ``pk_id``) for content.
+"""
 
 _AMP_QUERY_FLAGS = {"amp": {"", "1", "true"}, "outputtype": {"amp"}}
 """Query parameters that only switch a page to its AMP rendering."""
