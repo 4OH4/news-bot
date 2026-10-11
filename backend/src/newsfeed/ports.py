@@ -254,6 +254,11 @@ class Extractor(Protocol):
 
     Implementations: Trafilatura (#13), readability and newspaper4k fallbacks and
     the extractor chain (#14), Playwright (#15).
+
+    ``extract`` must be safe to call from several threads at once, because the
+    extract stage runs it in a thread pool. Implementations bound to one thread
+    (such as Playwright's sync API) must serialise calls internally, for example
+    by running them on a dedicated thread.
     """
 
     @property
