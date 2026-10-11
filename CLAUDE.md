@@ -127,7 +127,7 @@ The lead also starts workers for `needs-human` issues that an agent can prepare,
 **Shared files.** Several issues touch `backend/pyproject.toml`, `backend/uv.lock`, `cli.py`, `Makefile` and `config/sources.yaml`. Rebase on `main` just before pushing. Resolve `uv.lock` conflicts by taking `main`'s version and re-running `uv lock`, never by hand-editing.
 
 **Tooling notes.**
-- With the installed `gh` version, `gh issue view <n>` fails with a Projects (classic) deprecation error. Use `gh issue view <n> --json title,body,labels,state` instead.
+- With the installed `gh` version, `gh issue view <n>` fails with a Projects (classic) deprecation error. Use `gh issue view <n> --json title,body,labels,state` instead. `gh pr edit` fails the same way; update a PR body with `gh api -X PATCH repos/4OH4/news-bot/pulls/<n> -F body=@<file>`.
 - Agent worktrees live under `.claude/worktrees/` (git-ignored). Never `git add` them.
 
 ## Things agents must not do
