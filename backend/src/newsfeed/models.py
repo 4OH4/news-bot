@@ -4,7 +4,7 @@ Every stage (ingest, extract, rank, publish) and every adapter exchanges these
 models through the ports in ``ports.py``. Changing anything here is a contract
 change and needs its own ``needs-human`` issue (see CLAUDE.md, rule 2).
 
-Conventions:
+Conventions (rationale in docs/adr/0002-data-model-validation.md):
 
 * All models are Pydantic v2 (ADR-0001). Unknown fields are rejected and
   assignments are validated, so typos and bad values fail loudly at the point
