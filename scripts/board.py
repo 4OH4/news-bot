@@ -8,8 +8,9 @@ Used by the lead agent and by worker agents (see CLAUDE.md, "Agent automation"):
   python3 scripts/board.py promote --dry-run       # list Backlog issues that are now unblocked
   python3 scripts/board.py promote                 # ...and move them to Ready
 
-`promote` only moves open `agent-ready` issues whose every "Depends on #N" issue
-is closed. `needs-human` issues are never promoted automatically.
+`promote` first moves closed issues to Done, then moves open `agent-ready` issues
+whose every "Depends on #N" issue is closed to Ready. `needs-human` issues are never
+promoted automatically.
 
 Requirements: Python 3.10+ (standard library only); gh CLI with the `project` scope.
 """
@@ -103,6 +104,16 @@ def cmd_promote(board: Board, args: argparse.Namespace) -> None:
         "--json", "number,state,body,labels",
     )
     state = {i["number"]: i["state"] for i in issues}
+
+    # The board's built-in "closed -> Done" workflow isn't enabled, so sync it here.
+    for item in board.items:
+        n = item["content"].get("number")
+        if state.get(n) == "CLOSED" and item.get("status") != "Done":
+            if args.dry_run:
+                print(f"#{n}: would move {item.get('status')} -> Done (closed)")
+            else:
+                board.set_status(n, "Done")
+
     promoted = 0
     for issue in sorted(issues, key=lambda i: i["number"]):
         n = issue["number"]
