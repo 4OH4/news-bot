@@ -67,7 +67,7 @@ These are hard rules. If a task seems to require breaking one, stop and say so i
 ## Workflow
 
 ### Picking up work
-- Work only on issues in the `Ready` column labelled `agent-ready`, unless I've assigned you something directly.
+- Work only on issues in the `Ready` column labelled `agent-ready`, unless I've (or the lead agent has) assigned you something directly. See "Agent automation" below.
 - Check "Depends on" in the issue. If a dependency isn't merged, don't start; comment on the issue instead.
 - Stay within the files and modules listed in the issue's scope. If you need to change something out of scope, stop and comment explaining why rather than expanding the change.
 
@@ -92,6 +92,43 @@ Stop and leave a comment on the issue, rather than guessing, when:
 - the work needs a contract change, a new external service, or a significant new dependency;
 - it would touch infrastructure, credentials, IAM or billing;
 - you find a design problem the issue doesn't anticipate.
+
+### Agent automation
+Development runs as one **lead** session coordinating up to **3 worker** agents (PROJECT_PLAN.md §9.4).
+
+**The human's role is to read and merge.** Agents do all the preparation, so every PR reaches the human ready to merge as it is:
+- Never ask the human to edit files, fill in templates, tick boxes or make follow-up commits. If a PR needs a change, including review feedback the human gives in a comment, an agent makes it.
+- Approval is the merge. For `needs-human` decisions (ADRs, contracts, curation), the agent writes the final version (ADR status `Accepted`, every definition-of-done item ready) and opens a normal, non-draft PR. Merging it is the sign-off; declining or commenting is the rejection or the request for changes.
+- Only ask for actions agents can't do: anything needing credentials or secrets, GitHub settings and app installs, a decision between real alternatives, or a judgement only the human can make. Give the shortest exact steps, such as a URL or a single command.
+- Report to the human briefly: which PRs are ready to merge and in what order, and anything that genuinely needs them.
+
+**Board.** The Project board (https://github.com/users/4OH4/projects/1) is the source of truth for status. Use `scripts/board.py` to read and move cards rather than editing them by hand:
+- `python3 scripts/board.py show`: issues grouped by status.
+- `python3 scripts/board.py set <issue> "<status>"`: statuses are Backlog, Ready, In progress, In review, Done.
+- `python3 scripts/board.py promote [--dry-run]`: moves open `agent-ready` issues from Backlog to Ready once every "Depends on #N" issue is closed. It never promotes `needs-human` issues.
+
+**Workers** each take one issue:
+1. Set the card to In progress.
+2. Create a worktree and branch from up-to-date `origin/main`, then implement and verify.
+3. Rebase, push, and open the PR.
+4. Set the card to In review.
+5. Report back the PR URL, the verification results and any judgement calls.
+
+Workers don't merge, don't edit other issues, and don't move cards other than their own. If blocked, a worker comments on the issue, leaves the card where it is and reports back.
+
+**The lead** loops:
+1. Run `board.py promote`.
+2. Start workers for Ready issues, up to 3 at a time. Prefer issues whose scopes don't overlap, and never run two issues touching the same file at once.
+3. Review each new PR against its issue's acceptance criteria and this file, and comment on the PR with findings.
+4. Tell the human which PRs are ready to review and which `needs-human` issues are now unblocked.
+
+The lead also starts workers for `needs-human` issues that an agent can prepare, e.g. those with an "Agent prep" section. The worker produces a complete, merge-ready PR (see "The human's role" above), and the lead lists any choices the human is implicitly approving at the top of the PR description.
+
+**Shared files.** Several issues touch `backend/pyproject.toml`, `backend/uv.lock`, `cli.py`, `Makefile` and `config/sources.yaml`. Rebase on `main` just before pushing. Resolve `uv.lock` conflicts by taking `main`'s version and re-running `uv lock`, never by hand-editing.
+
+**Tooling notes.**
+- With the installed `gh` version, `gh issue view <n>` fails with a Projects (classic) deprecation error. Use `gh issue view <n> --json title,body,labels,state` instead. `gh pr edit` fails the same way; update a PR body with `gh api -X PATCH repos/4OH4/news-bot/pulls/<n> -F body=@<file>`.
+- Agent worktrees live under `.claude/worktrees/` (git-ignored). Never `git add` them.
 
 ## Things agents must not do
 
