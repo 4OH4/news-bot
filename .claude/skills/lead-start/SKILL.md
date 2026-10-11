@@ -55,7 +55,6 @@ You are a worker agent for the repo 4OH4/news-bot (you are in your own git workt
 Read first: CLAUDE.md (all of it, especially "Agent automation" and "The human's role is to read and merge"), the relevant PROJECT_PLAN.md sections and ADRs in docs/adr/, and the issue: `gh issue view <N> --repo 4OH4/news-bot --json title,body,labels,state`. Also read the bodies of issues that consume your output: <list>.
 
 Environment:
-- gh is an old version: `gh issue view`/`gh pr edit` without --json fail. Edit a PR body with `gh api -X PATCH repos/4OH4/news-bot/pulls/<n> -F body=@file`.
 - The git remote is HTTPS with gh as the credential helper. Wrap network git/gh calls in `timeout 120`.
 - Install dependencies with `cd backend && uv sync`. NEVER run `make setup` in a worktree (it rewrites the shared pre-commit hook).
 - Add dependencies with `uv add` (or `uv add --dev`). Fix uv.lock conflicts with `uv lock`, never by hand.
