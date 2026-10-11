@@ -270,6 +270,7 @@ Every `agent-ready` issue must contain:
   - Agents never handle production credentials. Infrastructure applies and secret changes are `needs-human`.
 
 ### 9.5 What stays human
+My role is to **read and merge**. Agents prepare every change, including ADRs, contract PRs and curation drafts, as a merge-ready PR. Merging is my approval, and comments are my change requests, which agents then apply. I don't edit files unless I'm fixing a mistake. The decisions below remain mine, but I make them by reviewing and merging (or declining) rather than by writing:
 - Architecture decisions and ADR approval.
 - Curating the evaluation set's expectations (judging what "clean" means).
 - GCP project setup, billing, IAM and secrets.

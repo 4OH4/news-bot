@@ -96,6 +96,12 @@ Stop and leave a comment on the issue, rather than guessing, when:
 ### Agent automation
 Development runs as one **lead** session coordinating up to **3 worker** agents (PROJECT_PLAN.md §9.4).
 
+**The human's role is to read and merge.** Agents do all the preparation, so every PR reaches the human ready to merge as it is:
+- Never ask the human to edit files, fill in templates, tick boxes or make follow-up commits. If a PR needs a change, including review feedback the human gives in a comment, an agent makes it.
+- Approval is the merge. For `needs-human` decisions (ADRs, contracts, curation), the agent writes the final version (ADR status `Accepted`, every definition-of-done item ready) and opens a normal, non-draft PR. Merging it is the sign-off; declining or commenting is the rejection or the request for changes.
+- Only ask for actions agents can't do: anything needing credentials or secrets, GitHub settings and app installs, a decision between real alternatives, or a judgement only the human can make. Give the shortest exact steps, such as a URL or a single command.
+- Report to the human briefly: which PRs are ready to merge and in what order, and anything that genuinely needs them.
+
 **Board.** The Project board (https://github.com/users/4OH4/projects/1) is the source of truth for status. Use `scripts/board.py` to read and move cards rather than editing them by hand:
 - `python3 scripts/board.py show`: issues grouped by status.
 - `python3 scripts/board.py set <issue> "<status>"`: statuses are Backlog, Ready, In progress, In review, Done.
@@ -116,7 +122,7 @@ Workers don't merge, don't edit other issues, and don't move cards other than th
 3. Review each new PR against its issue's acceptance criteria and this file, and comment on the PR with findings.
 4. Tell the human which PRs are ready to review and which `needs-human` issues are now unblocked.
 
-The lead may also start a worker to draft a **draft PR** for a `needs-human` issue that has an "Agent prep" section. The human finishes and merges it.
+The lead also starts workers for `needs-human` issues that an agent can prepare, e.g. those with an "Agent prep" section. The worker produces a complete, merge-ready PR (see "The human's role" above), and the lead lists any choices the human is implicitly approving at the top of the PR description.
 
 **Shared files.** Several issues touch `backend/pyproject.toml`, `backend/uv.lock`, `cli.py`, `Makefile` and `config/sources.yaml`. Rebase on `main` just before pushing. Resolve `uv.lock` conflicts by taking `main`'s version and re-running `uv lock`, never by hand-editing.
 
