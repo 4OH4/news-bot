@@ -1,5 +1,8 @@
 Closes #
 
+## For human review
+<!-- Filled in by the independent reviewer: judgement calls you approve by merging, risks and open questions. "None" if there are none. -->
+
 ## Summary
 <!-- What changed and why, in a few sentences. -->
 
