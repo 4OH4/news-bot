@@ -281,6 +281,11 @@ def test_distinct_non_utf8_queries_stay_distinct() -> None:
     )
 
 
+def test_canonical_from_html_rejects_relative_base_url() -> None:
+    with pytest.raises(ValueError, match="not an absolute URL"):
+        canonical_from_html(page('<link rel="canonical" href="/x">'), "/news/story")
+
+
 def test_canonical_tag_in_body_is_used() -> None:
     html = page("", body='<p>Invented.</p><link rel="canonical" href="/late">')
     assert canonical_from_html(html, PAGE) == "https://www.example.com/late"
