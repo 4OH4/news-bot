@@ -5,7 +5,7 @@ Closes #
 
 ## Acceptance criteria
 <!-- Copy the checklist from the issue and tick off each item. -->
-- [ ] 
+- [ ]
 
 ## How it was verified
 <!-- Commands run and their results. -->
