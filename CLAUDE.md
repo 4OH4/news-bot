@@ -96,6 +96,11 @@ Stop and leave a comment on the issue, rather than guessing, when:
 ### Agent automation
 Development runs as one **lead** session coordinating up to **3 worker** agents (PROJECT_PLAN.md §9.4).
 
+**Session lifecycle.** Every lead session starts with `/lead-start` and ends with `/lead-finish` (`.claude/skills/`).
+- Both run `scripts/lead.py`, which does the mechanical steps: update `main`, check dependencies and the pre-commit hook, remove merged worktrees and branches, sync the board, and print the status.
+- The skills add the steps that need judgement: starting workers from a standard brief, reviewing PRs, reporting, and writing a handoff note for the next session.
+- `lead.py` never deletes anything with uncommitted or unmerged work; it lists it instead.
+
 **The human's role is to read and merge.** Agents do all the preparation, so every PR reaches the human ready to merge as it is:
 - Never ask the human to edit files, fill in templates, tick boxes or make follow-up commits. If a PR needs a change, including review feedback the human gives in a comment, an agent makes it.
 - Approval is the merge. For `needs-human` decisions (ADRs, contracts, curation), the agent writes the final version (ADR status `Accepted`, every definition-of-done item ready) and opens a normal, non-draft PR. Merging it is the sign-off; declining or commenting is the rejection or the request for changes.
