@@ -1,0 +1,108 @@
+name: Needs human
+description: A decision, setup step, review or judgement call that an agent shouldn't make alone.
+title: "[area] Short description of the decision or task"
+labels: ["needs-human"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for work that needs my judgement, credentials or taste: architecture decisions, contract changes,
+        GCP/billing/IAM setup, curating evaluation expectations, and go/no-go reviews.
+        Agents may prepare material for these issues (drafts, analysis, options) but must not close them.
+
+  - type: dropdown
+    id: type
+    attributes:
+      label: Type
+      options:
+        - Decision (architecture / approach, usually ends in an ADR)
+        - Contract change (models.py / ports.py)
+        - Setup / credentials (GCP, GitHub, secrets, billing)
+        - Content curation (sources, interests, eval expectations)
+        - Review (go/no-go, quality check)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - ingest
+        - extract
+        - rank
+        - store
+        - api
+        - client
+        - infra
+        - eval
+        - docs
+    validations:
+      required: true
+
+  - type: input
+    id: phase
+    attributes:
+      label: Phase
+      placeholder: "Phase 1"
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Why this needs doing now. Link PROJECT_PLAN.md sections, requirement IDs and related issues.
+    validations:
+      required: true
+
+  - type: textarea
+    id: needed
+    attributes:
+      label: What's needed
+      description: The decision to make or the steps to carry out.
+    validations:
+      required: true
+
+  - type: textarea
+    id: options
+    attributes:
+      label: Options considered
+      description: For decisions. List the options with trade-offs and a recommendation if there is one.
+    validations:
+      required: false
+
+  - type: textarea
+    id: done
+    attributes:
+      label: Definition of done
+      description: Checkboxes. For decisions, include "ADR written and merged".
+      value: |
+        - [ ]
+    validations:
+      required: true
+
+  - type: textarea
+    id: blocks
+    attributes:
+      label: Blocks
+      description: Issues waiting on this one, e.g. "#7, #8".
+    validations:
+      required: false
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies
+      description: One per line as "Depends on #N", or "None".
+      value: None
+    validations:
+      required: true
+
+  - type: textarea
+    id: agent_prep
+    attributes:
+      label: Agent prep (optional)
+      description: What an agent could prepare to make this quicker, such as a draft PR, an analysis or a list of options.
+    validations:
+      required: false
