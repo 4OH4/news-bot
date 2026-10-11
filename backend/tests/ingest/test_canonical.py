@@ -40,8 +40,14 @@ URL_CASES: list[tuple[str, str]] = [
     ("https://example.com/a?mc_cid=1&mc_eid=2&igshid=3", "https://example.com/a"),
     ("https://example.com/a?ref=homepage&ref_src=twsrc", "https://example.com/a"),
     ("https://example.com/a?cmpid=x&ocid=y&page=2", "https://example.com/a?page=2"),
-    ("https://example.com/a?at_medium=social&at_campaign=z", "https://example.com/a"),
     ("https://example.com/a?pk_campaign=a&mtm_source=b&_ga=c", "https://example.com/a"),
+    ("https://example.com/a?PK_Campaign=a&mtm_placement=b&id=1", "https://example.com/a?id=1"),
+    # Publisher-specific or ambiguous names are kept: they may select content
+    ("https://example.com/a?pk_id=5", "https://example.com/a?pk_id=5"),
+    ("https://example.com/a?spm=x", "https://example.com/a?spm=x"),
+    ("https://example.com/a?at_medium=x", "https://example.com/a?at_medium=x"),
+    ("https://example.com/a?mtm_page=2&pk_campaign=z", "https://example.com/a?mtm_page=2"),
+    ("https://example.com/a?smid=1&ito=2&s_cid=3", "https://example.com/a?ito=2&s_cid=3&smid=1"),
     # Remaining parameters are sorted, blanks kept, encoding made consistent
     ("https://example.com/s?b=2&a=1&c=3", "https://example.com/s?a=1&b=2&c=3"),
     ("https://example.com/s?a=2&a=1", "https://example.com/s?a=1&a=2"),
