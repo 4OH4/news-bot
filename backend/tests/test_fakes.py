@@ -303,6 +303,15 @@ class TestFakeFetcher:
         fetcher = FakeFetcher({"https://example.com/feed": b"x"})
         assert not fetcher.fetch("https://example.com/feed", etag='"v1"').not_modified
 
+    def test_canned_304_follows_port_semantics(self) -> None:
+        fetcher = FakeFetcher()
+        fetcher.add("https://example.com/feed", b"ignored", status=304)
+        result = fetcher.fetch("https://example.com/feed")
+        assert result.status_code == 304
+        assert result.not_modified
+        assert result.content == b""
+        assert result.error is None
+
     def test_errors_redirects_and_status(self) -> None:
         fetcher = FakeFetcher()
         fetcher.add("https://example.com/down", status=None, error="connection refused")

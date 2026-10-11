@@ -206,7 +206,8 @@ class FakeResponse:
     """A canned response served by ``FakeFetcher``.
 
     Set ``etag`` or ``last_modified`` to have the fetcher answer a matching
-    conditional request with 304 Not Modified. Set ``error`` (usually with
+    conditional request with 304 Not Modified; ``status=304`` always serves
+    Not Modified, with an empty body. Set ``error`` (usually with
     ``status=None``) to simulate a network failure.
     """
 
@@ -343,7 +344,11 @@ class FakeFetcher:
             headers["last-modified"] = response.last_modified
         if response.error is not None and response.status is None:
             return FetchResult(url=url, final_url=final_url, error=response.error)
-        if response.status == 200 and _is_not_modified(response, etag, last_modified):
+        # A canned 304 is treated like a matched conditional GET, as the port
+        # requires: not_modified=True and an empty body.
+        if response.status == 304 or (
+            response.status == 200 and _is_not_modified(response, etag, last_modified)
+        ):
             return FetchResult(
                 url=url, final_url=final_url, status_code=304, headers=headers, not_modified=True
             )
