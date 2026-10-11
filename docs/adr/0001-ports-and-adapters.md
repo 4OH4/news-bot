@@ -1,6 +1,6 @@
 # ADR-0001: Ports and adapters, storage and concurrency model
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-11
 - **Related:** #5; blocks #7 (`ports.py`); informs #6 (`models.py`) and #8 (local adapters). See `PROJECT_PLAN.md` §5.2, §5.3, §8 and §9.3.
 
@@ -18,7 +18,7 @@ The initial ports are:
 
 | Port | Responsibility | Adapters |
 |------|----------------|----------|
-| `Repository` | Persist and query sources, articles, feedback, profile and run stats | SQLite (dev/CI), Firestore (prod), in-memory fake (tests) |
+| `Repository` | Persist and query articles, per-source fetch state, feedback, profile and run stats | SQLite (dev/CI), Firestore (prod), in-memory fake (tests) |
 | `BlobStore` | Store and retrieve opaque blobs by path: clean article HTML, images, `feed.json` | Local filesystem (dev/CI), GCS (prod), in-memory fake (tests) |
 | `Fetcher` | All outbound HTTP, applying robots.txt, per-domain rate limits, User-Agent, conditional GETs and retries | `httpx`-based polite fetcher, `FakeFetcher` (tests) |
 | `Extractor` | Turn a fetched page into an extraction result (content, metadata, status) | Trafilatura, then fallbacks and Playwright (#13–#15) |
