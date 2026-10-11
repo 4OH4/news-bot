@@ -117,6 +117,8 @@ _AMP_QUERY_FLAGS = {"amp": {"", "1", "true"}, "outputtype": {"amp"}}
 
 _DEFAULT_PORTS = {"http": 80, "https": 443}
 
+_QUERY_ERRORS = "surrogateescape"
+
 # Characters left unescaped in a path: RFC 3986 unreserved, sub-delims, ':' and '@',
 # plus '/' and '%' so existing segments and escapes survive re-quoting.
 _PATH_SAFE = "/%:@!$&'()*+,;=-._~"
@@ -149,23 +151,31 @@ def normalise_url(url: str, *, resolve_amp: bool = True) -> str:
     if not scheme or not parts.hostname:
         raise ValueError(f"not an absolute URL: {url!r}")
 
+    netloc = _normalise_netloc(scheme, parts)
+    path = _normalise_path(parts.path)
     if resolve_amp:
-        unwrapped = _unwrap_amp_cache(parts.netloc.lower(), parts.path)
-        if unwrapped is not None and unwrapped != url:
+        # Unwrap after normalising, and again after stripping AMP markers, so a port,
+        # case, dot segments or a marker can't hide a cache URL on the first pass and
+        # reveal it on the second (idempotence).
+        unwrapped = _unwrap_amp_cache(netloc, path)
+        if unwrapped is None:
+            path = _strip_amp_path(path)
+            unwrapped = _unwrap_amp_cache(netloc, path)
+        if unwrapped is not None:
             query = f"?{parts.query}" if parts.query else ""
             return normalise_url(unwrapped + query, resolve_amp=resolve_amp)
 
-    netloc = _normalise_netloc(scheme, parts)
-    path = _normalise_path(parts.path)
+    # surrogateescape keeps non-UTF-8 escapes (e.g. Latin-1 "%E9") byte-for-byte.
+    # The default, errors="replace", turns them all into U+FFFD, so distinct URLs
+    # would share one id.
     params = [
         (key, value)
-        for key, value in parse_qsl(parts.query, keep_blank_values=True)
+        for key, value in parse_qsl(parts.query, keep_blank_values=True, errors=_QUERY_ERRORS)
         if not _is_tracking_param(key)
     ]
     if resolve_amp:
-        path = _strip_amp_path(path)
         params = [(k, v) for k, v in params if not _is_amp_flag(k, v)]
-    query = urlencode(sorted(params), quote_via=quote_plus)
+    query = urlencode(sorted(params), quote_via=quote_plus, errors=_QUERY_ERRORS)
     return urlunsplit((scheme, netloc, path, query, ""))
 
 
@@ -347,9 +357,19 @@ def _resolve_candidate(candidate: str, base: str, page: str) -> str | None:
         canonical = normalise_url(absolute)
     except ValueError:
         return None
-    if urlsplit(canonical).path == "/" and urlsplit(page).path != "/":
+    if _is_site_root(canonical) and not _is_site_root(page):
         return None
     return canonical
+
+
+def _is_site_root(url: str) -> bool:
+    """Whether a normalised URL is the bare home page.
+
+    The query counts: on ``/?p=123`` (WordPress plain permalinks) the query selects
+    the article, so that page isn't the root and ``/?p=123`` is a valid canonical.
+    """
+    parts = urlsplit(url)
+    return parts.path == "/" and not parts.query
 
 
 def _site(url: str) -> str:

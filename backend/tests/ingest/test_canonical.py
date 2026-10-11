@@ -54,6 +54,10 @@ URL_CASES: list[tuple[str, str]] = [
     ("https://example.com/s?q=hello%20world", "https://example.com/s?q=hello+world"),
     ("https://example.com/s?flag&x=1", "https://example.com/s?flag=&x=1"),
     ("https://example.com/s?utm_source=x", "https://example.com/s"),
+    # Non-UTF-8 escapes survive byte-for-byte, so distinct values stay distinct
+    ("https://example.com/s?q=caf%e9", "https://example.com/s?q=caf%E9"),
+    ("https://example.com/s?q=caf%C3%A9", "https://example.com/s?q=caf%C3%A9"),
+    ("https://example.com/s?q=café", "https://example.com/s?q=caf%C3%A9"),
     # Internationalised hosts and paths, percent-escapes and dot segments
     ("https://BÜCHER.example/a", "https://xn--bcher-kva.example/a"),
     ("https://xn--bcher-kva.example/a", "https://xn--bcher-kva.example/a"),
@@ -87,6 +91,16 @@ URL_CASES: list[tuple[str, str]] = [
         "http://example.com/news/story",
     ),
     ("https://www.google.com/amp/s/example.com/news/story.amp", "https://example.com/news/story"),
+    # Cache URLs are recognised after normalisation (port, dot segments, AMP marker)
+    ("https://www.google.com:443/amp/s/example.com/news/story", "https://example.com/news/story"),
+    (
+        "https://example-com.cdn.ampproject.org/x/../c/s/example.com/news/story",
+        "https://example.com/news/story",
+    ),
+    (
+        "https://example-com.cdn.ampproject.org/amp/c/s/example.com/news/story",
+        "https://example.com/news/story",
+    ),
     ("https://www.google.com/search?q=x&utm_source=y", "https://www.google.com/search?q=x"),
     (
         "https://example-com.cdn.ampproject.org/other",
@@ -247,6 +261,24 @@ def test_canonical_from_html_handles_empty_and_broken_markup() -> None:
 def test_canonical_from_html_accepts_root_canonical_on_root_page() -> None:
     html = page('<link rel="canonical" href="https://www.example.com/">')
     assert canonical_from_html(html, "https://example.com/?ref=nav") == "https://www.example.com/"
+
+
+def test_root_guard_counts_the_query() -> None:
+    # On a WordPress plain-permalink page the query selects the article: a root
+    # canonical there would merge every post into one id, while a "/?p=" canonical
+    # from a pretty-permalink page is the real article.
+    root = page('<link rel="canonical" href="https://blog.example/">')
+    assert canonical_from_html(root, "https://blog.example/?p=123") is None
+
+    plain = page('<link rel="canonical" href="https://blog.example/?p=123">')
+    expected = "https://blog.example/?p=123"
+    assert canonical_from_html(plain, "https://blog.example/2026/10/invented-post") == expected
+
+
+def test_distinct_non_utf8_queries_stay_distinct() -> None:
+    assert normalise_url("https://example.com/s?q=caf%E9") != normalise_url(
+        "https://example.com/s?q=caf%E8"
+    )
 
 
 def test_canonical_tag_in_body_is_used() -> None:
