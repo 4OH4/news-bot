@@ -33,7 +33,7 @@ For each chosen issue, use the Agent tool with `subagent_type: general-purpose`,
 For each finished PR:
 1. **Independent review.** Start a reviewer with the Agent tool, using `subagent_type: general-purpose`, `isolation: worktree` and `run_in_background: true`, and the reviewer brief below. Give it only the PR number, the issue number and the consuming issues. Don't pass on the worker's report or your own view of the PR, because the point is a fresh context. Only start it once that PR's worker has finished.
 2. **When the reviewer reports:**
-   - For larger defects it lists, use SendMessage to send the worker back with specific changes. Tell it to run `git pull --ff-only origin <branch>` first, because the reviewer may have pushed commits. If the rework changes behaviour, start a fresh reviewer afterwards.
+   - For larger defects it lists, use SendMessage to send the worker back with specific changes. Tell it to run `git pull --ff-only origin <branch>` first, because the reviewer may have pushed commits. If the rework changes behaviour, start a fresh reviewer afterwards. At most two reviews per PR: if the second still finds larger defects, report the PR to the human instead of starting a third.
    - Read the reviewer's fix commits and the "For human review" section, and correct anything that is wrong or unclear.
 3. **Re-run the checks.** In the worker's worktree, after `git pull --ff-only origin <branch>`, run `uv sync` in `backend/`, then `make lint` and `make test`. Run `make eval` too if `extract/` was touched. Confirm CI is green.
 4. **Shared files.** If the PR shares `pyproject.toml` or `uv.lock` with another open PR, either stack it on that PR's branch (resolve `uv.lock` with `uv lock`) or tell the human the merge order.
