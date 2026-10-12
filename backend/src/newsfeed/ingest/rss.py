@@ -1,0 +1,304 @@
+"""RSS 2.0 and Atom 1.0 ingester (FR-1, FR-3).
+
+``RssIngester`` fetches a feed through the ``Fetcher`` port, conditionally on
+the source's saved ETag and Last-Modified, and parses the bytes with
+feedparser. Each entry becomes a pending ``Article`` whose ``canonical_url`` is
+its link as given: canonicalisation and dedupe happen centrally in the
+pipeline (#12, #19).
+
+The work is split so other feed-based ingesters (e.g. Google News, #11) can
+reuse it: ``ingest_feed`` does the conditional fetch and state update for any
+feed URL, and ``parse_feed`` is a pure function from feed bytes to articles.
+"""
+
+from __future__ import annotations
+
+import calendar
+import io
+import logging
+import time
+from collections.abc import Callable, Mapping
+from datetime import UTC, datetime
+from typing import Any
+from urllib.parse import urljoin, urlsplit
+
+import feedparser
+
+from newsfeed.ingest.text import html_to_text, truncate
+from newsfeed.logging import get_logger
+from newsfeed.models import Article, Source, SourceState, SourceType
+from newsfeed.ports import Fetcher
+
+__all__ = [
+    "SUMMARY_MAX_CHARS",
+    "FeedFetchError",
+    "RssIngester",
+    "ingest_feed",
+    "parse_feed",
+]
+
+log = get_logger(__name__)
+
+SUMMARY_MAX_CHARS = 500
+"""Article summaries are cut to this many characters (including the "…")."""
+
+_STAGE = "ingest"
+
+
+class FeedFetchError(RuntimeError):
+    """The feed could not be fetched (network error, robots.txt, HTTP 4xx/5xx).
+
+    Raised rather than returning no articles, so the pipeline's per-source
+    error handling logs and counts it, and the saved state stays as it was.
+    """
+
+
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
+class RssIngester:
+    """``SourceIngester`` for ``type: rss`` sources (RSS 0.9x/1.0/2.0 and Atom).
+
+    Args:
+        clock: returns the current time; used for ``fetched_at`` and
+            ``SourceState.last_fetched_at``. Injectable for tests.
+        summary_max_chars: summaries longer than this are truncated.
+    """
+
+    def __init__(
+        self,
+        *,
+        clock: Callable[[], datetime] = _utc_now,
+        summary_max_chars: int = SUMMARY_MAX_CHARS,
+    ) -> None:
+        self._clock = clock
+        self._summary_max_chars = summary_max_chars
+
+    @property
+    def source_type(self) -> SourceType:
+        """Always ``SourceType.RSS``."""
+        return SourceType.RSS
+
+    def ingest(
+        self, source: Source, fetcher: Fetcher, state: SourceState
+    ) -> tuple[list[Article], SourceState]:
+        """Fetch ``source.url`` and return its entries as pending articles.
+
+        See ``ingest_feed`` for the behaviour; raises ``ValueError`` if the
+        source has no url (``models.Source`` already rejects that for rss).
+        """
+        if not source.url:
+            raise ValueError(f"source {source.id!r} has no url")
+        return ingest_feed(
+            source,
+            source.url,
+            fetcher,
+            state,
+            clock=self._clock,
+            summary_max_chars=self._summary_max_chars,
+        )
+
+
+def ingest_feed(
+    source: Source,
+    feed_url: str,
+    fetcher: Fetcher,
+    state: SourceState,
+    *,
+    clock: Callable[[], datetime] = _utc_now,
+    summary_max_chars: int = SUMMARY_MAX_CHARS,
+) -> tuple[list[Article], SourceState]:
+    """Conditionally fetch the feed at ``feed_url`` and parse it into articles.
+
+    * A 304 Not Modified returns no articles and ``state`` unchanged.
+    * A successful fetch returns the parsed articles and a new state carrying
+      the response's ETag and Last-Modified (None if the server stopped sending
+      them), the fetch time and the HTTP status.
+    * A failed fetch raises ``FeedFetchError``.
+    * A malformed feed is logged and whatever parsed is returned; entries that
+      can't become an ``Article`` are skipped and logged (see ``parse_feed``).
+    """
+    result = fetcher.fetch(feed_url, etag=state.etag, last_modified=state.last_modified)
+    if result.not_modified:
+        log.info(
+            "feed not modified",
+            extra={"stage": _STAGE, "source_id": source.id, "url": feed_url},
+        )
+        return [], state.model_copy(deep=True)
+    if result.error is not None or result.status_code is None or result.status_code >= 400:
+        reason = result.error or f"HTTP {result.status_code}"
+        raise FeedFetchError(f"fetching feed {feed_url} for source {source.id!r} failed: {reason}")
+
+    fetched_at = clock()
+    articles = parse_feed(
+        result.content,
+        source_id=source.id,
+        feed_url=result.final_url,
+        fetched_at=fetched_at,
+        headers=result.headers,
+        summary_max_chars=summary_max_chars,
+    )
+    new_state = SourceState.model_validate(
+        {
+            **state.model_dump(),
+            "etag": result.headers.get("etag"),
+            "last_modified": result.headers.get("last-modified"),
+            "last_fetched_at": fetched_at,
+            "last_status": result.status_code,
+        }
+    )
+    log.info(
+        "feed ingested",
+        extra={
+            "stage": _STAGE,
+            "source_id": source.id,
+            "url": feed_url,
+            "article_count": len(articles),
+        },
+    )
+    return articles, new_state
+
+
+def parse_feed(
+    content: bytes,
+    *,
+    source_id: str,
+    feed_url: str,
+    fetched_at: datetime,
+    headers: Mapping[str, str] | None = None,
+    summary_max_chars: int = SUMMARY_MAX_CHARS,
+) -> list[Article]:
+    """Parse RSS/Atom ``content`` into pending articles, in feed order.
+
+    ``feed_url`` is the URL the feed was served from (after redirects) and is
+    the base for relative links. ``headers`` are the response headers; the
+    content type's charset helps feedparser decode the bytes.
+
+    Malformed feeds (feedparser's ``bozo`` flag) are logged as a warning and
+    whatever parsed is returned; a feed whose only fault is a non-XML
+    Content-Type is logged at debug level. An entry that can't become an ``Article`` is
+    skipped with a structured warning; the rest of the feed is still returned.
+    """
+    response_headers = {"content-location": feed_url}
+    content_type = (headers or {}).get("content-type")
+    if content_type:
+        response_headers["content-type"] = content_type
+    # BytesIO, never a str: feedparser treats a str as a URL or file path to open.
+    parsed = feedparser.parse(io.BytesIO(content), response_headers=response_headers)
+
+    if parsed.get("bozo"):
+        exc = parsed.get("bozo_exception")
+        # Many servers send feeds as text/plain, text/html or with no
+        # Content-Type at all. feedparser flags that as bozo, but if the body
+        # still parsed as a feed nothing is wrong with it, and a warning on
+        # every run for such a source would only be noise.
+        benign = isinstance(exc, feedparser.NonXMLContentType) and bool(parsed.get("version"))
+        log.log(
+            logging.DEBUG if benign else logging.WARNING,
+            "malformed feed; using the entries that parsed",
+            extra={
+                "stage": _STAGE,
+                "source_id": source_id,
+                "url": feed_url,
+                "error_type": type(exc).__name__ if exc is not None else "unknown",
+                "error": str(exc) if exc is not None else "",
+                "entry_count": len(parsed.get("entries", [])),
+            },
+        )
+
+    articles: list[Article] = []
+    for entry in parsed.get("entries", []):
+        try:
+            articles.append(
+                _entry_to_article(
+                    entry,
+                    source_id=source_id,
+                    base_url=feed_url,
+                    fetched_at=fetched_at,
+                    summary_max_chars=summary_max_chars,
+                )
+            )
+        # Feed content is untrusted third-party data, and one odd entry must
+        # not lose the rest of the feed, so any per-entry failure is a skip.
+        except Exception as exc:
+            log.warning(
+                "skipped feed entry",
+                extra={
+                    "stage": _STAGE,
+                    "source_id": source_id,
+                    "url": _raw_link(entry) or feed_url,
+                    "feed_url": feed_url,
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                },
+            )
+    return articles
+
+
+def _entry_to_article(
+    entry: Mapping[str, Any],
+    *,
+    source_id: str,
+    base_url: str,
+    fetched_at: datetime,
+    summary_max_chars: int,
+) -> Article:
+    url = _entry_url(entry, base_url)
+    summary = truncate(html_to_text(_entry_summary(entry)), summary_max_chars)
+    return Article(
+        canonical_url=url,
+        url=url,
+        source_id=source_id,
+        title=html_to_text(entry.get("title")),
+        author=html_to_text(entry.get("author")) or None,
+        published_at=_entry_published(entry),
+        fetched_at=fetched_at,
+        summary=summary or None,
+    )
+
+
+def _raw_link(entry: Mapping[str, Any]) -> str | None:
+    link = entry.get("link")
+    return (link.strip() or None) if isinstance(link, str) else None
+
+
+def _entry_url(entry: Mapping[str, Any], base_url: str) -> str:
+    """Return the entry's absolute http(s) link, resolving relative links."""
+    link = _raw_link(entry)
+    if link is None:
+        raise ValueError("entry has no link")
+    url = urljoin(base_url, link)
+    parts = urlsplit(url)
+    if parts.scheme not in {"http", "https"} or not parts.hostname:
+        raise ValueError(f"entry link {link!r} is not an http(s) URL")
+    return url
+
+
+def _entry_summary(entry: Mapping[str, Any]) -> str | None:
+    """The entry's summary, or the start of its content if it has none (Atom)."""
+    summary = entry.get("summary")
+    if isinstance(summary, str) and summary.strip():
+        return summary
+    for content in entry.get("content") or []:
+        value = content.get("value") if isinstance(content, Mapping) else None
+        if isinstance(value, str) and value.strip():
+            return value
+    return None
+
+
+def _entry_published(entry: Mapping[str, Any]) -> datetime | None:
+    """Publication time in UTC, falling back to the updated time, else None.
+
+    feedparser parses the date formats seen in the wild (RFC 822, W3CDTF, ...)
+    and normalises them to UTC ``struct_time``s; a date it can't parse is
+    treated as absent.
+    """
+    for key in ("published_parsed", "updated_parsed"):
+        parsed = entry.get(key)
+        if isinstance(parsed, time.struct_time):
+            try:
+                return datetime.fromtimestamp(calendar.timegm(parsed), UTC)
+            except (OverflowError, OSError, ValueError):
+                continue
+    return None

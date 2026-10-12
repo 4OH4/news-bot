@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic RSS 2.0 feed mixing good entries with ones that can't become articles. Invented content. -->
+<rss version="2.0">
+  <channel>
+    <title>Example Odd Entries</title>
+    <link>https://odd.example.com/</link>
+    <description>Invented feed mixing good and unusable entries.</description>
+    <item>
+      <title>Good story before the bad ones</title>
+      <link>https://odd.example.com/news/good-1</link>
+    </item>
+    <item>
+      <title>Entry with no link at all</title>
+      <description>Nothing to point at.</description>
+    </item>
+    <item>
+      <title>Entry with a mailto link</title>
+      <link>mailto:editor@odd.example.com</link>
+    </item>
+    <item>
+      <title>Good story after the bad ones</title>
+      <link>https://odd.example.com/news/good-2</link>
+    </item>
+  </channel>
+</rss>

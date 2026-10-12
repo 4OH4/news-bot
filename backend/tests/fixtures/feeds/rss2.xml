@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic RSS 2.0 feed: invented site, headlines and summaries. -->
+<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:media="http://search.yahoo.com/mrss/">
+  <channel>
+    <title>Example Daily Gazette</title>
+    <link>https://news.example.com/</link>
+    <description>Invented headlines for parser tests.</description>
+    <language>en-gb</language>
+    <item>
+      <title>Town council approves &lt;em&gt;floating&lt;/em&gt; bike lanes</title>
+      <link>https://news.example.com/2026/10/floating-bike-lanes?utm_source=rss</link>
+      <guid isPermaLink="false">gazette-1001</guid>
+      <description><![CDATA[<p>The council in Imaginaria voted 7&ndash;2 to trial <b>floating</b> cycle lanes on the canal.</p><p>Residents &amp; boaters were consulted.</p><script>trackReader()</script>]]></description>
+      <dc:creator>Ada Placeholder</dc:creator>
+      <pubDate>Mon, 05 Oct 2026 09:30:00 +0100</pubDate>
+      <media:thumbnail url="https://img.example.com/lanes.jpg"/>
+    </item>
+    <item>
+      <title>Local bakery invents a square doughnut</title>
+      <link>https://news.example.com/2026/10/square-doughnut</link>
+      <guid isPermaLink="true">https://news.example.com/2026/10/square-doughnut</guid>
+      <description>The bakery on Placeholder Lane says the new shape fits more neatly into boxes and leaves no room for the hole, which customers had long complained about. The bakery on Placeholder Lane says the new shape fits more neatly into boxes and leaves no room for the hole, which customers had long complained about. The bakery on Placeholder Lane says the new shape fits more neatly into boxes and leaves no room for the hole, which customers had long complained about. The bakery on Placeholder Lane says the new shape fits more neatly into boxes and leaves no room for the hole, which customers had long complained about. The bakery on Placeholder Lane says the new shape fits more neatly into boxes and leaves no room for the hole, which customers had long complained about.</description>
+      <pubDate>Sun, 04 Oct 2026 23:15:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>Weather: an entirely ordinary Tuesday expected</title>
+      <link>https://news.example.com/2026/10/ordinary-tuesday</link>
+      <description>Forecasters predict nothing of note.</description>
+    </item>
+  </channel>
+</rss>
