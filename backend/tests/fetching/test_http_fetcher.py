@@ -293,11 +293,25 @@ def test_robots_5xx_or_network_failure_disallows_host(
 
     result = fetcher.fetch("https://example.com/a")
 
-    assert result.error == "disallowed by robots.txt"
+    # A distinct error from a real Disallow, so per-domain stats can tell them apart.
+    assert result.error == "robots.txt unavailable"
     assert not fetcher.is_allowed("https://example.com/b")
     assert server.page_urls() == []
     # The failure is cached for the run: robots.txt isn't retried.
     assert server.urls() == ["https://example.com/robots.txt"]
+
+
+def test_robots_with_utf8_bom_is_parsed(
+    server: Server, make_fetcher: Callable[..., HttpFetcher]
+) -> None:
+    # Regression: a BOM glued to the first "User-agent" line made the file look empty.
+    server.routes["https://a.example/robots.txt"] = lambda _request: httpx.Response(
+        200, content=b"\xef\xbb\xbfUser-agent: *\nDisallow: /\n"
+    )
+    fetcher = make_fetcher()
+
+    assert not fetcher.is_allowed("https://a.example/x")
+    assert fetcher.fetch("https://a.example/x").error == "disallowed by robots.txt"
 
 
 def test_robots_body_is_capped(server: Server, make_fetcher: Callable[..., HttpFetcher]) -> None:
@@ -308,6 +322,75 @@ def test_robots_body_is_capped(server: Server, make_fetcher: Callable[..., HttpF
 
     assert not fetcher.is_allowed("https://example.com/early")
     assert fetcher.is_allowed("https://example.com/late")
+
+
+# --- Never raising on hostile input -------------------------------------------------
+
+BAD_IDNA_URL = "http://xn--zz--.com/"
+
+
+def test_invalid_idna_host_is_an_error_not_an_exception(
+    server: Server, make_fetcher: Callable[..., HttpFetcher]
+) -> None:
+    # Regression: httpx raised idna.IDNAError (a ValueError) for this host.
+    fetcher = make_fetcher()
+
+    result = fetcher.fetch(BAD_IDNA_URL)
+
+    assert result.status_code is None
+    assert result.error is not None and result.error.startswith("invalid URL")
+    assert not fetcher.is_allowed(BAD_IDNA_URL)
+    with pytest.raises(FetchNotAllowedError), fetcher.permit(BAD_IDNA_URL):
+        pass
+    assert server.requests == []
+
+
+def test_redirect_to_invalid_idna_host_is_an_error(
+    server: Server, make_fetcher: Callable[..., HttpFetcher]
+) -> None:
+    server.route("https://example.com/a", httpx.Response(302, headers={"Location": BAD_IDNA_URL}))
+
+    result = make_fetcher().fetch("https://example.com/a")
+
+    # httpx builds the next request from Location even with follow_redirects=False,
+    # so the IDNA failure surfaces on the hop that received the redirect.
+    assert result.status_code is None
+    assert result.final_url == "https://example.com/a"
+    assert result.error == "IDNAError: A-label must not end with a hyphen"
+    assert server.page_urls() == ["https://example.com/a"]  # not retried
+
+
+def test_non_ascii_digit_retry_after_falls_back_to_backoff(
+    server: Server, clock: FakeClock, make_fetcher: Callable[..., HttpFetcher]
+) -> None:
+    # Regression: "²".isdigit() is True but float("²") raises.
+    assert parse_retry_after("²", datetime(2026, 10, 12, tzinfo=UTC)) is None
+    server.route(
+        "https://example.com/a",
+        httpx.Response(503, headers={"Retry-After": "²".encode()}),
+        httpx.Response(200, text="ok"),
+    )
+
+    result = make_fetcher(min_interval=0).fetch("https://example.com/a")
+
+    assert result.status_code == 200
+    assert clock.sleeps == [1.5]
+
+
+def test_non_ascii_digit_content_length_does_not_raise(
+    server: Server, make_fetcher: Callable[..., HttpFetcher]
+) -> None:
+    server.route(
+        "https://example.com/a",
+        httpx.Response(
+            200, headers={"Content-Length": "²".encode()}, stream=httpx.ByteStream(b"ok")
+        ),
+    )
+
+    result = make_fetcher().fetch("https://example.com/a")
+
+    assert result.status_code == 200
+    assert result.content == b"ok"
 
 
 # --- Rate limiting ----------------------------------------------------------------
