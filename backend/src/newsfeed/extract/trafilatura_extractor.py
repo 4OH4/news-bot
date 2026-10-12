@@ -9,19 +9,14 @@ plain text so it is comparable across extractors.
 from __future__ import annotations
 
 from typing import Any, Final
-from urllib.parse import urljoin, urlsplit
 
 import trafilatura
-from pydantic import TypeAdapter
 
-from newsfeed.extract.sanitize import html_to_text, sanitize_html
+from newsfeed.extract.common import DEFAULT_MIN_WORDS, build_result, run_safely
 from newsfeed.logging import get_logger
-from newsfeed.models import ExtractionResult, ExtractionStatus, LenientUtcDatetime
+from newsfeed.models import ExtractionResult, ExtractionStatus
 
 __all__ = ["DEFAULT_MIN_WORDS", "TrafilaturaExtractor"]
-
-DEFAULT_MIN_WORDS: Final = 150
-"""Word count at or above which an extraction counts as ``ok``."""
 
 # htmldate defaults to a date-only string; asking for the time and offset keeps
 # them when the page has them. ``original_date`` prefers the publication date
@@ -30,9 +25,6 @@ _DATE_PARAMS: Final[dict[str, Any]] = {
     "original_date": True,
     "outputformat": "%Y-%m-%dT%H:%M:%S%z",
 }
-
-# Publishers' dates are messy; coerce them the way the model does (ADR-0002).
-_PUBLISHED_AT: Final = TypeAdapter(LenientUtcDatetime)
 
 log = get_logger(__name__)
 
@@ -65,25 +57,7 @@ class TrafilaturaExtractor:
 
     def extract(self, html: str, url: str) -> ExtractionResult:
         """Extract the main content of ``html``, fetched from ``url``. Never raises."""
-        try:
-            return self._extract(html, url)
-        except Exception as exc:
-            # Stage boundary for one page: record the failure and carry on.
-            log.warning(
-                "extraction failed",
-                extra={
-                    "stage": "extract",
-                    "url": url,
-                    "extractor": self.name,
-                    "error_type": type(exc).__name__,
-                    "error": str(exc),
-                },
-            )
-            return ExtractionResult(
-                status=ExtractionStatus.FAILED,
-                method=self.name,
-                error=f"{type(exc).__name__}: {exc}",
-            )
+        return run_safely(self.name, url, lambda: self._extract(html, url), logger=log)
 
     def _extract(self, html: str, url: str) -> ExtractionResult:
         document = trafilatura.extract_with_metadata(
@@ -107,45 +81,13 @@ class TrafilaturaExtractor:
                 error="no main content found",
             )
 
-        title = _clean(document.title)
-        content_html = sanitize_html(document.text or "", url, title=title)
-        text = html_to_text(content_html)
-        word_count = len(text.split())
-        status, error = self._grade(word_count)
-        return ExtractionResult(
-            status=status,
+        return build_result(
             method=self.name,
-            title=title,
-            author=_clean(document.author),
-            published_at=_PUBLISHED_AT.validate_python(document.date),
-            content_html=content_html or None,
-            text=text or None,
-            lead_image=_image_url(document.image, url),
-            word_count=word_count,
-            error=error,
+            raw_html=document.text,
+            url=url,
+            min_words=self._min_words,
+            title=document.title,
+            author=document.author,
+            published_at=document.date,
+            lead_image=document.image,
         )
-
-    def _grade(self, word_count: int) -> tuple[ExtractionStatus, str | None]:
-        if word_count >= self._min_words:
-            return ExtractionStatus.OK, None
-        if word_count > 0:
-            return (
-                ExtractionStatus.PARTIAL,
-                f"only {word_count} words extracted (minimum {self._min_words})",
-            )
-        return ExtractionStatus.FAILED, "no text extracted"
-
-
-def _clean(value: str | None) -> str | None:
-    """Collapse whitespace; None for missing or blank values."""
-    if value is None:
-        return None
-    return " ".join(value.split()) or None
-
-
-def _image_url(value: str | None, page_url: str) -> str | None:
-    """Make a metadata image URL absolute; None unless it is http(s)."""
-    if not value or not value.strip():
-        return None
-    url = urljoin(page_url, value.strip())
-    return url if urlsplit(url).scheme.lower() in {"http", "https"} else None
