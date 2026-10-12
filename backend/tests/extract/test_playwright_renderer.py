@@ -14,6 +14,7 @@ from newsfeed.extract.overrides import DomainOverride, ExtractionConfig
 from newsfeed.extract.playwright_renderer import (
     PlaywrightExtractor,
     PlaywrightRenderer,
+    RenderError,
     is_blocked_host,
 )
 from newsfeed.extract.trafilatura_extractor import TrafilaturaExtractor
@@ -30,11 +31,37 @@ class FakeTimeout(Exception):
     pass
 
 
+MAIN_FRAME = object()
+
+
 class FakeRequest:
-    def __init__(self, url: str, resource_type: str = "xhr", navigation: bool = False) -> None:
+    def __init__(
+        self,
+        url: str,
+        resource_type: str = "xhr",
+        navigation: bool = False,
+        frame: object = MAIN_FRAME,
+        redirected_from: FakeRequest | None = None,
+    ) -> None:
         self.url = url
         self.resource_type = resource_type
         self._navigation = navigation
+        self.frame = frame
+        self.redirected_from = redirected_from
+
+    def is_navigation_request(self) -> bool:
+        return self._navigation
+
+
+class FakeResponse:
+    def __init__(self, url: str, status: int = 200, hops: tuple[str, ...] = ()) -> None:
+        # ``hops`` are the URLs redirected through, in order, before ``url``.
+        previous: FakeRequest | None = None
+        for hop in hops:
+            previous = FakeRequest(hop, "document", True, redirected_from=previous)
+        self.request = FakeRequest(url, "document", True, redirected_from=previous)
+        self.url = url
+        self.status = status
 
     def is_navigation_request(self) -> bool:
         return self._navigation
@@ -56,16 +83,19 @@ class FakePage:
     def __init__(self, browser: FakeBrowser) -> None:
         self.browser = browser
         self.handler: Any = None
+        self.main_frame = MAIN_FRAME
         self.thread_ids: set[int] = set()
 
     def route(self, pattern: str, handler: Any) -> None:
         self.handler = handler
 
-    def goto(self, url: str, *, wait_until: str, timeout: float) -> None:
+    def goto(self, url: str, *, wait_until: str, timeout: float) -> FakeResponse | None:
         self.thread_ids.add(threading.get_ident())
         self.browser.log.append(f"goto {url} {wait_until} {timeout:g}")
         if self.browser.goto_error:
             raise FakeTimeout("navigation timeout")
+        response = self.browser.response
+        return response(url) if callable(response) else response
 
     def wait_for_load_state(self, state: str, *, timeout: float) -> None:
         self.browser.log.append(f"wait {state} {timeout:g}")
@@ -96,6 +126,8 @@ class FakeBrowser:
         self.html = html
         self.idle_times_out = False
         self.goto_error = False
+        # What goto returns: a response, None, or a function of the requested URL.
+        self.response: Any = FakeResponse
         self.pages: list[FakePage] = []
         self.contexts: list[FakeContext] = []
         self.user_agents: list[str] = []
@@ -272,6 +304,71 @@ def test_redirect_navigation_is_permitted_or_aborted(make_harness: Any) -> None:
         "https://other.example.com/x",
         "https://private.example.com/x",
     ]
+
+
+def test_iframe_navigations_are_not_permitted_by_the_handler(make_harness: Any) -> None:
+    h = make_harness(disallowed=["https://private.example.com/"])
+    h.renderer.render(URL)
+    iframe = FakeRoute(
+        FakeRequest("https://private.example.com/x", "document", True, frame=object())
+    )
+    h.browser.pages[0].handler(iframe)
+    assert iframe.outcome == "continue"
+    assert h.fetcher.permits == [URL]
+
+
+def test_http_redirect_chain_is_permitted(make_harness: Any) -> None:
+    h = make_harness()
+    final = "https://spa.example.com/final"
+    h.browser.response = lambda url: FakeResponse(final, hops=(url, "https://spa.example.com/hop"))
+    h.renderer.render(URL)
+    # The requested URL once, then each hop and the final URL not yet permitted.
+    assert h.fetcher.permits == [URL, final, "https://spa.example.com/hop"]
+
+
+def test_http_redirect_to_disallowed_url_raises_before_returning_content(
+    make_harness: Any,
+) -> None:
+    h = make_harness(disallowed=["https://spa.example.com/private"])
+    h.browser.response = lambda url: FakeResponse("https://spa.example.com/private", hops=(url,))
+    with pytest.raises(FetchNotAllowedError):
+        h.renderer.render(URL)
+    assert h.browser.contexts[0].closed
+    assert not any(entry.startswith("wait") for entry in h.log)
+
+
+def test_hop_to_disallowed_url_is_refused_even_if_final_url_is_allowed(
+    make_harness: Any,
+) -> None:
+    h = make_harness(disallowed=["https://spa.example.com/private"])
+    h.browser.response = lambda url: FakeResponse(
+        "https://spa.example.com/ok", hops=(url, "https://spa.example.com/private")
+    )
+    with pytest.raises(FetchNotAllowedError):
+        h.renderer.render(URL)
+
+
+@pytest.mark.parametrize("status", [400, 404, 500, 503])
+def test_error_status_is_a_render_failure(make_harness: Any, status: int) -> None:
+    h = make_harness()
+    h.browser.response = lambda url: FakeResponse(url, status=status)
+    with pytest.raises(RenderError, match=str(status)):
+        h.renderer.render(URL)
+    assert h.browser.contexts[0].closed
+
+
+def test_missing_response_is_a_render_failure(make_harness: Any) -> None:
+    h = make_harness()
+    h.browser.response = None
+    with pytest.raises(RenderError, match="no response"):
+        h.renderer.render(URL)
+
+
+def test_extractor_turns_render_error_into_failed_result() -> None:
+    result = PlaywrightExtractor(StubRenderer(RenderError("HTTP 404 for x"))).extract("", URL)
+    assert result.status is ExtractionStatus.FAILED
+    assert result.error is not None
+    assert "HTTP 404" in result.error
 
 
 def test_is_blocked_host_matches_subdomains_only() -> None:
