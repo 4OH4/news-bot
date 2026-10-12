@@ -1,0 +1,52 @@
+"""Tests for ``Settings``."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+from pydantic import ValidationError
+
+from newsfeed.settings import Settings, load_settings
+
+
+def test_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in ("DATA_DIR", "CONFIG_DIR", "FIXTURES_DIR", "CONCURRENCY", "USER_AGENT"):
+        monkeypatch.delenv(f"NEWSFEED_{name}", raising=False)
+
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+
+    assert settings.data_dir == Path("data")
+    assert settings.config_dir == Path("config")
+    assert settings.storage == "local"
+    assert settings.concurrency == 8
+    assert settings.fixtures_dir.name == "eval-fixtures"
+    assert "github.com" in settings.user_agent
+
+
+def test_environment_overrides_and_derived_paths(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("NEWSFEED_DATA_DIR", str(tmp_path / "d"))
+    monkeypatch.setenv("NEWSFEED_CONFIG_DIR", str(tmp_path / "c"))
+    monkeypatch.setenv("NEWSFEED_CONCURRENCY", "3")
+    monkeypatch.setenv("NEWSFEED_HOST_INTERVAL", "0.5")
+
+    settings = load_settings()
+
+    assert settings.database_path == tmp_path / "d" / "newsfeed.db"
+    assert settings.blob_dir == tmp_path / "d" / "blobs"
+    assert settings.sources_path == tmp_path / "c" / "sources.yaml"
+    assert settings.url_params_path == tmp_path / "c" / "url_params.yaml"
+    assert settings.extraction_path == tmp_path / "c" / "extraction.yaml"
+    assert (settings.concurrency, settings.host_interval) == (3, 0.5)
+
+
+def test_invalid_values_are_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NEWSFEED_CONCURRENCY", "0")
+    with pytest.raises(ValidationError):
+        load_settings()
+    monkeypatch.delenv("NEWSFEED_CONCURRENCY")
+    monkeypatch.setenv("NEWSFEED_STORAGE", "gcs")
+    with pytest.raises(ValidationError):
+        load_settings()
