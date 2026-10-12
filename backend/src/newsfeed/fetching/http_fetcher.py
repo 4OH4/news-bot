@@ -4,10 +4,12 @@ Politeness rules (PROJECT_PLAN.md NFR-3, CLAUDE.md rule 6), applied to every
 request including each redirect hop:
 
 * an identifiable User-Agent;
-* robots.txt, fetched once per origin per process. A 2xx is parsed, any other
-  4xx means "allow all", and a 429, 5xx or network failure means "disallow the
-  whole origin" for the rest of the run. Refusals report ``ROBOTS_DISALLOWED``
-  or ``ROBOTS_UNAVAILABLE`` so callers can tell the two apart;
+* robots.txt, fetched once per origin per process and matched with ``protego``,
+  an RFC 9309 parser (``*`` and ``$`` wildcards, longest match wins). A 2xx is
+  parsed, any other 4xx means "allow all", and a 429, 5xx, network failure or
+  unparseable file means "disallow the whole origin" for the rest of the run.
+  Refusals report ``ROBOTS_DISALLOWED`` or ``ROBOTS_UNAVAILABLE`` so callers can
+  tell the two apart;
 * a minimum interval between requests to the same host (default 2s, overridable
   per host), shared by all threads;
 * conditional GETs (``If-None-Match`` / ``If-Modified-Since``);
@@ -32,9 +34,9 @@ from email.utils import parsedate_to_datetime
 from types import TracebackType
 from typing import Self
 from urllib.parse import urljoin, urlsplit
-from urllib.robotparser import RobotFileParser
 
 import httpx
+from protego import Protego
 
 from newsfeed.logging import get_logger
 from newsfeed.models import FetchResult
@@ -110,17 +112,17 @@ class _RobotsPolicy:
     fetched (5xx, 429, network error), as opposed to rules that disallow us.
     """
 
-    parser: RobotFileParser | None
+    parser: Protego | None
     allow_all: bool
     unavailable: bool = False
 
-    def refusal(self, url: str, user_agent: str) -> str | None:
-        """Return why ``url`` may not be fetched, or None if it may."""
+    def refusal(self, url: str, product_token: str) -> str | None:
+        """Return why ``url`` may not be fetched by ``product_token``, or None if it may."""
         if self.unavailable:
             return ROBOTS_UNAVAILABLE
         if self.parser is None:
             return None if self.allow_all else ROBOTS_DISALLOWED
-        return None if self.parser.can_fetch(user_agent, url) else ROBOTS_DISALLOWED
+        return None if self.parser.can_fetch(url, product_token) else ROBOTS_DISALLOWED
 
 
 @dataclass
@@ -198,8 +200,9 @@ class HttpFetcher:
         """Create a fetcher.
 
         Args:
-            user_agent: Identifiable User-Agent sent with every request and
-                matched against robots.txt, e.g. ``DEFAULT_USER_AGENT``.
+            user_agent: Identifiable User-Agent sent with every request, e.g.
+                ``DEFAULT_USER_AGENT``. Its product token (the part before the
+                first ``/``) is matched against robots.txt ``User-agent`` lines.
             min_interval: Default seconds between requests to one host.
             host_intervals: Per-host overrides of ``min_interval``, keyed by hostname.
             max_retries: Retries after the first attempt for transient failures.
@@ -218,6 +221,7 @@ class HttpFetcher:
         if max_retries < 0 or max_redirects < 0 or max_body_bytes <= 0:
             raise ValueError("max_retries and max_redirects must be >= 0, max_body_bytes > 0")
         self.user_agent = user_agent
+        self._product_token = _product_token(user_agent)
         self._max_retries = max_retries
         self._backoff_base = backoff_base
         self._max_retry_after = max_retry_after
@@ -328,7 +332,7 @@ class HttpFetcher:
         problem = _url_problem(url)
         if problem is not None:
             return problem
-        return self._robots_policy(_origin(url)).refusal(url, self.user_agent)
+        return self._robots_policy(_origin(url)).refusal(url, self._product_token)
 
     def _get_with_retries(self, url: str, headers: Mapping[str, str]) -> _Response:
         host = _host(url)
@@ -444,12 +448,14 @@ class HttpFetcher:
             reason = _describe(exc)
         else:
             if 200 <= status < 300:
-                parser = RobotFileParser(robots_url)
                 try:
-                    parser.parse(body.decode("utf-8-sig", errors="replace").splitlines())
-                except ValueError as exc:
-                    # The stdlib parser calls int() on Crawl-delay and Request-rate
-                    # values, so a value like "²" raises. Treat the file as unusable.
+                    # utf-8-sig strips a leading BOM, which would otherwise hide
+                    # the first User-agent line.
+                    parser = Protego.parse(body.decode("utf-8-sig", errors="replace"))
+                except Exception as exc:
+                    # protego skips malformed lines rather than raising, but it is
+                    # third-party code fed hostile input and fetch must never raise.
+                    # Treat a file it can't read as unusable.
                     policy = _RobotsPolicy(parser=None, allow_all=False, unavailable=True)
                     reason = f"unparseable: {_describe(exc)}"
                 else:
@@ -486,6 +492,17 @@ def _read_capped(resp: httpx.Response, limit: int) -> bytes:
         if size >= limit:
             break
     return b"".join(chunks)
+
+
+def _product_token(user_agent: str) -> str:
+    """Return the product token robots.txt groups are matched against.
+
+    RFC 9309 matches a ``User-agent`` line against the crawler's product token
+    (``newsfeed-personal``), not the whole header. Matching the whole header
+    would let groups for words in its comment, such as ``github``, apply to us.
+    """
+    token = user_agent.split()[0].split("/")[0]
+    return token or user_agent.strip()
 
 
 def _url_problem(url: str) -> str | None:

@@ -14,8 +14,9 @@ from typing import Any
 
 import httpx
 import pytest
+from protego import Protego
 
-from newsfeed.fetching import DEFAULT_USER_AGENT, HttpFetcher
+from newsfeed.fetching import DEFAULT_USER_AGENT, HttpFetcher, http_fetcher
 from newsfeed.fetching.http_fetcher import parse_retry_after
 from newsfeed.ports import Fetcher, FetchNotAllowedError
 
@@ -318,17 +319,37 @@ def test_robots_with_utf8_bom_is_parsed(
     "body",
     [
         b"User-agent: *\nCrawl-delay: \xc2\xb2\nDisallow: /\n",
-        "User-agent: *\nRequest-rate: ²/5\nDisallow: /\n".encode(),
+        "User-agent: *\nRequest-rate: \u00b2/5\nDisallow: /\n".encode(),
     ],
     ids=["crawl-delay", "request-rate"],
 )
-def test_unparseable_robots_is_unavailable_and_cached(
+def test_malformed_rate_directives_are_ignored_not_fatal(
     body: bytes, server: Server, make_fetcher: Callable[..., HttpFetcher]
 ) -> None:
-    # Regression: RobotFileParser.parse raises ValueError on non-ASCII digits.
+    # Regression: stdlib RobotFileParser.parse raised ValueError on non-ASCII
+    # digits. protego skips the malformed line, so the rest of the file applies.
     server.routes["https://a.example/robots.txt"] = lambda _request: httpx.Response(
         200, content=body
     )
+    fetcher = make_fetcher()
+
+    assert not fetcher.is_allowed("https://a.example/x")
+    assert fetcher.fetch("https://a.example/x").error == "disallowed by robots.txt"
+    with pytest.raises(FetchNotAllowedError), fetcher.permit("https://a.example/y"):
+        pass
+    assert server.urls() == ["https://a.example/robots.txt"]  # downloaded once
+
+
+def test_unparseable_robots_is_unavailable_and_cached(
+    server: Server, make_fetcher: Callable[..., HttpFetcher], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # protego doesn't raise on any input we know of, but fetch must never raise
+    # if it does: the origin is treated as unavailable for the run.
+    def broken_parse(content: str) -> Protego:
+        raise ValueError("cannot parse")
+
+    monkeypatch.setattr(http_fetcher.Protego, "parse", broken_parse)
+    server.route("https://a.example/x", httpx.Response(200, text="ok"))
     fetcher = make_fetcher()
 
     assert not fetcher.is_allowed("https://a.example/x")
@@ -336,6 +357,117 @@ def test_unparseable_robots_is_unavailable_and_cached(
     with pytest.raises(FetchNotAllowedError), fetcher.permit("https://a.example/y"):
         pass
     assert server.urls() == ["https://a.example/robots.txt"]  # downloaded once
+
+
+# --- RFC 9309 matching (regressions for urllib.robotparser) ---------------------
+
+
+@pytest.mark.parametrize(
+    ("robots", "blocked", "allowed"),
+    [
+        # "*" matches any characters: block every URL with a query string.
+        (
+            "User-agent: *\nDisallow: /*?\n",
+            ["/search?q=1", "/news/story?utm_source=x", "/page?"],
+            ["/search", "/news/story"],
+        ),
+        # The longest matching rule wins, whatever the order in the file.
+        (
+            "User-agent: *\nAllow: /\nDisallow: /private/\n",
+            ["/private/x", "/private/"],
+            ["/", "/public/x", "/private"],
+        ),
+        # "$" anchors the pattern to the end of the URL.
+        (
+            "User-agent: *\nDisallow: /*.pdf$\n",
+            ["/report.pdf", "/docs/2026/annual.pdf"],
+            ["/report.pdf.html", "/report.pdf?download=1", "/report.html"],
+        ),
+        # On a tie in length, Allow wins.
+        (
+            "User-agent: *\nDisallow: /page\nAllow: /page\n",
+            [],
+            ["/page"],
+        ),
+        # A longer Allow carves an exception out of a shorter Disallow.
+        (
+            "User-agent: *\nDisallow: /news/\nAllow: /news/*/public$\n",
+            ["/news/a/private", "/news/a/public/more"],
+            ["/news/a/public"],
+        ),
+    ],
+    ids=["wildcard-query", "longest-match", "dollar-anchor", "allow-wins-tie", "allow-exception"],
+)
+def test_robots_rfc9309_matching(
+    robots: str,
+    blocked: list[str],
+    allowed: list[str],
+    server: Server,
+    make_fetcher: Callable[..., HttpFetcher],
+) -> None:
+    server.robots = robots
+    fetcher = make_fetcher()
+
+    for path in blocked:
+        assert not fetcher.is_allowed(f"https://example.com{path}"), path
+    for path in allowed:
+        assert fetcher.is_allowed(f"https://example.com{path}"), path
+
+
+def test_rfc9309_disallow_blocks_fetch_without_requesting_page(
+    server: Server, make_fetcher: Callable[..., HttpFetcher]
+) -> None:
+    server.robots = "User-agent: *\nDisallow: /*?\n"
+    server.route("https://example.com/search", httpx.Response(200, text="ok"))
+    fetcher = make_fetcher()
+
+    blocked = fetcher.fetch("https://example.com/search?q=1")
+    allowed = fetcher.fetch("https://example.com/search")
+
+    assert blocked.error == "disallowed by robots.txt"
+    assert blocked.status_code is None
+    assert allowed.status_code == 200
+    assert server.page_urls() == ["https://example.com/search"]
+
+
+@pytest.mark.parametrize(
+    ("robots", "expected"),
+    [
+        # Our group applies instead of "*", whichever comes first in the file.
+        ("User-agent: *\nDisallow: /\n\nUser-agent: newsfeed-personal\nAllow: /\n", True),
+        ("User-agent: newsfeed-personal\nDisallow: /\n\nUser-agent: *\nAllow: /\n", False),
+        # User-agent matching is case-insensitive.
+        ("User-agent: NewsFeed-Personal\nDisallow: /\n\nUser-agent: *\nAllow: /\n", False),
+        # A group for another crawler doesn't apply; nor does "*" when ours exists.
+        ("User-agent: otherbot\nDisallow: /\n", True),
+        ("User-agent: newsfeed-personal\nDisallow: /private\n\nUser-agent: *\nDisallow: /\n", True),
+        # Groups naming words in our UA's comment (the project URL) don't apply.
+        ("User-agent: github\nDisallow: /\n\nUser-agent: news-bot\nDisallow: /\n", True),
+        # Groups for the same agent are merged (RFC 9309 section 2.2.1).
+        (
+            "User-agent: newsfeed-personal\nAllow: /x\n\n"
+            "User-agent: *\nAllow: /\n\n"
+            "User-agent: newsfeed-personal\nDisallow: /\n",
+            False,
+        ),
+    ],
+    ids=[
+        "ours-after-star",
+        "ours-before-star",
+        "case",
+        "other-bot",
+        "ours-beats-star",
+        "ua-comment-words",
+        "merged-groups",
+    ],
+)
+def test_robots_group_selection_with_project_user_agent(
+    robots: str, expected: bool, server: Server, make_fetcher: Callable[..., HttpFetcher]
+) -> None:
+    server.robots = robots
+    fetcher = make_fetcher()
+
+    assert fetcher.is_allowed("https://example.com/anything") is expected
 
 
 def test_robots_body_is_capped(server: Server, make_fetcher: Callable[..., HttpFetcher]) -> None:
