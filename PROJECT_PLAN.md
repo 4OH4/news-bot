@@ -199,6 +199,7 @@ Extraction quality is the riskiest assumption, so it gets a dedicated, repeatabl
 ├── config/
 │   ├── sources.yaml
 │   ├── extraction.yaml       # per-domain extractor overrides
+│   ├── url_params.yaml       # per-domain tracking-parameter rules for canonical URLs
 │   └── interests.yaml
 ├── backend/
 │   ├── pyproject.toml
