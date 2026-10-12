@@ -358,6 +358,24 @@ def test_warns_when_text_is_lost(
     assert record["input_chars"] == len("<p>Some &amp; text</p>")
 
 
+@pytest.mark.parametrize(
+    "html", ["<h1>Title</h1>", "<h2> Title </h2><p>&nbsp;</p>", "<div><h1>Title</h1></div>"]
+)
+def test_no_warning_when_only_the_title_is_dropped(
+    html: str, log_records: list[logging.LogRecord]
+) -> None:
+    assert clean(html, title="Title") == ""
+    assert not log_records
+
+
+def test_warns_when_text_besides_the_title_is_lost(
+    monkeypatch: pytest.MonkeyPatch, log_records: list[logging.LogRecord]
+) -> None:
+    monkeypatch.setattr(sanitize, "_normalise", lambda *args: "")
+    assert clean("<h1>Title</h1><p>Body text.</p>", title="Title") == ""
+    assert [vars(r)["error_type"] for r in log_records] == ["SanitiserTextLost"]
+
+
 @pytest.mark.parametrize("html", ["<p>&nbsp;</p>", "<script>x()</script>", "<p><br></p>"])
 def test_no_warning_when_input_had_no_text(html: str, log_records: list[logging.LogRecord]) -> None:
     assert clean(html) == ""
