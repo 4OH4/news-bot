@@ -247,8 +247,8 @@ Extraction quality is the riskiest assumption, so it gets a dedicated, repeatabl
 
 ### 9.2 Issue template (agent-ready)
 Every `agent-ready` issue must contain:
-- **Context:** why the work matters, with links to the relevant plan section or ADR.
-- **Task:** what to build.
+- **Context:** why the work matters, written for me first. It opens with a short plain-language paragraph (the problem or gap today, what the change makes possible, and what it unblocks), followed by links to the relevant plan section, requirement IDs and ADRs.
+- **Task:** what to build. It opens with a **Summary** of two to four sentences (what is being built and how it fits the pipeline, or the workflow for infra and docs issues), followed by **Details**, the precise spec.
 - **Acceptance criteria:** testable checkboxes.
 - **Files / modules in scope**, and anything explicitly *out of scope*, to limit collisions between agents.
 - **Interfaces touched**, noting any change to `models.py` or `ports.py`.

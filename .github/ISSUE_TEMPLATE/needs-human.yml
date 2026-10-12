@@ -52,7 +52,10 @@ body:
     id: context
     attributes:
       label: Context
-      description: Why this needs doing now. Link PROJECT_PLAN.md sections, requirement IDs and related issues.
+      description: |
+        Written for the human first. Open with a short plain-language paragraph: the problem or question, why it
+        needs settling now, and what it unblocks. Then link PROJECT_PLAN.md sections, requirement IDs, ADRs and
+        related issues.
     validations:
       required: true
 
@@ -60,7 +63,9 @@ body:
     id: needed
     attributes:
       label: What's needed
-      description: The decision to make or the steps to carry out.
+      description: |
+        Open with one or two plain sentences: the decision or task, and what changes depending on the outcome.
+        Then the specifics: the question to answer, or the exact steps to carry out.
     validations:
       required: true
 

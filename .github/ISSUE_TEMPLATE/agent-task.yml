@@ -52,10 +52,17 @@ body:
     id: context
     attributes:
       label: Context
-      description: Why this matters. Link the relevant PROJECT_PLAN.md section, requirement IDs (FR-x / NFR-x) and ADRs.
+      description: |
+        Written for the human reviewer first. Open with a short plain-language paragraph: the problem or gap today,
+        what this change makes possible, and why it's needed now (what it unblocks). Then link the PROJECT_PLAN.md
+        section, requirement IDs (FR-x / NFR-x), ADRs and related issues.
       placeholder: |
+        Fetched pages are full of navigation, adverts and cookie banners, so the pipeline can't yet show or rank
+        the article itself. This adds the main extractor, which pulls out the title, author, date and body text,
+        so the feed can display clean articles and rank them on their content. The fallback extractors (#14) and
+        the evaluation harness (#18) build on it.
+
         Implements FR-5 (content extraction). See PROJECT_PLAN.md §5.2 and ADR-0001.
-        Trafilatura is the primary extractor; fallbacks come in #14.
     validations:
       required: true
 
@@ -63,11 +70,20 @@ body:
     id: task
     attributes:
       label: Task
-      description: What to build, stated precisely. Include expected function/class names or behaviour if they matter.
+      description: |
+        Open with **Summary:** two to four plain sentences on what is being built and how it fits the pipeline
+        (which stage, what goes in, what comes out, the main pieces) or, for infra/docs issues, the workflow.
+        Then **Details:** the precise spec, including
+        function/class names and behaviour where they matter.
       placeholder: |
-        Implement `TrafilaturaExtractor` in `extract/trafilatura_extractor.py` conforming to the `Extractor` protocol.
-        It takes raw HTML plus URL and returns an `ExtractionResult` with title, author, published date,
-        sanitised body HTML, lead image and word count.
+        **Summary:** A `TrafilaturaExtractor` that takes a fetched page's HTML and returns the article in a clean,
+        structured form. It wraps the Trafilatura library, then sanitises the HTML it produces so the reader client
+        can display it safely. The extract stage runs it on every newly ingested article.
+
+        **Details:**
+        - Implement `TrafilaturaExtractor` in `extract/trafilatura_extractor.py`, conforming to the `Extractor` protocol.
+        - It takes raw HTML plus URL and returns an `ExtractionResult` with title, author, published date,
+          sanitised body HTML, lead image and word count.
     validations:
       required: true
 
