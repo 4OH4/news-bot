@@ -18,11 +18,21 @@ navigations go through ``Fetcher.permit`` (robots.txt and the per-host rate limi
 - the requested URL is permitted before ``goto``;
 - Playwright does not run route handlers for HTTP 3xx hops, so after ``goto`` the
   response's final URL and every URL in its ``redirected_from`` chain are permitted
-  too, and a refusal raises ``FetchNotAllowedError`` before any content is returned.
-  The redirected requests themselves have already been made by then, but only the
-  redirect responses and the final page are fetched, and nothing is extracted;
+  too, and a refusal raises ``FetchNotAllowedError`` before any content is returned;
 - JavaScript and meta-refresh navigations of the main frame are permitted by the
-  route handler before the request is sent (and aborted if refused).
+  route handler before the request is sent (and aborted if refused);
+- the HTTP 3xx hops of such a navigation reach neither the route handler nor the
+  ``goto`` response, so before the HTML is read the page's final URL
+  (``page.url``) is permitted too, and a refusal raises ``FetchNotAllowedError``.
+
+Known limitation: the redirect checks run after Chromium has followed the
+redirects, so a robots-disallowed redirect target is requested once (its content
+is discarded, never extracted). ``HttpFetcher`` checks before each request. Closing
+this gap means fetching every main-frame document with
+``route.fetch(max_redirects=0)`` and following each ``Location`` by hand, which
+replaces the browser's own navigation and was judged too complex for Phase 1.
+Intermediate hops of a JS-initiated redirect chain are not checked, only where it
+ends, and the HTTP status of a JS-initiated navigation is not checked.
 
 Not covered: iframe navigations, and same-host subresources (scripts, XHR, CSS),
 which don't go through ``permit``. That is acceptable in Phase 1: they load only as
@@ -238,6 +248,9 @@ class PlaywrightRenderer:
                 page.wait_for_load_state("networkidle", timeout=self._idle_timeout_ms)
             except self._timeout_error:
                 log.debug("network never went idle", extra={"stage": "extract", "url": url})
+            # A JS navigation's own HTTP 3xx hops reach neither the route handler nor
+            # _check_response, so permit wherever the page ended up before reading it.
+            self._permit_once(page.url, permitted)
             html: str = page.content()
             return html
         finally:
@@ -256,11 +269,15 @@ class PlaywrightRenderer:
             chain.append(request.url)
             request = request.redirected_from
         for hop in chain:
-            if hop not in permitted:
-                with self._fetcher.permit(hop):  # raises FetchNotAllowedError if refused
-                    permitted.add(hop)
+            self._permit_once(hop, permitted)
         if response.status >= 400:
             raise RenderError(f"HTTP {response.status} for {url}")
+
+    def _permit_once(self, url: str, permitted: set[str]) -> None:
+        """Permit ``url`` unless already permitted; raises ``FetchNotAllowedError``."""
+        if url not in permitted:
+            with self._fetcher.permit(url):
+                permitted.add(url)
 
     def _handle_route(self, route: Any, page: Any, permitted: set[str]) -> None:
         """Abort unwanted requests; permit main-frame navigations to new URLs."""

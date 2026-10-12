@@ -85,6 +85,7 @@ class FakePage:
         self.handler: Any = None
         self.main_frame = MAIN_FRAME
         self.thread_ids: set[int] = set()
+        self.url = "about:blank"
 
     def route(self, pattern: str, handler: Any) -> None:
         self.handler = handler
@@ -95,7 +96,13 @@ class FakePage:
         if self.browser.goto_error:
             raise FakeTimeout("navigation timeout")
         response = self.browser.response
-        return response(url) if callable(response) else response
+        result = response(url) if callable(response) else response
+        if result is not None:
+            self.url = result.url
+        if self.browser.final_url is not None:
+            # A JS navigation (with its own HTTP redirects) moved the page on.
+            self.url = self.browser.final_url
+        return result
 
     def wait_for_load_state(self, state: str, *, timeout: float) -> None:
         self.browser.log.append(f"wait {state} {timeout:g}")
@@ -128,6 +135,8 @@ class FakeBrowser:
         self.goto_error = False
         # What goto returns: a response, None, or a function of the requested URL.
         self.response: Any = FakeResponse
+        # Where a later JS navigation leaves the page, if anywhere.
+        self.final_url: str | None = None
         self.pages: list[FakePage] = []
         self.contexts: list[FakeContext] = []
         self.user_agents: list[str] = []
@@ -346,6 +355,46 @@ def test_hop_to_disallowed_url_is_refused_even_if_final_url_is_allowed(
     )
     with pytest.raises(FetchNotAllowedError):
         h.renderer.render(URL)
+
+
+def test_js_navigation_redirected_to_disallowed_url_raises_before_content(
+    make_harness: Any,
+) -> None:
+    # Regression: location.href='/redir' (permitted by the route handler), which
+    # then 302s to a disallowed URL the handler never sees.
+    h = make_harness(disallowed=["https://spa.example.com/private"])
+    h.browser.final_url = "https://spa.example.com/private"
+    h.browser.html = "<html><body>private</body></html>"
+    with pytest.raises(FetchNotAllowedError):
+        h.renderer.render(URL)
+    assert h.fetcher.permits == [URL, "https://spa.example.com/private"]
+    assert h.browser.contexts[0].closed
+
+
+def test_js_navigation_to_allowed_url_is_permitted_once(make_harness: Any) -> None:
+    h = make_harness()
+    h.browser.final_url = "https://spa.example.com/moved"
+    assert "rendered" in h.renderer.render(URL)
+    assert h.fetcher.permits == [URL, "https://spa.example.com/moved"]
+
+
+def test_final_url_already_permitted_by_handler_is_not_permitted_again(
+    make_harness: Any,
+) -> None:
+    h = make_harness()
+    moved = "https://spa.example.com/moved"
+    original_goto = FakePage.goto
+
+    def goto_then_navigate(page: FakePage, url: str, **kwargs: Any) -> FakeResponse | None:
+        result = original_goto(page, url, **kwargs)
+        page.handler(FakeRoute(FakeRequest(moved, "document", navigation=True)))
+        page.url = moved
+        return result
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(FakePage, "goto", goto_then_navigate)
+        h.renderer.render(URL)
+    assert h.fetcher.permits == [URL, moved]
 
 
 @pytest.mark.parametrize("status", [400, 404, 500, 503])
