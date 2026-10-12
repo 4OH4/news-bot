@@ -477,6 +477,44 @@ def test_since_drops_old_entries_at_ingest(tmp_path: Path, repository: SqliteRep
     assert len(urls) == 3
 
 
+def test_source_option_narrows_extraction(tmp_path: Path, repository: SqliteRepository) -> None:
+    a = _article_for("https://a.example.com/x/1", "gazette")
+    b = _article_for("https://b.example.com/y/2", "other")
+    fetcher = FakeFetcher(
+        {
+            a.url: FakeResponse(b"<html></html>", headers=HTML),
+            b.url: FakeResponse(b"<html></html>", headers=HTML),
+        }
+    )
+    services = _services(tmp_path, repository, fetcher, FakeExtractor(default=_ok()))
+    repository.upsert_article(a)
+    repository.upsert_article(b)
+
+    stats = run_pipeline(services, [SOURCE], ingest=False)
+
+    assert stats.stage_counts[PipelineStage.EXTRACT]["attempted"] == 1
+    stored_a, stored_b = repository.get_article(a.id), repository.get_article(b.id)
+    assert stored_a is not None and stored_a.extraction.status is ExtractionStatus.OK
+    assert stored_b is not None and stored_b.extraction.status is ExtractionStatus.PENDING
+
+
+@pytest.mark.parametrize("option", [{"limit": 1}, {"since": datetime(2026, 10, 6, tzinfo=UTC)}])
+def test_dropped_entries_keep_the_old_source_state(
+    tmp_path: Path, repository: SqliteRepository, option: dict[str, object]
+) -> None:
+    services = _services(tmp_path, repository, _fetcher(etag='"v1"'))
+
+    run_pipeline(services, [SOURCE], extract=False, **option)  # type: ignore[arg-type]
+
+    assert repository.get_source_state(SOURCE.id) is None
+    # Without the option the next run still sees the whole feed (no 304).
+    run_pipeline(services, [SOURCE], extract=False)
+    assert len(repository.list_articles()) == 4
+    state = repository.get_source_state(SOURCE.id)
+    assert state is not None
+    assert state.etag == '"v1"'
+
+
 def test_source_without_ingester_is_skipped(tmp_path: Path, repository: SqliteRepository) -> None:
     services = _services(tmp_path, repository, FakeFetcher(), ingesters={})
 
@@ -529,6 +567,34 @@ def test_extract_saved_url_stores_like_a_feed_article(
     assert repository.get_article(article.id) == article
 
 
+def test_extract_saved_url_keeps_an_existing_feed_article(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    url = "https://x.example.com/a"
+    feed_article = Article(
+        canonical_url=url,
+        url=url,
+        source_id="gazette",
+        title="Feed title",
+        summary="Feed summary",
+        fetched_at=datetime(2026, 10, 1, tzinfo=UTC),
+    )
+    repository.upsert_article(feed_article)
+    fetcher = FakeFetcher({url: FakeResponse(b"<html></html>", headers=HTML)})
+    services = _services(tmp_path, repository, fetcher, FakeExtractor(default=_ok()))
+
+    article = extract_saved_url(services, url)
+
+    assert article.id == feed_article.id
+    assert (article.source_id, article.title, article.summary) == (
+        "gazette",
+        "Feed title",
+        "Feed summary",
+    )
+    assert article.extraction.status is ExtractionStatus.OK
+    assert len(repository.list_articles()) == 1
+
+
 # --- Decoding ----------------------------------------------------------------------
 
 
@@ -553,6 +619,14 @@ def test_decode_falls_back_when_declared_charset_is_wrong_or_unknown() -> None:
 
 def test_decode_legacy_bytes_without_declaration_use_cp1252() -> None:
     assert decode_html("<p>café</p>".encode("cp1252")) == "<p>café</p>"
+
+
+def test_decode_one_bad_byte_in_declared_utf8_does_not_garble_the_page() -> None:
+    content = b"\xff" + "café — résumé".encode()
+
+    decoded = decode_html(content, {"content-type": "text/html; charset=utf-8"})
+
+    assert decoded == "�café — résumé"
 
 
 def test_decode_strips_bom() -> None:
