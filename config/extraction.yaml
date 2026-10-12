@@ -1,0 +1,27 @@
+# Per-domain extraction overrides, loaded by
+# newsfeed.extract.overrides.load_extraction_config and applied by the
+# extractor chain (newsfeed.extract.chain.ExtractorChain).
+#
+# Domains not listed here use the default chain: trafilatura, then the
+# readability and newspaper4k fallbacks, stopping at the first "ok" result.
+#
+# Schema (unknown keys are rejected):
+#
+#   domains:
+#     example.com:                 # host with or without "www."; also matches
+#                                  # subdomains (news.example.com). The longest
+#                                  # matching key wins; levels are not merged.
+#       order: [readability, trafilatura]   # extractors to try, in order
+#                                  # (trafilatura | readability | newspaper4k)
+#       render: playwright         # also try the JavaScript renderer (#15),
+#                                  # after the static extractors
+#       min_words: 80              # words needed for "ok" (default 150)
+#     paywalled.example.org:
+#       mode: summary_only         # don't extract; keep the feed summary
+#                                  # (status "skipped"). Can't be combined
+#                                  # with order, render or min_words.
+#
+# Add domains here when `make eval` (#18) shows the default chain doing badly
+# on them.
+
+domains: {}
