@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<!-- Synthetic fixture: invented text in a typical personal-blog page structure. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Teaching a sourdough starter to keep a diary - Notes from the Shed</title>
+  <meta name="author" content="Hal Brindlecombe">
+  <meta name="generator" content="ExampleStaticSiteGenerator 3.2">
+  <meta property="og:title" content="Teaching a sourdough starter to keep a diary">
+  <meta property="og:type" content="article">
+  <meta property="article:published_time" content="2024-11-17">
+</head>
+<body>
+  <div class="wrapper">
+    <header>
+      <p class="site-title"><a href="/">Notes from the Shed</a></p>
+      <nav><a href="/">Home</a> | <a href="/archive/">Archive</a> | <a href="/about/">About</a></nav>
+    </header>
+    <div class="content">
+      <article class="post h-entry">
+        <h1 class="post-title p-name">Teaching a sourdough starter to keep a diary</h1>
+        <p class="post-meta">Posted on <time class="dt-published" datetime="2024-11-17">17 November 2024</time> by <span class="p-author">Hal Brindlecombe</span></p>
+        <div class="post-content e-content">
+          <p>For about three months I have been logging the temperature and rise of the starter that lives on top of my fridge. It started as a joke, then became a small spreadsheet, and is now a tiny sensor taped to the side of a jam jar.</p>
+          <p>This post walks through the setup, what went wrong, and the one surprising pattern that turned up in the data.</p>
+          <h2>The hardware</h2>
+          <p>The sensor is a cheap time-of-flight distance module pointing down at the surface of the dough. Every ten minutes it records how far the surface is from the lid, alongside a temperature reading from a probe tucked under the jar.</p>
+          <ul>
+            <li>One microcontroller with built-in wireless</li>
+            <li>One distance sensor, mounted in a lid I drilled myself</li>
+            <li>One temperature probe and a lot of tape</li>
+          </ul>
+          <h2>The software</h2>
+          <p>The logging script is deliberately boring. It wakes up, takes both readings, and appends a line to a file on a small home server:</p>
+          <pre><code>reading = sensor.distance_mm()
+temp = probe.celsius()
+log.append(timestamp(), reading, temp)</code></pre>
+          <p>Once a week I copy the file across and plot it. I tried a dashboard for a while, but it mostly encouraged me to stare at a jar.</p>
+          <h3>What went wrong</h3>
+          <p>The first version fogged up. Condensation on the inside of the lid made the distance readings jump around wildly overnight. A small ring of absorbent cloth fixed most of it, and a software filter that ignores sudden spikes fixed the rest.</p>
+          <blockquote><p>Lesson learned: anything that lives above fermenting dough will eventually be covered in fermenting dough.</p></blockquote>
+          <h2>The surprising pattern</h2>
+          <p>The starter rises noticeably faster on days when the heating comes on in the morning, which is not surprising, but it also rises faster on the day after I feed it with a particular bag of rye flour. I have no good explanation yet. My current theory is that the bag simply contains more bran, and the yeast enjoys it.</p>
+          <p>Next month I plan to run a slightly more careful comparison, alternating flours and keeping the kitchen at a steadier temperature. If anything interesting comes out of it, there will be another post, and probably another chart.</p>
+        </div>
+      </article>
+      <section class="comments" id="comments">
+        <h3>3 comments</h3>
+        <div class="comment"><p class="comment-author">Wren</p><p>Brilliant, I need one of these for my kombucha.</p></div>
+        <div class="comment"><p class="comment-author">Jojo</p><p>Have you tried a lid with a vent hole?</p></div>
+      </section>
+    </div>
+    <footer>
+      <p>Powered by an example static site generator. Theme by nobody in particular.</p>
+    </footer>
+  </div>
+</body>
+</html>
