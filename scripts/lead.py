@@ -172,9 +172,9 @@ def status_board(root: Path) -> None:
     for line in lines:
         if not line.startswith(" "):
             current = line.rstrip(":")
-        if current in ("Ready", "In progress", "In review"):
+        if current in ("Ready", "In progress", "Agent review", "Human review"):
             shown.append(line)
-    print("\n".join(shown) if shown else "Board: nothing Ready, In progress or In review")
+    print("\n".join(shown) if shown else "Board: nothing Ready, In progress or in review")
 
 
 def cmd(kind: str) -> None:

@@ -186,13 +186,13 @@ ISSUES: list[Issue] = [
         needed="""- Review and commit `CLAUDE.md`, `.github/ISSUE_TEMPLATE/*.yml`, `.github/pull_request_template.md` and `scripts/bootstrap_github.py`.
 - On the Ubuntu dev machine: install `make`, `uv`, Docker Engine and `gh`, then authenticate (`gh auth login`).
 - Run the bootstrap script (labels, milestones, seed issues). It created this issue, so tick that box.
-- Create the GitHub Project board and set the Status options to: Backlog, Ready, In progress, In review, Done. Add the seed issues to it.
+- Create the GitHub Project board and set the Status options to: Backlog, Ready, In progress, Agent review, Human review, Done. Add the seed issues to it.
 - Once {ref:3} is merged, protect `main`: require a PR, require checks `lint`, `test` and `docker`, and block force pushes.
 - Enable "Automatically delete head branches" in the repo settings.""",
         done=[
             "Docs and templates committed",
             "Labels, milestones and seed issues created",
-            "Project board configured with the five Status columns",
+            "Project board configured with the six Status columns",
             "Branch protection on `main` (after {ref:3})",
         ],
     ),
