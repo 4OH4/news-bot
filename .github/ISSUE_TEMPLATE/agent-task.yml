@@ -72,7 +72,8 @@ body:
       label: Task
       description: |
         Open with **Summary:** two to four plain sentences on what is being built and how it fits the pipeline
-        (which stage, what goes in, what comes out, the main pieces). Then **Details:** the precise spec, including
+        (which stage, what goes in, what comes out, the main pieces) or, for infra/docs issues, the workflow.
+        Then **Details:** the precise spec, including
         function/class names and behaviour where they matter.
       placeholder: |
         **Summary:** A `TrafilaturaExtractor` that takes a fetched page's HTML and returns the article in a clean,
