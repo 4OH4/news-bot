@@ -26,18 +26,27 @@ Read its "Kept back" list. A worktree that is unmerged or has uncommitted change
 
 ## 3. Start workers
 
-For each chosen issue, use the Agent tool with `subagent_type: general-purpose`, `isolation: worktree` and `run_in_background: true`. Use the worker brief below, filled in. Don't wait on one worker before starting the next.
+For each chosen issue, use the Agent tool with `subagent_type: worker`, `isolation: worktree` and `run_in_background: true`. Send the short worker task message below. Don't wait on one worker before starting the next.
+
+Workers run on Sonnet by default (set in `.claude/agents/worker.md`). Pass `model: opus` instead for:
+- `needs-human` issues (ADRs, contracts, curation);
+- issues that call for design judgement the issue doesn't settle.
+
+If the human requests changes on a PR that was reported to them with defects left after two reviews, start a fresh `worker` with `model: opus` for that rework.
+
+Keep the lead and the reviewers on Opus. If reviewers start finding noticeably more defects in Sonnet workers' PRs, use Opus for more issue types and note it in the handoff.
 
 ## 4. Review as workers report back
 
 For each finished PR:
-1. **Independent review.** Start a reviewer with the Agent tool, using `subagent_type: general-purpose`, `isolation: worktree` and `run_in_background: true`, and the reviewer brief below. Give it only the PR number, the issue number and the consuming issues. Don't pass on the worker's report or your own view of the PR, because the point is a fresh context. Only start it once that PR's worker has finished.
+1. **Independent review.** Start a reviewer with the Agent tool, using `subagent_type: reviewer`, `isolation: worktree` and `run_in_background: true`, and the short reviewer task message below. Give it only the PR number, the issue number and the consuming issues. Don't pass on the worker's report or your own view of the PR, because the point is a fresh context. Only start it once that PR's worker has finished.
 2. **When the reviewer reports:**
-   - For each defect it lists, use SendMessage to send the worker back with the specific change. If the rework changes behaviour, start a fresh reviewer afterwards. At most two reviews per PR: if the second still finds defects, report the PR to the human instead of starting a third, and `python3 scripts/board.py set <N> "Human review"`.
-   - In "For human review", mark items fixed by rework as resolved, and leave the rest for the human. Don't otherwise rewrite the reviewer's items; if you disagree with one, say so in your Lead review comment.
-3. **Re-run the checks.** In the worker's worktree, run `uv sync` in `backend/`, then `make lint` and `make test`. Run `make eval` too if `extract/` was touched. Confirm CI is green.
+   - For each defect it lists, send the worker back with the specific change: by SendMessage if it is still running, otherwise by starting a fresh `worker` with the rework task message below, which works on the existing branch. Before starting a fresh worker, free the branch: if the finished worker's worktree is clean (`git -C <path> status --porcelain` prints nothing) and its HEAD equals `origin/<branch>`, run `git worktree remove <path>`; otherwise don't start the worker, and report the worktree to the human instead. If the rework changes behaviour, start a fresh reviewer afterwards. At most two reviews per PR: if the second still finds defects, report the PR to the human instead of starting a third, and `python3 scripts/board.py set <N> "Human review"`.
+   - The worker marks each item it fixed "**Resolved** in <sha>" in "For human review"; check those markers when you re-run the checks, and leave the rest for the human. Don't otherwise rewrite the reviewer's items; if you disagree with one, say so in your Lead review comment.
+3. **Re-run the checks.** In a detached checkout, never one holding the branch (`git fetch origin`, then `git checkout --detach origin/<branch>`, in the worker's worktree or your own), run `uv sync` in `backend/`, then `make lint` and `make test`. Run `make eval` too if `extract/` was touched. Confirm CI is green.
 4. **Shared files.** If the PR shares `pyproject.toml` or `uv.lock` with another open PR, either stack it on that PR's branch (resolve `uv.lock` with `uv lock`) or tell the human the merge order.
 5. **Comment.** Post a short "Lead review" comment on the PR: verdict, what you re-ran, the merge order. Then `python3 scripts/board.py set <N> "Human review"`. Workers set "Agent review" when they open the PR; only you set "Human review".
+6. **Sending work back.** If the human requests changes on a Human review PR, or a defect turns up late, set the card back with `python3 scripts/board.py set <N> "Agent review"` and send the work back as in step 2.
 
 ## 5. Report
 
@@ -49,60 +58,29 @@ Keep it short:
 
 If the human asked for autonomy between merges, use `/loop` with a fallback of 20 minutes or more. Re-run `python3 scripts/board.py promote` each time.
 
-## Worker brief (template)
+## Task messages
+
+The briefs live in the agent definitions (`.claude/agents/worker.md` and `reviewer.md`), so each spawn message carries only the specifics. Don't paste the briefs, and don't tell agents to read `CLAUDE.md`, which is already in their context.
+
+Worker:
 
 ```
-You are a worker agent for the repo 4OH4/news-bot (you are in your own git worktree). Task: implement GitHub issue #<N> ("<title>") end to end and open a merge-ready PR. <For needs-human issues: "This is a needs-human issue; prepare it as a complete, non-draft PR that the human approves by merging. At the TOP of the PR body add 'Decisions you approve by merging', one line per choice the issue didn't dictate.">
-
-Read first: CLAUDE.md (all of it, especially "Agent automation" and "The human's role is to read and merge"), the relevant PROJECT_PLAN.md sections and ADRs in docs/adr/, and the issue: `gh issue view <N> --repo 4OH4/news-bot --json title,body,labels,state`. Also read the bodies of issues that consume your output: <list>.
-
-Environment:
-- The git remote is HTTPS with gh as the credential helper. Wrap network git/gh calls in `timeout 120`.
-- Install dependencies with `cd backend && uv sync`. NEVER run `make setup` in a worktree (it rewrites the shared pre-commit hook).
-- Add dependencies with `uv add` (or `uv add --dev`). Fix uv.lock conflicts with `uv lock`, never by hand.
+Issue #<N> ("<title>"). Consuming issues: <list, or "none">.
+<For needs-human issues: "This is a needs-human issue.">
 <Anything specific: other in-flight PRs touching shared files, notes left on the issue by the lead.>
-
-Steps:
-1. `python3 scripts/board.py set <N> "In progress"`.
-2. `git fetch origin`, then create branch `issue-<N>-<slug>` from origin/main.
-3. Implement every task item and acceptance criterion, staying within the files in scope. If you must go outside them, or the issue is ambiguous, stop and report back instead of guessing.
-4. Verify: `make lint`, `make test`, plus anything in "How to verify". Use real output, and never weaken checks.
-5. Conventional commits. End each message with a blank line, then `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
-6. Rebase on origin/main, push, and open a non-draft PR with `gh pr create --repo 4OH4/news-bot --base main`, following .github/pull_request_template.md:
-   - `Closes #<N>`;
-   - `## For human review` containing only "Pending independent review" (a reviewer agent fills it in);
-   - acceptance criteria ticked, with evidence;
-   - verification output;
-   - design notes;
-   - follow-ups.
-   End the body with a blank line, then `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
-7. `python3 scripts/board.py set <N> "Agent review"`.
-8. Never merge or push to main, and don't touch other issues or cards.
-
-Report back: the PR URL, the result of each verification command, and every judgement call.
 ```
 
-## Reviewer brief (template)
+Worker, rework by a fresh worker (the original has finished):
 
 ```
-You are an independent reviewer for the repo 4OH4/news-bot (you are in your own git worktree). Review PR #<P>, which closes issue #<N>, adversarially before a human sees it. Assume the PR has problems until you've checked. You weren't involved in writing it; form your own view from the code, the issue and the project docs.
+Rework PR #<P> (issue #<N>, branch `<branch>`). Continue on the existing branch; don't create a new one or move the card.
+Changes: <each defect or requested change, with the suggested fix>.
+<Rebase target, if any.>
+```
 
-You are READ-ONLY. Never commit, push or modify the code, tests or docs. The only thing you change is the "For human review" section of the PR body. Report everything else as findings.
+Reviewer:
 
-Read first: CLAUDE.md (all of it, especially "Agent automation" > "Reviewers"), PROJECT_PLAN.md, the ADRs in docs/adr/, the issue (`gh issue view <N> --repo 4OH4/news-bot --json title,body,labels,state,comments`), the PR (`gh pr view <P> --repo 4OH4/news-bot --json title,body,headRefName,comments`, `gh pr diff <P> --repo 4OH4/news-bot`), and the issues that consume this work: <list>.
-
-Set up: `git fetch origin`, then `git checkout --detach origin/<branch>`. Run `cd backend && uv sync`. NEVER run `make setup`. Wrap network git/gh calls in `timeout 120`. You may write scratch files or run experiments to probe behaviour, but discard them, and never `git add` anything.
-
-Review:
-1. PR text vs. reality. Check every claim in the description, every ticked acceptance criterion and every piece of verification evidence against the diff and against your own `make lint` / `make test` run (and `make eval` if extract/ changed). Flag anything overstated, missing or stale.
-2. Issue goals. Does the change achieve what the issue's Context says it is for, not just the letter of the task list? Look for unhandled edge cases, failure modes, silent data loss, and tests that pass without testing the behaviour. Where you suspect a bug, demonstrate it with a concrete input if you can.
-3. Wider implications. Check fit with downstream issues, PROJECT_PLAN.md phases and requirements, ADRs, and the architecture rules and conventions in CLAUDE.md (contracts, ports, config in config/, polite fetching, logging, synthetic fixtures). Look for assumptions that will break on real data or later phases, things that will go stale, and scope creep or premature generality.
-
-Write up:
-- In the PR body, add or replace a `## For human review` section at the top. For needs-human PRs, put it directly below "Decisions you approve by merging". List every finding: judgement calls the human is implicitly approving, risks, inaccuracies in the PR text, defects and open questions. Each item is one or two lines with your recommendation. Start defect items with **Defect:**. Write "None" if there's nothing. Don't repeat what the PR already explains well, and change nothing else in the body. Edit it with `gh pr edit <P> --repo 4OH4/news-bot --body-file <file>`.
-- Post one PR comment headed "Independent review", with a summary of your verdict and the evidence behind each defect (e.g. the failing input).
-
-Don't merge, move board cards, or touch other PRs or issues.
-
-Report back: your verdict, the defects (with evidence and a suggested fix for each), the other "For human review" items, and your lint/test results.
+```
+PR #<P>, closing issue #<N>. Consuming issues: <list, or "none">.
+<For a second review: "Second review.">
 ```

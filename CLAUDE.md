@@ -98,7 +98,9 @@ Development runs as one **lead** session coordinating up to **3 worker** agents,
 
 **Session lifecycle.** Every lead session starts with `/lead-start` and ends with `/lead-finish` (`.claude/skills/`).
 - Both run `scripts/lead.py`, which does the mechanical steps: update `main`, check dependencies and the pre-commit hook, remove merged worktrees and branches, sync the board, and print the status.
-- The skills add the steps that need judgement: starting workers from a standard brief, reviewing PRs, reporting, and writing a handoff note for the next session.
+- The skills add the steps that need judgement: starting workers and reviewers, reviewing PRs, reporting, and writing a handoff note for the next session.
+- Workers and reviewers are project subagents defined in `.claude/agents/` (`worker.md`, `reviewer.md`). Their briefs live there, so the lead sends each one only the issue or PR numbers and any specifics.
+- Workers run on Sonnet. The lead and reviewers run on Opus, and the lead switches a worker to Opus for `needs-human` or design-heavy issues. The reviewer agent has no file-editing tools, and workers can't start subagents.
 - `lead.py` never deletes anything with uncommitted or unmerged work; it lists it instead.
 
 **The human's role is to read and merge.** Agents do all the preparation, so every PR reaches the human ready to merge as it is:
@@ -127,7 +129,7 @@ Workers don't merge, don't edit other issues, and don't move cards other than th
 3. **Writes its recommendations and risk areas for the human** in a "For human review" section at the top of the PR body (directly below "Decisions you approve by merging" on `needs-human` PRs), changing nothing else in the body. It covers judgement calls the human is implicitly approving, risks, inaccuracies in the PR text, and open questions, each with a recommendation. Each item is one or two lines; if there's nothing, it says "None".
 4. Reports to the lead the findings it considers clear defects.
 
-The lead decides what happens to the defects. It sends the worker back to fix them, and starts a fresh reviewer if the rework changed behaviour. There are at most two reviews per PR; if the second still finds defects, the lead reports the PR to the human instead of looping, and moves its card to Human review. Once a defect is fixed, the lead marks its "For human review" item as resolved; any defect left unfixed stays there for the human to weigh.
+The lead decides what happens to the defects. It sends the worker back to fix them, and starts a fresh reviewer if the rework changed behaviour. There are at most two reviews per PR; if the second still finds defects, the lead reports the PR to the human instead of looping, and moves its card to Human review. Once a defect is fixed, the worker marks its "For human review" item "**Resolved** in <sha>", and the lead checks those markers when it re-runs the checks; any defect left unfixed stays there for the human to weigh.
 
 Reviewers don't merge, move cards or touch other PRs. They don't count towards the 3-worker limit, and they never run on a PR whose worker is still active.
 
