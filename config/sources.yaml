@@ -24,7 +24,7 @@
 #       hl: en-GB             # language (default en-GB)
 #       gl: GB                # edition country (default GB)
 #       ceid: GB:en           # edition id (default <gl>:<language part of hl>)
-#     Item links are news.google.com redirect URLs, not publisher URLs (see #11).
+#     Item links are news.google.com redirect URLs, not publisher URLs (see #50).
 #
 #   hn: the Hacker News front page, via the Algolia HN Search API
 #       url: https://hn.algolia.com/api/v1/search?...   # optional; overrides the front-page query
