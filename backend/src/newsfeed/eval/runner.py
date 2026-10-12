@@ -100,7 +100,7 @@ def default_extractors(overrides: ExtractionConfig | None = None) -> list[Extrac
 
 
 def git_short_sha(cwd: Path) -> str:
-    """The short commit hash of the checkout at ``cwd``, or ``nogit``."""
+    """The short commit hash of the checkout at ``cwd`` (``-dirty`` if modified), or ``nogit``."""
     try:
         done = subprocess.run(
             ["git", "rev-parse", "--short", "HEAD"],
@@ -112,7 +112,20 @@ def git_short_sha(cwd: Path) -> str:
         )
     except (OSError, subprocess.SubprocessError):
         return "nogit"
-    return done.stdout.strip() or "nogit"
+    sha = done.stdout.strip() or "nogit"
+    try:
+        dirty = subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=no"],
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=10,
+        ).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return sha
+    # Mark uncommitted changes so a before/after pair isn't mislabelled.
+    return f"{sha}-dirty" if dirty and sha != "nogit" else sha
 
 
 def _decode(html: bytes, content_type: str | None) -> str:
@@ -128,10 +141,10 @@ def _decode(html: bytes, content_type: str | None) -> str:
     return html.decode("utf-8", errors="replace")
 
 
-def _extract(extractor: Extractor, html: str, entry: EvalEntry) -> ExtractionResult:
+def _extract(extractor: Extractor, html: str, entry: EvalEntry, url: str) -> ExtractionResult:
     # Extractors must not raise, but one that does mustn't stop the harness.
     try:
-        return extractor.extract(html, entry.url)
+        return extractor.extract(html, url)
     except Exception as exc:
         log.warning(
             "extractor raised",
@@ -184,9 +197,12 @@ def run_evaluation(
             continue
 
         html = _decode(body, meta.content_type)
+        # The post-redirect URL is what a real run would hand the extractor, so
+        # per-domain overrides and relative links resolve against that host.
+        page_url = meta.final_url or entry.url
         for extractor in extractors:
             started = timer()
-            result = _extract(extractor, html, entry)
+            result = _extract(extractor, html, entry, page_url)
             seconds = timer() - started
             evaluation.outcomes.append(
                 Outcome(

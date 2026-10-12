@@ -9,6 +9,7 @@ import pytest
 from newsfeed.eval.scoring import (
     BOILERPLATE_MAX_HITS,
     Failure,
+    _boilerplate_hits,
     load_boilerplate,
     normalise,
     score_result,
@@ -86,6 +87,13 @@ def test_boilerplate_over_threshold_fails() -> None:
 
     assert score_result(ENTRY, result(text=ok_text), phrases).clean
     assert score_result(ENTRY, result(text=bad_text), phrases).failures == (Failure.BOILERPLATE,)
+
+
+def test_overlapping_boilerplate_phrases_are_counted_once() -> None:
+    phrases = ("newsletter", "sign up for our newsletter")
+    text = "Body text. Sign up for our newsletter. Our newsletters are weekly."
+
+    assert _boilerplate_hits(normalise(text), phrases) == 1
 
 
 @pytest.mark.parametrize(
