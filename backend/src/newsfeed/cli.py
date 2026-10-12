@@ -7,11 +7,11 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, NoReturn
 
 import typer
 
-from newsfeed.config import ConfigError
+from newsfeed.config import ConfigError, load_sources
 from newsfeed.eval.report import (
     build_report,
     compare_reports,
@@ -37,9 +37,18 @@ from newsfeed.eval.snapshot import (
 )
 from newsfeed.eval.urls import find_urls_file, load_eval_urls
 from newsfeed.extract.overrides import ExtractionConfig, load_extraction_config
-from newsfeed.fetching import DEFAULT_USER_AGENT, HttpFetcher
 from newsfeed.logging import get_logger
+from newsfeed.models import RunStats, Source
+from newsfeed.pipeline import (
+    NotAnArticleError,
+    PageUnavailableError,
+    extract_saved_url,
+    inspect_url,
+    run_pipeline,
+)
 from newsfeed.ports import Fetcher
+from newsfeed.settings import Settings, load_settings
+from newsfeed.wiring import build_extractor, open_fetcher, open_services
 
 app = typer.Typer(help="Personal news feed pipeline.", no_args_is_help=True)
 log = get_logger(__name__)
@@ -50,10 +59,153 @@ def main() -> None:
     """Personal news feed pipeline."""
 
 
+SourceOption = Annotated[
+    list[str] | None,
+    typer.Option("--source", metavar="ID", help="Only this source id (repeatable)."),
+]
+LimitOption = Annotated[
+    int | None,
+    typer.Option(
+        "--limit",
+        min=1,
+        help="Ingest: at most N new articles per source. Extract: at most N articles.",
+    ),
+]
+SinceOption = Annotated[
+    datetime | None,
+    typer.Option(
+        "--since",
+        formats=["%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S%z"],
+        help="Ignore articles older than this (UTC if no offset is given). "
+        "Ingest: by publication date; extract: by when they were ingested.",
+    ),
+]
+
+
+def _fail(message: str) -> NoReturn:
+    typer.echo(f"error: {message}", err=True)
+    raise typer.Exit(1)
+
+
+def _aware(value: datetime | None) -> datetime | None:
+    if value is not None and value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value
+
+
+def _select_sources(settings: Settings, ids: list[str] | None) -> list[Source]:
+    """Load the enabled sources, narrowed to ``ids`` if given."""
+    try:
+        sources = load_sources(settings.sources_path)
+    except ConfigError as exc:
+        _fail(str(exc))
+    known = {source.id for source in sources}
+    unknown = sorted(set(ids or []) - known)
+    if unknown:
+        raise typer.BadParameter(
+            f"unknown source(s): {', '.join(unknown)}; known: {', '.join(sorted(known))}",
+            param_hint="--source",
+        )
+    return [s for s in sources if s.enabled and (not ids or s.id in ids)]
+
+
+def _report(stats: RunStats) -> None:
+    for stage, counts in stats.stage_counts.items():
+        typer.echo(f"{stage.value}: " + ", ".join(f"{k}={v}" for k, v in sorted(counts.items())))
+    typer.echo(f"errors: {stats.error_count}")
+    typer.echo(f"run id: {stats.run_id}")
+
+
+def _run_stages(
+    *,
+    ingest: bool,
+    extract: bool,
+    source: list[str] | None,
+    limit: int | None,
+    since: datetime | None,
+) -> None:
+    settings = load_settings()
+    try:
+        sources = _select_sources(settings, source)
+        with open_services(settings) as services:
+            stats = run_pipeline(
+                services,
+                sources,
+                ingest=ingest,
+                extract=extract,
+                since=_aware(since),
+                limit=limit,
+            )
+    except ConfigError as exc:
+        _fail(str(exc))
+    _report(stats)
+
+
 @app.command()
-def run() -> None:
-    """Run the full pipeline: ingest, extract, rank, publish."""
-    log.info("pipeline not implemented yet", extra={"stage": "run"})
+def run(source: SourceOption = None, limit: LimitOption = None, since: SinceOption = None) -> None:
+    """Run the pipeline: ingest new articles, then extract them."""
+    _run_stages(ingest=True, extract=True, source=source, limit=limit, since=since)
+
+
+@app.command()
+def ingest(
+    source: SourceOption = None, limit: LimitOption = None, since: SinceOption = None
+) -> None:
+    """Collect, canonicalise and dedupe new articles from the enabled sources."""
+    _run_stages(ingest=True, extract=False, source=source, limit=limit, since=since)
+
+
+@app.command()
+def extract(
+    source: SourceOption = None,
+    limit: LimitOption = None,
+    since: SinceOption = None,
+    url: Annotated[
+        str | None,
+        typer.Option("--url", help="Debug: fetch and extract this one page, then print it."),
+    ] = None,
+    save: Annotated[
+        bool, typer.Option("--save", help="With --url: store the result like a feed article.")
+    ] = False,
+) -> None:
+    """Fetch and extract pending articles (or, with --url, one page)."""
+    if url is None:
+        if save:
+            raise typer.BadParameter("--save only applies with --url", param_hint="--save")
+        _run_stages(ingest=False, extract=True, source=source, limit=limit, since=since)
+        return
+    if source or limit is not None or since is not None:
+        raise typer.BadParameter("--url can't be combined with --source, --limit or --since")
+    _extract_url(url, save=save)
+
+
+def _extract_url(url: str, *, save: bool) -> None:
+    settings = load_settings()
+    try:
+        if save:
+            with open_services(settings) as services:
+                article = extract_saved_url(services, url)
+            typer.echo(f"saved article {article.id} ({article.extraction.status.value})")
+            return
+        with open_fetcher(settings) as fetcher:
+            result = inspect_url(fetcher, build_extractor(settings), url)
+    except ConfigError as exc:
+        _fail(str(exc))
+    except (PageUnavailableError, NotAnArticleError) as exc:
+        _fail(f"{url}: {exc}")
+    typer.echo(f"status: {result.status.value} ({result.method or 'no extractor'})")
+    for label, value in (
+        ("title", result.title),
+        ("author", result.author),
+        ("published", result.published_at),
+        ("image", result.lead_image),
+        ("words", result.word_count),
+        ("error", result.error),
+    ):
+        if value:
+            typer.echo(f"{label}: {value}")
+    typer.echo("")
+    typer.echo((result.text or "")[:500])
 
 
 # --- eval ----------------------------------------------------------------------
@@ -65,7 +217,7 @@ app.add_typer(eval_app, name="eval")
 @contextmanager
 def _open_fetcher() -> Iterator[Fetcher]:
     """Yield the fetcher for eval commands; tests replace this with a fake."""
-    with HttpFetcher(DEFAULT_USER_AGENT) as fetcher:
+    with open_fetcher(load_settings()) as fetcher:
         yield fetcher
 
 

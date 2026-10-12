@@ -1,0 +1,623 @@
+"""The pipeline stages that make up ``newsfeed run``: ingest, then extract.
+
+Stages talk to each other only through the ``Repository`` and ``BlobStore``
+(CLAUDE.md, rule 3): ingest leaves ``pending`` articles behind and extract picks
+them up, so either can be run alone. Errors are caught at the stage boundary
+(per source, per article), logged as structured warnings, counted in
+``RunStats.error_count`` and never fail the run.
+"""
+
+from __future__ import annotations
+
+import codecs
+import re
+import threading
+from collections import Counter, defaultdict
+from collections.abc import Callable, Sequence
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from urllib.parse import urlsplit
+
+from newsfeed.extract.chain import ExtractorChain
+from newsfeed.extract.overrides import Mode, url_domain
+from newsfeed.ingest.canonical import canonical_from_html, normalise_url, with_canonical_url
+from newsfeed.ingest.dedupe import dedupe
+from newsfeed.logging import get_logger
+from newsfeed.models import (
+    Article,
+    ArticleExtraction,
+    ExtractionResult,
+    ExtractionStatus,
+    PipelineStage,
+    RunStats,
+    Source,
+    SourceState,
+    article_id,
+)
+from newsfeed.ports import Extractor, Fetcher
+from newsfeed.wiring import Services
+
+__all__ = [
+    "AD_HOC_SOURCE_ID",
+    "FetchedPage",
+    "NotAnArticleError",
+    "PageUnavailableError",
+    "decode_html",
+    "extract_pending",
+    "extract_saved_url",
+    "fetch_page",
+    "ingest_sources",
+    "inspect_url",
+    "run_pipeline",
+]
+
+log = get_logger(__name__)
+
+AD_HOC_SOURCE_ID = "adhoc"
+"""Source id of articles saved with ``newsfeed extract --url ... --save``."""
+
+_HTML_TYPES = frozenset({"text/html", "application/xhtml+xml"})
+_META_CHARSET = re.compile(rb"""<meta[^>]+charset\s*=\s*["']?\s*([A-Za-z0-9_.:-]+)""", re.I)
+_CONTENT_TYPE_CHARSET = re.compile(r"charset\s*=\s*[\"']?([A-Za-z0-9_.:-]+)", re.I)
+_SNIFF_BYTES = 4096
+
+
+# --- Errors and small helpers --------------------------------------------------
+
+
+class PageUnavailableError(Exception):
+    """A page couldn't be fetched (network error, robots.txt, or an HTTP error status)."""
+
+
+class NotAnArticleError(Exception):
+    """A fetched URL isn't an HTML page worth extracting (e.g. a PDF)."""
+
+
+@dataclass(frozen=True)
+class FetchedPage:
+    """A fetched HTML page, decoded."""
+
+    html: str
+    final_url: str
+
+
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
+def _warn(
+    message: str,
+    *,
+    stage: PipelineStage,
+    error_type: str,
+    error: str,
+    source_id: str | None = None,
+    url: str | None = None,
+) -> None:
+    """Log a caught error with the fields the issue requires."""
+    log.warning(
+        message,
+        extra={
+            "stage": stage.value,
+            "source_id": source_id,
+            "url": url,
+            "error_type": error_type,
+            "error": error,
+        },
+    )
+
+
+def _codec(name: str) -> str | None:
+    try:
+        return codecs.lookup(name.strip()).name
+    except LookupError:
+        return None
+
+
+def decode_html(content: bytes, headers: dict[str, str] | None = None) -> str:
+    """Decode a fetched page: Content-Type charset, then ``<meta charset>``, then a fallback.
+
+    The fallback is UTF-8, then Windows-1252 (the browsers' default for
+    undeclared legacy pages), with undecodable bytes replaced so a bad byte
+    never loses the page. A BOM wins over everything.
+    """
+    if content.startswith(codecs.BOM_UTF8):
+        return content[len(codecs.BOM_UTF8) :].decode("utf-8", errors="replace")
+    candidates: list[str] = []
+    header_match = _CONTENT_TYPE_CHARSET.search((headers or {}).get("content-type", ""))
+    if header_match:
+        candidates.append(header_match.group(1))
+    meta_match = _META_CHARSET.search(content[:_SNIFF_BYTES])
+    if meta_match:
+        candidates.append(meta_match.group(1).decode("ascii", errors="ignore"))
+    candidates.append("utf-8")
+    for candidate in candidates:
+        codec = _codec(candidate)
+        if codec is None:
+            continue
+        try:
+            return content.decode(codec)
+        except UnicodeDecodeError:
+            continue
+    return content.decode("cp1252", errors="replace")
+
+
+def fetch_page(fetcher: Fetcher, url: str) -> FetchedPage:
+    """Fetch ``url`` through the polite fetcher and decode it.
+
+    Raises:
+        PageUnavailableError: on a network error, robots.txt refusal or HTTP error status.
+        NotAnArticleError: if the response is not HTML.
+    """
+    result = fetcher.fetch(url)
+    if result.error is not None or result.status_code is None:
+        raise PageUnavailableError(result.error or "no response")
+    if result.status_code >= 400:
+        raise PageUnavailableError(f"HTTP {result.status_code}")
+    content_type = result.headers.get("content-type", "").split(";")[0].strip().lower()
+    if content_type and content_type not in _HTML_TYPES:
+        raise NotAnArticleError(f"not an HTML page (content-type {content_type})")
+    return FetchedPage(html=decode_html(result.content, result.headers), final_url=result.final_url)
+
+
+def _skip_reason(url: str) -> str | None:
+    """Why ``url`` is never worth fetching for article content, or None.
+
+    Hacker News item pages are discussion threads: text posts (Ask HN) have no
+    article behind them, and the feed summary already carries the link.
+    """
+    parts = urlsplit(url)
+    if (parts.hostname or "").lower() == "news.ycombinator.com" and parts.path == "/item":
+        return "Hacker News discussion page; keeping the feed summary"
+    return None
+
+
+# --- Run statistics --------------------------------------------------------------
+
+
+class RunTally:
+    """Thread-safe counters that become ``RunStats``."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._counts: defaultdict[PipelineStage, Counter[str]] = defaultdict(Counter)
+        self._domains: defaultdict[str, Counter[ExtractionStatus]] = defaultdict(Counter)
+        self._errors = 0
+
+    def count(self, stage: PipelineStage, name: str, n: int = 1) -> None:
+        with self._lock:
+            self._counts[stage][name] += n
+
+    def domain(self, domain: str, status: ExtractionStatus) -> None:
+        with self._lock:
+            self._domains[domain][status] += 1
+
+    def error(self) -> None:
+        with self._lock:
+            self._errors += 1
+
+    def stats(self, run_id: str, started_at: datetime, finished_at: datetime | None) -> RunStats:
+        with self._lock:
+            return RunStats(
+                run_id=run_id,
+                started_at=started_at,
+                finished_at=finished_at,
+                stage_counts={stage: dict(c) for stage, c in self._counts.items()},
+                extraction_by_domain={d: dict(c) for d, c in self._domains.items()},
+                error_count=self._errors,
+            )
+
+
+# --- Ingest ----------------------------------------------------------------------
+
+
+def _known_ids(services: Services) -> set[str]:
+    """Ids already stored, plus the ids their first-seen URLs would normalise to.
+
+    Extract may refine an article's canonical URL, which changes its id. The
+    feed still lists the original URL, so without the second set the same
+    entry would be ingested, fetched and merged again on every run.
+    """
+    known: set[str] = set()
+    for article in services.repository.list_articles():
+        known.add(article.id)
+        try:
+            known.add(article_id(normalise_url(article.url, rules=services.url_rules)))
+        except ValueError:
+            continue
+    return known
+
+
+def _canonicalise(
+    services: Services, articles: Sequence[Article], tally: RunTally
+) -> list[Article]:
+    """Give each article its normalised canonical URL; skip entries with unusable URLs."""
+    result: list[Article] = []
+    for article in articles:
+        try:
+            result.append(
+                with_canonical_url(article, normalise_url(article.url, rules=services.url_rules))
+            )
+        except ValueError as exc:
+            tally.error()
+            _warn(
+                "skipping entry with an unusable URL",
+                stage=PipelineStage.INGEST,
+                source_id=article.source_id,
+                url=article.url,
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
+    return result
+
+
+def _ingest_source(
+    services: Services,
+    source: Source,
+    known: set[str],
+    tally: RunTally,
+    *,
+    since: datetime | None,
+    limit: int | None,
+) -> None:
+    stage = PipelineStage.INGEST
+    ingester = services.ingesters.get(source.type)
+    if ingester is None:
+        log.warning(
+            "no ingester for this source type; skipping",
+            extra={"stage": stage.value, "source_id": source.id, "source_type": source.type.value},
+        )
+        tally.count(stage, "sources_skipped")
+        return
+    state = services.repository.get_source_state(source.id) or SourceState(source_id=source.id)
+    try:
+        articles, new_state = ingester.ingest(source, services.fetcher, state)
+        entries = _canonicalise(services, articles, tally)
+        if since is not None:
+            entries = [a for a in entries if a.published_at is None or a.published_at >= since]
+        fresh = dedupe(entries, known)
+        if limit is not None:
+            fresh = fresh[:limit]
+        for article in fresh:
+            services.repository.upsert_article(article)
+        # The state goes last: if storing the articles failed, the next run must
+        # not get a 304 for entries we never kept.
+        services.repository.save_source_state(new_state)
+    except Exception as exc:
+        tally.error()
+        tally.count(stage, "sources_failed")
+        _warn(
+            "source failed; continuing with the next",
+            stage=stage,
+            source_id=source.id,
+            url=source.url,
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
+        return
+    known.update(a.id for a in fresh)
+    tally.count(stage, "sources")
+    tally.count(stage, "entries", len(articles))
+    tally.count(stage, "duplicates", len(entries) - len(fresh))
+    tally.count(stage, "new", len(fresh))
+    log.info(
+        "source ingested",
+        extra={"stage": stage.value, "source_id": source.id, "new": len(fresh)},
+    )
+
+
+def ingest_sources(
+    services: Services,
+    sources: Sequence[Source],
+    tally: RunTally,
+    *,
+    since: datetime | None = None,
+    limit: int | None = None,
+) -> None:
+    """Ingest each source: canonicalise, dedupe against the repository, store pending articles.
+
+    ``since`` drops entries published before it (entries without a date are
+    kept); ``limit`` keeps at most that many new articles per source.
+    """
+    known = _known_ids(services)
+    for source in sources:
+        _ingest_source(services, source, known, tally, since=since, limit=limit)
+
+
+# --- Extract ---------------------------------------------------------------------
+
+
+def _with_changes(article: Article, **changes: object) -> Article:
+    """Rebuild ``article`` with ``changes``, validated (``model_copy`` would skip validation)."""
+    return Article.model_validate({**article.model_dump(), **changes})
+
+
+def _merge(article: Article, result: ExtractionResult, content_ref: str | None) -> Article:
+    """Fold an extraction result into the article.
+
+    Feed-provided fields win: the feed's ``published_at`` usually has a real
+    time and offset, while the extracted date is often date-only.
+    """
+    title = article.title
+    if (not title or title == article.url) and result.title:
+        title = result.title
+    return _with_changes(
+        article,
+        title=title,
+        author=article.author or result.author,
+        published_at=article.published_at or result.published_at,
+        lead_image=article.lead_image or result.lead_image,
+        content_ref=content_ref or article.content_ref,
+        extraction=ArticleExtraction(
+            status=result.status,
+            method=result.method,
+            error=result.error,
+            word_count=result.word_count,
+        ),
+    )
+
+
+@dataclass(frozen=True)
+class _ExtractRun:
+    services: Services
+    tally: RunTally
+
+
+def _finish_skipped(run: _ExtractRun, article: Article, reason: str, domain: str) -> None:
+    run.services.repository.upsert_article(
+        _with_changes(
+            article,
+            extraction=ArticleExtraction(status=ExtractionStatus.SKIPPED, error=reason),
+        )
+    )
+    run.tally.domain(domain, ExtractionStatus.SKIPPED)
+    run.tally.count(PipelineStage.EXTRACT, ExtractionStatus.SKIPPED.value)
+    log.info(
+        "extraction skipped",
+        extra={"stage": "extract", "source_id": article.source_id, "url": article.url},
+    )
+
+
+def _finish_failed(run: _ExtractRun, article: Article, error_type: str, error: str) -> None:
+    """Record a failure on the article and in the run, and log it."""
+    domain = url_domain(article.url) or "unknown"
+    _warn(
+        "extraction failed",
+        stage=PipelineStage.EXTRACT,
+        source_id=article.source_id,
+        url=article.url,
+        error_type=error_type,
+        error=error,
+    )
+    run.tally.error()
+    run.tally.domain(domain, ExtractionStatus.FAILED)
+    run.tally.count(PipelineStage.EXTRACT, ExtractionStatus.FAILED.value)
+    try:
+        run.services.repository.upsert_article(
+            _with_changes(
+                article,
+                extraction=ArticleExtraction(
+                    status=ExtractionStatus.FAILED, error=f"{error_type}: {error}"[:500]
+                ),
+            )
+        )
+    except Exception as exc:  # the repository itself is failing; nothing more to do
+        _warn(
+            "couldn't record the failure",
+            stage=PipelineStage.EXTRACT,
+            source_id=article.source_id,
+            url=article.url,
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
+
+
+def _summary_only(extractor: Extractor, url: str) -> bool:
+    if not isinstance(extractor, ExtractorChain):
+        return False
+    override = extractor.override_for(url)
+    return override is not None and override.mode is Mode.SUMMARY_ONLY
+
+
+def _extract_article(run: _ExtractRun, article: Article) -> None:
+    services = run.services
+    domain = url_domain(article.url) or "unknown"
+    reason = _skip_reason(article.url)
+    if reason is None and _summary_only(services.extractor, article.url):
+        reason = f"extraction skipped: {domain} is configured summary_only"
+    if reason is not None:
+        _finish_skipped(run, article, reason, domain)
+        return
+
+    try:
+        page = fetch_page(services.fetcher, article.url)
+    except NotAnArticleError as exc:
+        _finish_skipped(run, article, str(exc), domain)
+        return
+    except PageUnavailableError as exc:
+        _finish_failed(run, article, type(exc).__name__, str(exc))
+        return
+
+    # After redirects the domain may differ; per-domain behaviour (overrides,
+    # stats) follows the page we actually got.
+    domain = url_domain(page.final_url) or domain
+    refined = _refine_canonical(run, article, page)
+    if refined is None:
+        return
+
+    try:
+        _extract_content(run, refined, page, domain)
+    except Exception as exc:
+        # Report against the refined article: the original id is already retired.
+        _finish_failed(run, refined, type(exc).__name__, str(exc))
+
+
+def _extract_content(run: _ExtractRun, article: Article, page: FetchedPage, domain: str) -> None:
+    services = run.services
+    result = services.extractor.extract(page.html, page.final_url)
+    content_ref = None
+    if result.content_html:
+        # Blob first, article second: a crash in between leaves an orphan blob,
+        # not an article pointing at nothing (ports.py).
+        content_ref = services.blobs.put(
+            f"articles/{article.id}.html",
+            result.content_html.encode("utf-8"),
+            "text/html; charset=utf-8",
+        )
+    services.repository.upsert_article(_merge(article, result, content_ref))
+    run.tally.domain(domain, result.status)
+    run.tally.count(PipelineStage.EXTRACT, result.status.value)
+    if result.status is ExtractionStatus.FAILED:
+        _warn(
+            "extraction failed",
+            stage=PipelineStage.EXTRACT,
+            source_id=article.source_id,
+            url=article.url,
+            error_type="ExtractionFailed",
+            error=result.error or "unknown error",
+        )
+        run.tally.error()
+
+
+def _refine_canonical(run: _ExtractRun, article: Article, page: FetchedPage) -> Article | None:
+    """Re-key the article if the page declares a different canonical URL.
+
+    Returns the article to carry on with (a new object when its id changed), or
+    None if the page's canonical already exists as another article, in which
+    case the old one is deleted and there is nothing left to extract.
+    """
+    services = run.services
+    refined = canonical_from_html(page.html, page.final_url, rules=services.url_rules)
+    if refined is None or refined == article.canonical_url:
+        return article
+    new = with_canonical_url(article, refined)
+    log.info(
+        "canonical URL refined",
+        extra={
+            "stage": "extract",
+            "source_id": article.source_id,
+            "url": article.url,
+            "canonical": refined,
+            "old_id": article.id,
+            "new_id": new.id,
+        },
+    )
+    if services.repository.get_article(new.id) is not None:
+        services.repository.delete_article(article.id)
+        run.tally.count(PipelineStage.EXTRACT, "merged")
+        return None
+    # Store the new id before retiring the old one, so a crash in between
+    # leaves a duplicate that the next run merges, never a lost article.
+    services.repository.upsert_article(new)
+    services.repository.delete_article(article.id)
+    run.tally.count(PipelineStage.EXTRACT, "refined")
+    return new
+
+
+def _extract_safely(run: _ExtractRun, article: Article) -> None:
+    """Process one article; whatever goes wrong is recorded on it and never raised."""
+    try:
+        _extract_article(run, article)
+    except Exception as exc:
+        _finish_failed(run, article, type(exc).__name__, str(exc))
+
+
+def extract_pending(
+    services: Services,
+    tally: RunTally,
+    *,
+    since: datetime | None = None,
+    limit: int | None = None,
+) -> None:
+    """Fetch and extract pending articles in a bounded thread pool.
+
+    ``since`` only considers articles ingested at or after it, ``limit`` at most
+    that many. Failed articles are not retried automatically.
+    """
+    pending = services.repository.list_articles(
+        status=ExtractionStatus.PENDING, since=since, limit=limit
+    )
+    tally.count(PipelineStage.EXTRACT, "attempted", len(pending))
+    run = _ExtractRun(services, tally)
+    with ThreadPoolExecutor(max_workers=services.concurrency) as pool:
+        for _ in pool.map(lambda a: _extract_safely(run, a), pending):
+            pass
+
+
+# --- Single URLs (debug) -----------------------------------------------------------
+
+
+def inspect_url(fetcher: Fetcher, extractor: Extractor, url: str) -> ExtractionResult:
+    """Fetch and extract one page without storing anything.
+
+    Raises:
+        PageUnavailableError: if the page can't be fetched.
+        NotAnArticleError: if it isn't an HTML page.
+    """
+    page = fetch_page(fetcher, url)
+    return extractor.extract(page.html, page.final_url)
+
+
+def extract_saved_url(
+    services: Services, url: str, *, clock: Callable[[], datetime] = _utc_now
+) -> Article:
+    """Store ``url`` as an ad hoc article, extract it, and return the stored article.
+
+    Goes through the same path as feed articles, including canonical
+    refinement, so the result is what a run would have stored.
+    """
+    article = Article(
+        canonical_url=normalise_url(url, rules=services.url_rules),
+        url=url,
+        source_id=AD_HOC_SOURCE_ID,
+        title=url,
+        fetched_at=clock(),
+    )
+    services.repository.upsert_article(article)
+    _extract_safely(_ExtractRun(services, RunTally()), article)
+    stored = services.repository.get_article(article.id)
+    if stored is not None:
+        return stored
+    # The page declared another canonical URL, so the article was re-keyed.
+    for candidate in services.repository.list_articles(limit=50):
+        if candidate.url == url and candidate.source_id == AD_HOC_SOURCE_ID:
+            return candidate
+    return article
+
+
+# --- Whole runs --------------------------------------------------------------------
+
+
+def run_pipeline(
+    services: Services,
+    sources: Sequence[Source],
+    *,
+    ingest: bool = True,
+    extract: bool = True,
+    since: datetime | None = None,
+    limit: int | None = None,
+    run_id: str | None = None,
+    clock: Callable[[], datetime] = _utc_now,
+) -> RunStats:
+    """Run the chosen stages, saving ``RunStats`` when the run starts and when it ends."""
+    started = clock()
+    run_id = run_id or started.strftime("%Y%m%dT%H%M%S") + f"-{started.microsecond:06d}"
+    tally = RunTally()
+    services.repository.save_run_stats(tally.stats(run_id, started, None))
+    if ingest:
+        ingest_sources(services, sources, tally, since=since, limit=limit)
+    if extract:
+        extract_pending(services, tally, since=since, limit=limit)
+    stats = tally.stats(run_id, started, clock())
+    services.repository.save_run_stats(stats)
+    log.info(
+        "run finished",
+        extra={
+            "stage": "run",
+            "run_id": run_id,
+            "error_count": stats.error_count,
+            "stage_counts": {s.value: c for s, c in stats.stage_counts.items()},
+        },
+    )
+    return stats

@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic RSS 2.0 feed for the end-to-end pipeline tests: invented site and headlines. -->
+<rss version="2.0">
+  <channel>
+    <title>Example Gazette</title>
+    <link>https://news.example.com/</link>
+    <description>Invented headlines for pipeline tests.</description>
+    <item>
+      <title>Council approves floating bridge</title>
+      <link>https://news.example.com/2026/10/bridge?utm_source=rss</link>
+      <guid isPermaLink="false">pipeline-1</guid>
+      <description>The council has voted.</description>
+      <pubDate>Mon, 05 Oct 2026 09:30:00 +0100</pubDate>
+    </item>
+    <item>
+      <title>Page that has gone missing</title>
+      <link>https://news.example.com/2026/10/missing</link>
+      <guid isPermaLink="false">pipeline-2</guid>
+      <description>This article's page returns an error.</description>
+    </item>
+    <item>
+      <title>A blog post about nothing in particular</title>
+      <link>https://blog.example.org/2026/10/post</link>
+      <guid isPermaLink="false">pipeline-3</guid>
+      <description>A short summary.</description>
+    </item>
+    <item>
+      <title>Annual report (PDF)</title>
+      <link>https://news.example.com/files/report.pdf</link>
+      <guid isPermaLink="false">pipeline-4</guid>
+      <description>Not an HTML page.</description>
+    </item>
+  </channel>
+</rss>

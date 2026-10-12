@@ -12,6 +12,7 @@ from typer.testing import CliRunner
 from newsfeed import cli
 from newsfeed.eval.snapshot import read_snapshot, snapshot_paths
 from newsfeed.eval.urls import EvalEntry
+from newsfeed.fetching import DEFAULT_USER_AGENT, HttpFetcher
 from tests.fakes import FakeFetcher
 
 runner = CliRunner()
@@ -185,10 +186,10 @@ def test_invalid_urls_file_is_an_error(fake: FakeFetcher, tmp_path: Path) -> Non
 
 def test_real_fetcher_is_opened_and_closed(monkeypatch: pytest.MonkeyPatch) -> None:
     closed: list[bool] = []
-    monkeypatch.setattr(cli.HttpFetcher, "close", lambda self: closed.append(True))
+    monkeypatch.setattr(HttpFetcher, "close", lambda self: closed.append(True))
 
     with cli._open_fetcher() as fetcher:
-        assert isinstance(fetcher, cli.HttpFetcher)
-        assert fetcher.user_agent == cli.DEFAULT_USER_AGENT
+        assert isinstance(fetcher, HttpFetcher)
+        assert fetcher.user_agent == DEFAULT_USER_AGENT
 
     assert closed == [True]
