@@ -12,6 +12,10 @@ so failures are visible without saving an error page. The meta file is written
 last and its ``sha256`` must match the HTML, so a half-written snapshot is never
 mistaken for a complete one.
 
+Without ``--refresh``, an entry whose ``.html.gz`` exists is never fetched, even
+if its meta file is missing or invalid or the HTML is corrupt; the summary lists
+it as skipped and says to run ``--refresh``.
+
 A failed fetch never deletes or overwrites an existing ``.html.gz`` or its meta
 file, with or without ``--refresh``: pages that have gone offline or behind a
 paywall can't be fetched again, so whatever is on disk is kept and only the
@@ -30,6 +34,7 @@ import gzip
 import hashlib
 import os
 import tempfile
+import zlib
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -222,19 +227,26 @@ def read_snapshot(paths: SnapshotPaths) -> tuple[SnapshotMeta, bytes | None]:
         return meta, None
     try:
         html = gzip.decompress(paths.html.read_bytes())
-    except (OSError, EOFError, gzip.BadGzipFile) as exc:
+    # zlib.error comes from damaged deflate data inside an otherwise valid gzip header.
+    except (OSError, EOFError, gzip.BadGzipFile, zlib.error) as exc:
         raise SnapshotError(f"{paths.html}: cannot read snapshot HTML: {exc}") from exc
     if hashlib.sha256(html).hexdigest() != meta.sha256:
         raise SnapshotError(f"{paths.html}: content doesn't match sha256 in {paths.meta.name}")
     return meta, html
 
 
-def _has_complete_snapshot(paths: SnapshotPaths) -> bool:
+def _saved_html_problem(paths: SnapshotPaths) -> str | None:
+    """Say why the saved ``.html.gz`` doesn't validate, or None if it does.
+
+    Call only when ``paths.html`` exists.
+    """
     try:
         meta, _ = read_snapshot(paths)
-    except SnapshotError:
-        return False
-    return meta.has_html
+    except SnapshotError as exc:
+        return str(exc)
+    if not meta.has_html:
+        return f"{paths.meta.name} records a failed fetch but {paths.html.name} exists"
+    return None
 
 
 def _write_atomic(path: Path, data: bytes) -> None:
@@ -263,7 +275,11 @@ class SnapshotStatus(StrEnum):
 
 @dataclass(frozen=True)
 class SnapshotOutcome:
-    """The result for one entry; ``reason`` is set for failures."""
+    """The result for one entry.
+
+    ``reason`` is set for failures, and for skipped entries whose saved HTML
+    doesn't validate (so it needs ``--refresh``).
+    """
 
     entry_id: str
     url: str
@@ -288,7 +304,7 @@ class SnapshotSummary:
 
     @property
     def skipped(self) -> list[SnapshotOutcome]:
-        """Entries skipped because a complete snapshot already existed."""
+        """Entries skipped because their HTML was already saved."""
         return self.with_status(SnapshotStatus.SKIPPED)
 
     @property
@@ -333,9 +349,13 @@ def _snapshot_one(
     now: Callable[[], datetime],
 ) -> SnapshotOutcome:
     paths = snapshot_paths(fixtures_dir, entry)
-    had_snapshot = _has_complete_snapshot(paths)
-    if had_snapshot and not refresh:
-        return SnapshotOutcome(entry.id, entry.url, SnapshotStatus.SKIPPED)
+    has_html = paths.html.exists()
+    if has_html and not refresh:
+        # Never re-fetch a saved page without --refresh, even if it doesn't validate:
+        # the page may now be paywalled or gone, and a 200 could be a consent page.
+        problem = _saved_html_problem(paths)
+        note = None if problem is None else f"{problem}; run with --refresh to replace it"
+        return SnapshotOutcome(entry.id, entry.url, SnapshotStatus.SKIPPED, note)
 
     result = fetcher.fetch(entry.url)
     ok = result.status_code == 200 and result.error is None and not result.not_modified
@@ -358,7 +378,7 @@ def _snapshot_one(
         return SnapshotOutcome(entry.id, entry.url, SnapshotStatus.FETCHED)
 
     reason = meta.error or "unknown error"
-    if had_snapshot or paths.html.exists():
+    if has_html:
         # Never touch saved HTML on a failure: the page may be gone for good (offline,
         # now paywalled), so a saved copy we can't validate is still worth keeping.
         return SnapshotOutcome(
@@ -378,9 +398,11 @@ def take_snapshots(
 ) -> SnapshotSummary:
     """Fetch each entry through ``fetcher`` and save it under ``fixtures_dir``.
 
-    Entries that already have a complete snapshot are skipped unless
-    ``refresh`` is True. An entry whose earlier fetch failed has no complete
-    snapshot, so it is tried again. A non-200 result writes only the meta file,
+    Entries with a saved ``.html.gz`` are never fetched unless ``refresh`` is
+    True, even if the snapshot doesn't validate (meta missing, unreadable or
+    mismatched, or corrupt HTML); those are skipped with a ``reason`` saying to
+    use ``refresh``. An entry whose earlier fetch failed (meta file only) has no
+    saved HTML, so it is tried again. A non-200 result writes only the meta file,
     and only when no HTML is saved for the entry: a failed fetch never deletes
     or overwrites an existing ``.html.gz`` or its meta file, with or without
     ``refresh``. One bad entry never stops the run: its failure is logged and
@@ -419,6 +441,10 @@ def format_summary(summary: SnapshotSummary, fixtures_dir: Path) -> str:
         f"Snapshots in {fixtures_dir}: {len(summary.fetched)} fetched, "
         f"{len(summary.skipped)} skipped, {len(summary.failed)} failed"
     ]
+    needs_refresh = [o for o in summary.skipped if o.reason]
+    if needs_refresh:
+        lines.append("Skipped, needs --refresh:")
+        lines.extend(f"  {o.entry_id} ({o.url}): {o.reason}" for o in needs_refresh)
     if summary.failed:
         lines.append("Failed:")
         lines.extend(f"  {o.entry_id} ({o.url}): {o.reason}" for o in summary.failed)

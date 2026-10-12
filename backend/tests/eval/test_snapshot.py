@@ -377,41 +377,151 @@ def test_failed_refresh_with_unknown_meta_fields_keeps_snapshot(
     assert (paths.html.read_bytes(), paths.meta.read_bytes()) == before
 
 
-@pytest.mark.parametrize("refresh", [False, True])
-@pytest.mark.parametrize(
-    "damage",
-    ["unreadable meta", "missing meta", "html not matching meta"],
-)
-def test_failed_fetch_never_touches_existing_html(
-    fixtures_dir: Path, fetcher: FakeFetcher, damage: str, refresh: bool
-) -> None:
-    """With HTML on disk that can't be validated, a failed fetch changes no files."""
-    take_snapshots([ARTICLE], fetcher, fixtures_dir, now=now)
-    paths = snapshot_paths(fixtures_dir, ARTICLE)
+def flip_deflate_bytes(paths: SnapshotPaths) -> None:
+    """Corrupt the deflate data (bytes 20-39) so decompressing raises ``zlib.error``."""
+    data = bytearray(paths.html.read_bytes())
+    for i in range(20, 40):
+        data[i] ^= 0xFF
+    paths.html.write_bytes(bytes(data))
+
+
+def drop_meta_headers(paths: SnapshotPaths) -> None:
+    """Remove a required field, as a meta file from an older version might lack it."""
+    data = json.loads(paths.meta.read_bytes())
+    del data["headers"]
+    paths.meta.write_text(json.dumps(data))
+
+
+DAMAGES = [
+    "unreadable meta",
+    "missing meta",
+    "meta without headers",
+    "html not matching meta",
+    "corrupt deflate data",
+    "failure meta beside html",
+]
+
+
+def damage_snapshot(paths: SnapshotPaths, damage: str) -> None:
+    """Leave the saved ``.html.gz`` in place but make the snapshot fail validation."""
     if damage == "unreadable meta":
         paths.meta.write_bytes(b"{not json")
     elif damage == "missing meta":
         paths.meta.unlink()
-    else:
+    elif damage == "meta without headers":
+        drop_meta_headers(paths)
+    elif damage == "html not matching meta":
         paths.html.write_bytes(gzip.compress(b"older copy"))
-    before = sorted((p, p.read_bytes()) for p in fixtures_dir.rglob("*") if p.is_file())
+    elif damage == "failure meta beside html":
+        data = json.loads(paths.meta.read_bytes())
+        data.update(status=404, sha256=None, error="HTTP 404")
+        paths.meta.write_text(json.dumps(data))
+    else:
+        flip_deflate_bytes(paths)
+
+
+def file_contents(directory: Path) -> list[tuple[Path, bytes]]:
+    return sorted((p, p.read_bytes()) for p in directory.rglob("*") if p.is_file())
+
+
+@pytest.mark.parametrize("damage", DAMAGES)
+def test_plain_run_never_fetches_an_entry_with_saved_html(
+    fixtures_dir: Path, fetcher: FakeFetcher, damage: str
+) -> None:
+    """Regression: an incomplete or corrupt snapshot used to be re-fetched and replaced.
+
+    Without ``--refresh`` a saved page is kept whatever state its meta is in, and
+    the summary says to run ``--refresh``. The fake serves a new 200 page, so a
+    fetch would overwrite the saved HTML.
+    """
+    take_snapshots([ARTICLE], fetcher, fixtures_dir, now=now)
+    paths = snapshot_paths(fixtures_dir, ARTICLE)
+    damage_snapshot(paths, damage)
+    before = file_contents(fixtures_dir)
+    fetcher.add(ARTICLE.url, PAGE_V2, headers={"content-type": "text/html"})
+    fetcher.calls.clear()
+
+    summary = take_snapshots([ARTICLE], fetcher, fixtures_dir, now=now)
+
+    (outcome,) = summary.outcomes
+    assert outcome.status is SnapshotStatus.SKIPPED
+    assert outcome.reason is not None
+    assert "--refresh" in outcome.reason
+    assert fetcher.calls == []
+    assert file_contents(fixtures_dir) == before
+
+
+@pytest.mark.parametrize("damage", DAMAGES)
+def test_refresh_repairs_a_damaged_snapshot(
+    fixtures_dir: Path, fetcher: FakeFetcher, damage: str
+) -> None:
+    take_snapshots([ARTICLE], fetcher, fixtures_dir, now=now)
+    paths = snapshot_paths(fixtures_dir, ARTICLE)
+    damage_snapshot(paths, damage)
+
+    summary = take_snapshots([ARTICLE], fetcher, fixtures_dir, refresh=True, now=now)
+
+    assert [o.status for o in summary.outcomes] == [SnapshotStatus.FETCHED]
+    meta, html = read_snapshot(paths)
+    assert html == PAGE
+    assert meta.headers["etag"] == '"v1"'
+
+
+def test_read_snapshot_raises_snapshot_error_for_corrupt_deflate_data(
+    fixtures_dir: Path, fetcher: FakeFetcher
+) -> None:
+    """Regression: damaged deflate data used to escape as ``zlib.error``."""
+    take_snapshots([ARTICLE], fetcher, fixtures_dir, now=now)
+    paths = snapshot_paths(fixtures_dir, ARTICLE)
+    flip_deflate_bytes(paths)
+
+    with pytest.raises(SnapshotError, match="cannot read snapshot HTML"):
+        read_snapshot(paths)
+
+
+def test_format_summary_lists_skipped_entries_with_notes(
+    fixtures_dir: Path, fetcher: FakeFetcher
+) -> None:
+    take_snapshots([ARTICLE, BLOG], fetcher, fixtures_dir, now=now)
+    drop_meta_headers(snapshot_paths(fixtures_dir, ARTICLE))
+
+    summary = take_snapshots([ARTICLE, BLOG], fetcher, fixtures_dir, now=now)
+
+    text = format_summary(summary, fixtures_dir)
+    assert text.startswith(f"Snapshots in {fixtures_dir}: 0 fetched, 2 skipped, 0 failed\n")
+    assert "Skipped, needs --refresh:\n" in text
+    assert f"  example-story ({ARTICLE.url}): " in text
+    assert "blog-post" not in text
+
+
+@pytest.mark.parametrize("damage", DAMAGES)
+def test_failed_refresh_never_touches_existing_html(
+    fixtures_dir: Path, fetcher: FakeFetcher, damage: str
+) -> None:
+    """With HTML on disk that can't be validated, a failed fetch changes no files."""
+    take_snapshots([ARTICLE], fetcher, fixtures_dir, now=now)
+    paths = snapshot_paths(fixtures_dir, ARTICLE)
+    damage_snapshot(paths, damage)
+    before = file_contents(fixtures_dir)
     fetcher.add(ARTICLE.url, status=None, error="connection reset")
 
-    summary = take_snapshots([ARTICLE], fetcher, fixtures_dir, refresh=refresh, now=now)
+    summary = take_snapshots([ARTICLE], fetcher, fixtures_dir, refresh=True, now=now)
 
     assert summary.outcomes[0].status is SnapshotStatus.FAILED
     assert summary.outcomes[0].reason == "connection reset (kept existing snapshot)"
-    assert sorted((p, p.read_bytes()) for p in fixtures_dir.rglob("*") if p.is_file()) == before
+    assert file_contents(fixtures_dir) == before
 
 
-def test_corrupt_snapshot_is_fetched_again(fixtures_dir: Path, fetcher: FakeFetcher) -> None:
+def test_corrupt_snapshot_is_fetched_again_on_refresh(
+    fixtures_dir: Path, fetcher: FakeFetcher
+) -> None:
     take_snapshots([ARTICLE], fetcher, fixtures_dir, now=now)
     paths = snapshot_paths(fixtures_dir, ARTICLE)
     paths.html.write_bytes(gzip.compress(b"truncated"))
     with pytest.raises(SnapshotError, match="sha256"):
         read_snapshot(paths)
 
-    summary = take_snapshots([ARTICLE], fetcher, fixtures_dir, now=now)
+    summary = take_snapshots([ARTICLE], fetcher, fixtures_dir, refresh=True, now=now)
 
     assert summary.outcomes[0].status is SnapshotStatus.FETCHED
     assert read_snapshot(paths)[1] == PAGE
