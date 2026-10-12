@@ -416,3 +416,36 @@ def test_source_without_url_is_rejected() -> None:
     source = Source.model_construct(id="example", type=SourceType.RSS, url=None)
     with pytest.raises(ValueError, match="has no url"):
         RssIngester().ingest(source, FakeFetcher(), SourceState(source_id="example"))
+
+
+# --- Entry adapter hook ------------------------------------------------------
+
+
+def test_adapt_entry_post_processes_each_article() -> None:
+    def shout(entry: Any, article: Article) -> Article:
+        return article.model_copy(update={"title": article.title.upper()})
+
+    articles = parse_feed(
+        feed("rss2.xml"), source_id="example", feed_url=FEED_URL, fetched_at=NOW, adapt_entry=shout
+    )
+    assert articles[0].title == "TOWN COUNCIL APPROVES FLOATING BIKE LANES"
+
+
+def test_adapt_entry_failure_skips_only_that_entry(records: list[logging.LogRecord]) -> None:
+    def reject_doughnuts(entry: Any, article: Article) -> Article:
+        if "doughnut" in article.url:
+            raise ValueError("no doughnuts")
+        return article
+
+    articles = parse_feed(
+        feed("rss2.xml"),
+        source_id="example",
+        feed_url=FEED_URL,
+        fetched_at=NOW,
+        adapt_entry=reject_doughnuts,
+    )
+    assert [a.url for a in articles] == [
+        "https://news.example.com/2026/10/floating-bike-lanes?utm_source=rss",
+        "https://news.example.com/2026/10/ordinary-tuesday",
+    ]
+    assert len(warnings_with(records, "skipped feed entry")) == 1

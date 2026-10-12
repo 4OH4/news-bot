@@ -1,0 +1,104 @@
+{
+  "exhaustive": {"nbHits": true, "typo": true},
+  "exhaustiveNbHits": true,
+  "exhaustiveTypo": true,
+  "hits": [
+    {
+      "_highlightResult": {
+        "author": {"matchLevel": "none", "matchedWords": [], "value": "placeholder_user"},
+        "title": {"matchLevel": "none", "matchedWords": [], "value": "A synthetic compiler written in a weekend"},
+        "url": {"matchLevel": "none", "matchedWords": [], "value": "https://blog.example.com/weekend-compiler"}
+      },
+      "_tags": ["story", "author_placeholder_user", "story_9000001", "front_page"],
+      "author": "placeholder_user",
+      "children": [9000101, 9000102],
+      "created_at": "2026-10-07T03:20:00Z",
+      "created_at_i": 1791343200,
+      "num_comments": 87,
+      "objectID": "9000001",
+      "points": 312,
+      "story_id": 9000001,
+      "title": "A synthetic compiler written in a weekend",
+      "updated_at": "2026-10-07T05:00:00Z",
+      "url": "https://blog.example.com/weekend-compiler"
+    },
+    {
+      "_highlightResult": {
+        "author": {"matchLevel": "none", "matchedWords": [], "value": "curious_example"},
+        "title": {"matchLevel": "none", "matchedWords": [], "value": "Ask HN: How do you organise imaginary notes?"}
+      },
+      "_tags": ["story", "author_curious_example", "story_9000002", "ask_hn", "front_page"],
+      "author": "curious_example",
+      "children": [9000201],
+      "created_at": "2026-10-07T01:00:00Z",
+      "created_at_i": 1791334800,
+      "num_comments": 140,
+      "objectID": "9000002",
+      "points": 95,
+      "story_id": 9000002,
+      "story_text": "<p>I keep invented notes in three places &amp; can never find them.</p><p>What works for you?</p>",
+      "title": "Ask HN: How do you organise imaginary notes?",
+      "updated_at": "2026-10-07T05:00:00Z"
+    },
+    {
+      "_highlightResult": {
+        "author": {"matchLevel": "none", "matchedWords": [], "value": "low_score_poster"},
+        "title": {"matchLevel": "none", "matchedWords": [], "value": "Show HN: A placeholder project nobody upvoted"},
+        "url": {"matchLevel": "none", "matchedWords": [], "value": "https://placeholder.example.net/"}
+      },
+      "_tags": ["story", "author_low_score_poster", "story_9000003", "show_hn", "front_page"],
+      "author": "low_score_poster",
+      "children": [],
+      "created_at": "2026-10-07T04:40:00Z",
+      "created_at_i": 1791348000,
+      "num_comments": 0,
+      "objectID": "9000003",
+      "points": 4,
+      "story_id": 9000003,
+      "title": "Show HN: A placeholder project nobody upvoted",
+      "updated_at": "2026-10-07T05:00:00Z",
+      "url": "https://placeholder.example.net/"
+    },
+    {
+      "_highlightResult": {
+        "author": {"matchLevel": "none", "matchedWords": [], "value": "lab_notes"},
+        "title": {"matchLevel": "none", "matchedWords": [], "value": "Researchers model the migration of fictional geese"},
+        "url": {"matchLevel": "none", "matchedWords": [], "value": "https://science.example.org/geese"}
+      },
+      "_tags": ["story", "author_lab_notes", "story_9000004", "front_page"],
+      "author": "lab_notes",
+      "children": [9000401],
+      "created_at": "2026-10-06T22:10:00Z",
+      "created_at_i": 1791324600,
+      "num_comments": 23,
+      "objectID": "9000004",
+      "points": 150,
+      "story_id": 9000004,
+      "title": "Researchers model the migration of fictional geese",
+      "updated_at": "2026-10-07T05:00:00Z",
+      "url": "https://science.example.org/geese"
+    },
+    {
+      "_highlightResult": {},
+      "_tags": ["story", "story_9000005", "front_page"],
+      "author": "mystery",
+      "created_at": "2026-10-07T02:00:00Z",
+      "created_at_i": 1791338400,
+      "num_comments": 3,
+      "objectID": "9000005",
+      "points": 60,
+      "story_id": 9000005,
+      "title": null,
+      "updated_at": "2026-10-07T05:00:00Z",
+      "url": "https://untitled.example.com/"
+    }
+  ],
+  "hitsPerPage": 50,
+  "nbHits": 5,
+  "nbPages": 1,
+  "page": 0,
+  "params": "tags=front_page&hitsPerPage=50",
+  "processingTimeMS": 1,
+  "query": "",
+  "serverTimeMS": 2
+}

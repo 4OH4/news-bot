@@ -22,7 +22,7 @@ def write(tmp_path: Path, text: str) -> Path:
 def test_repo_sources_file_is_valid() -> None:
     sources = load_sources(REPO_SOURCES)
     assert sources
-    assert all(s.type is SourceType.RSS and s.url for s in sources)
+    assert all(s.url for s in sources if s.type is SourceType.RSS)
     assert len({s.id for s in sources}) == len(sources)
 
 
