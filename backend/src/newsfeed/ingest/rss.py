@@ -24,7 +24,7 @@ from urllib.parse import urljoin, urlsplit
 
 import feedparser
 
-from newsfeed.ingest.text import html_to_text, truncate
+from newsfeed.ingest.text import collapse_whitespace, html_to_text, truncate
 from newsfeed.logging import get_logger
 from newsfeed.models import Article, Source, SourceState, SourceType
 from newsfeed.ports import Fetcher
@@ -44,13 +44,28 @@ SUMMARY_MAX_CHARS = 500
 
 _STAGE = "ingest"
 
+# feedparser bozo exceptions that only complain about HTTP headers.
+_BENIGN_BOZO = (feedparser.NonXMLContentType, feedparser.CharacterEncodingOverride)
+
+# Content types whose values are markup; anything else feedparser has already
+# decoded to plain text, and decoding it again would eat text like "<canvas>".
+_HTML_TYPES = frozenset({"text/html", "application/xhtml+xml"})
+
 
 class FeedFetchError(RuntimeError):
     """The feed could not be fetched (network error, robots.txt, HTTP 4xx/5xx).
 
     Raised rather than returning no articles, so the pipeline's per-source
     error handling logs and counts it, and the saved state stays as it was.
+
+    Attributes:
+        status_code: the HTTP status (e.g. 404 or 410 for a dead feed), or None
+            when there was no response (network error, robots.txt refusal).
     """
+
+    def __init__(self, message: str, *, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
 
 
 def _utc_now() -> datetime:
@@ -128,7 +143,10 @@ def ingest_feed(
         return [], state.model_copy(deep=True)
     if result.error is not None or result.status_code is None or result.status_code >= 400:
         reason = result.error or f"HTTP {result.status_code}"
-        raise FeedFetchError(f"fetching feed {feed_url} for source {source.id!r} failed: {reason}")
+        raise FeedFetchError(
+            f"fetching feed {feed_url} for source {source.id!r} failed: {reason}",
+            status_code=result.status_code,
+        )
 
     fetched_at = clock()
     articles = parse_feed(
@@ -189,11 +207,12 @@ def parse_feed(
 
     if parsed.get("bozo"):
         exc = parsed.get("bozo_exception")
-        # Many servers send feeds as text/plain, text/html or with no
-        # Content-Type at all. feedparser flags that as bozo, but if the body
-        # still parsed as a feed nothing is wrong with it, and a warning on
-        # every run for such a source would only be noise.
-        benign = isinstance(exc, feedparser.NonXMLContentType) and bool(parsed.get("version"))
+        # Many servers send feeds as text/plain, text/html, text/xml without a
+        # charset, or with no Content-Type at all. feedparser flags that as
+        # bozo (NonXMLContentType, or CharacterEncodingOverride once the body
+        # has any non-ASCII text), but if the body still parsed as a feed
+        # nothing is wrong with it, and a warning on every run would be noise.
+        benign = isinstance(exc, _BENIGN_BOZO) and bool(parsed.get("version"))
         log.log(
             logging.DEBUG if benign else logging.WARNING,
             "malformed feed; using the entries that parsed",
@@ -245,13 +264,14 @@ def _entry_to_article(
     summary_max_chars: int,
 ) -> Article:
     url = _entry_url(entry, base_url)
-    summary = truncate(html_to_text(_entry_summary(entry)), summary_max_chars)
+    summary = truncate(_entry_summary(entry), summary_max_chars)
     return Article(
         canonical_url=url,
         url=url,
         source_id=source_id,
-        title=html_to_text(entry.get("title")),
-        author=html_to_text(entry.get("author")) or None,
+        title=_as_text(entry.get("title"), entry.get("title_detail")),
+        # feedparser decodes author names to plain text and gives them no type.
+        author=collapse_whitespace(entry.get("author")) or None,
         published_at=_entry_published(entry),
         fetched_at=fetched_at,
         summary=summary or None,
@@ -275,16 +295,40 @@ def _entry_url(entry: Mapping[str, Any], base_url: str) -> str:
     return url
 
 
-def _entry_summary(entry: Mapping[str, Any]) -> str | None:
-    """The entry's summary, or the start of its content if it has none (Atom)."""
+def _as_text(value: Any, detail: Any) -> str:
+    """Plain text of a feedparser text construct, given its ``*_detail`` mapping.
+
+    Only HTML/XHTML values are stripped of markup. feedparser has already
+    decoded entities in plain-text values, so a title such as "Using <canvas>
+    elements" is literal text and must not be parsed as HTML again.
+    """
+    if not isinstance(value, str):
+        return ""
+    content_type = detail.get("type") if isinstance(detail, Mapping) else None
+    if content_type in _HTML_TYPES:
+        return html_to_text(value)
+    return collapse_whitespace(value)
+
+
+def _entry_summary(entry: Mapping[str, Any]) -> str:
+    """Plain-text summary, or the start of the content if there is none (Atom)."""
     summary = entry.get("summary")
     if isinstance(summary, str) and summary.strip():
-        return summary
+        detail = entry.get("summary_detail")
+        if detail is None:
+            # feedparser copies Atom <content> into ``summary`` without a
+            # detail; the content item carries the type.
+            for content in entry.get("content") or []:
+                if isinstance(content, Mapping) and content.get("value") == summary:
+                    detail = content
+                    break
+        return _as_text(summary, detail)
     for content in entry.get("content") or []:
-        value = content.get("value") if isinstance(content, Mapping) else None
-        if isinstance(value, str) and value.strip():
-            return value
-    return None
+        if isinstance(content, Mapping):
+            text = _as_text(content.get("value"), content)
+            if text:
+                return text
+    return ""
 
 
 def _entry_published(entry: Mapping[str, Any]) -> datetime | None:

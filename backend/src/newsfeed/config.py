@@ -49,6 +49,9 @@ class ConfigFile(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+_MERGE_TAG = "tag:yaml.org,2002:merge"
+
+
 class _UniqueKeyLoader(yaml.SafeLoader):
     """A ``SafeLoader`` that rejects duplicate mapping keys.
 
@@ -59,8 +62,22 @@ class _UniqueKeyLoader(yaml.SafeLoader):
     def construct_mapping(self, node: yaml.MappingNode, deep: bool = False) -> dict[Any, Any]:
         seen: set[Any] = set()
         for key_node, _ in node.value:
+            # Merge keys (``<<: *anchor``) are resolved by ``super()``; they
+            # aren't real keys, and constructing one directly fails.
+            if key_node.tag == _MERGE_TAG:
+                continue
             key = self.construct_object(key_node, deep=deep)
-            if key in seen:
+            try:
+                duplicate = key in seen
+            except TypeError:
+                # A complex key such as ``? [a, b]`` is unhashable.
+                raise yaml.constructor.ConstructorError(
+                    "while constructing a mapping",
+                    node.start_mark,
+                    f"found unhashable key {key!r}",
+                    key_node.start_mark,
+                ) from None
+            if duplicate:
                 raise yaml.constructor.ConstructorError(
                     "while constructing a mapping",
                     node.start_mark,

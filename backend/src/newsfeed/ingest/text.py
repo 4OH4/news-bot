@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from html.parser import HTMLParser
 
-__all__ = ["html_to_text", "truncate"]
+__all__ = ["collapse_whitespace", "html_to_text", "truncate"]
 
 _WHITESPACE = re.compile(r"\s+")
 
@@ -51,6 +51,15 @@ class _TextExtractor(HTMLParser):
     def handle_data(self, data: str) -> None:
         if not self._skip_depth:
             self.parts.append(data)
+
+
+def collapse_whitespace(value: str | None) -> str:
+    """Return ``value`` with runs of whitespace collapsed to one space and trimmed.
+
+    For values that are already plain text: nothing else is changed, so text
+    such as "<canvas>" or "&amp;" survives literally.
+    """
+    return _WHITESPACE.sub(" ", value).strip() if value else ""
 
 
 def html_to_text(value: str | None) -> str:
