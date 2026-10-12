@@ -3,7 +3,9 @@
 Uses only the stdlib ``sqlite3`` module. Top-level model fields map to columns
 and nested fields (``Article.extraction``, ``score_breakdown``, the ``RunStats``
 counters) are stored as JSON text, so the tables read naturally in the
-``sqlite3`` shell while the nested shapes can evolve without a migration.
+``sqlite3`` shell. Because models use ``extra="forbid"``, only *adding* a nested
+field with a default needs no migration (older rows simply lack it); removing
+or renaming a nested field, or any top-level change, needs one.
 
 Concurrency: the database runs in WAL mode, so readers don't block the writer.
 Each thread gets its own connection (``sqlite3`` connections must not be shared

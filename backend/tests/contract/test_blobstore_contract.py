@@ -127,14 +127,22 @@ def test_readers_never_see_partial_writes(blob_store: BlobStore) -> None:
     ref = blob_store.put("feed.json", versions[0])
     stop = threading.Event()
     seen_bad: list[int] = []
+    errors: list[BaseException] = []
+    reads = [0, 0, 0]
 
-    def reader() -> None:
-        while not stop.is_set():
-            data = blob_store.get(ref)
-            if data not in versions:
-                seen_bad.append(len(data))
+    def reader(i: int) -> None:
+        # Catch everything: an exception in a thread would otherwise only kill
+        # the thread, and the test would pass without having read anything.
+        try:
+            while not stop.is_set():
+                data = blob_store.get(ref)
+                reads[i] += 1
+                if data not in versions:
+                    seen_bad.append(len(data))
+        except BaseException as exc:
+            errors.append(exc)
 
-    readers = [threading.Thread(target=reader) for _ in range(3)]
+    readers = [threading.Thread(target=reader, args=(i,)) for i in range(len(reads))]
     for thread in readers:
         thread.start()
     try:
@@ -144,4 +152,6 @@ def test_readers_never_see_partial_writes(blob_store: BlobStore) -> None:
         stop.set()
         for thread in readers:
             thread.join()
+    assert errors == []
     assert seen_bad == []
+    assert sum(reads) > 0
