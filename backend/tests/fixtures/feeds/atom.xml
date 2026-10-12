@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Synthetic Atom 1.0 feed: invented site, headlines and summaries. -->
+<feed xmlns="http://www.w3.org/2005/Atom" xml:base="https://blog.example.org/">
+  <title>Example Engineering Notes</title>
+  <id>tag:blog.example.org,2026:feed</id>
+  <updated>2026-10-06T12:00:00Z</updated>
+  <link rel="self" href="https://blog.example.org/feed.atom"/>
+  <link rel="alternate" href="https://blog.example.org/"/>
+  <entry>
+    <title type="html">Why our robots now &lt;i&gt;knit&lt;/i&gt;</title>
+    <id>tag:blog.example.org,2026:post-42</id>
+    <link rel="enclosure" type="audio/mpeg" href="https://cdn.example.org/robots-knit.mp3"/>
+    <link rel="alternate" type="text/html" href="posts/robots-knit"/>
+    <published>2026-10-06T08:00:00-04:00</published>
+    <updated>2026-10-06T09:00:00-04:00</updated>
+    <author><name>Grace Example</name></author>
+    <summary type="html">&lt;p&gt;A short note on teaching invented robots to knit scarves.&lt;/p&gt;</summary>
+  </entry>
+  <entry>
+    <title>Release notes for the imaginary widget 2.0</title>
+    <id>tag:blog.example.org,2026:post-41</id>
+    <link href="https://blog.example.org/posts/widget-2"/>
+    <updated>2026-10-02T15:45:30+02:00</updated>
+    <content type="html">&lt;h2&gt;What changed&lt;/h2&gt;&lt;p&gt;The widget now spins in both directions.&lt;/p&gt;</content>
+  </entry>
+</feed>

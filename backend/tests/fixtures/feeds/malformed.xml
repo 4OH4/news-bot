@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic malformed RSS 2.0 feed: a bare ampersand and no closing rss tag. Invented content. -->
+<rss version="2.0">
+  <channel>
+    <title>Example Sloppy Herald</title>
+    <link>https://sloppy.example.com/</link>
+    <description>Invented feed that is not well-formed XML.</description>
+    <item>
+      <title>Fish & chips shop wins invented award</title>
+      <link>https://sloppy.example.com/news/fish-and-chips</link>
+      <description>Judges praised the batter.</description>
+    </item>
+    <item>
+      <title>Second story survives the bad markup</title>
+      <link>https://sloppy.example.com/news/second-story</link>
+      <description>Still parsed.</description>
+    </item>
+  </channel>

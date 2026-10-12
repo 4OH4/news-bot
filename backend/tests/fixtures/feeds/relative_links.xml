@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic RSS 2.0 feed with relative item links. Invented content. -->
+<rss version="2.0">
+  <channel>
+    <title>Example Relative Times</title>
+    <link>https://relative.example.net/</link>
+    <description>Invented feed whose links are relative to the feed URL.</description>
+    <item>
+      <title>Root-relative link</title>
+      <link>/stories/root-relative</link>
+      <description>Resolved against the host.</description>
+    </item>
+    <item>
+      <title>Path-relative link</title>
+      <link>path-relative.html</link>
+      <description>Resolved against the feed's directory.</description>
+    </item>
+    <item>
+      <title>Protocol-relative link</title>
+      <link>//mirror.example.net/stories/protocol-relative</link>
+      <description>Takes the feed's scheme.</description>
+    </item>
+    <item>
+      <title>Absolute link</title>
+      <link>https://other.example.com/stories/absolute</link>
+      <description>Left as it is.</description>
+    </item>
+  </channel>
+</rss>
