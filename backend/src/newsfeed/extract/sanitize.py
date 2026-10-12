@@ -22,13 +22,16 @@ across extractors (the chain in #14 ranks partial results by word count).
 
 from __future__ import annotations
 
-from html import escape
+import re
+from html import escape, unescape
 from typing import Final
 from urllib.parse import urljoin, urlsplit
 
 import nh3
 from lxml import html as lxml_html
-from lxml.html import HtmlElement
+from lxml.html import HtmlElement, HTMLParser
+
+from newsfeed.logging import get_logger
 
 __all__ = ["ALLOWED_ATTRIBUTES", "ALLOWED_TAGS", "html_to_text", "sanitize_html"]
 
@@ -103,10 +106,29 @@ _RENAMES: Final = {
     "i": "em",
 }
 
-# Layout containers. Each becomes a <p> if it only holds inline content, or is
-# unwrapped if it holds blocks, so text in <div>-based markup keeps its
-# paragraph breaks instead of running together.
-_CONTAINERS: Final = frozenset({"div", "section", "article", "main", "header", "footer", "aside"})
+# Block-level tags outside the allowlist. Each becomes a <p> if it only holds
+# inline content; otherwise its loose inline runs are wrapped in <p> and it is
+# unwrapped. Either way, text in neighbouring blocks (<div>-based markup,
+# <dt>/<dd> pairs, ...) keeps a block boundary instead of running together.
+_CONTAINERS: Final = frozenset(
+    {
+        "div",
+        "section",
+        "article",
+        "main",
+        "header",
+        "footer",
+        "aside",
+        "nav",
+        "address",
+        "details",
+        "summary",
+        "dl",
+        "dt",
+        "dd",
+        "caption",
+    }
+)
 
 _BLOCK_TAGS: Final = frozenset(
     {
@@ -154,6 +176,14 @@ _FIRST_PASS_ATTRIBUTES: Final = {
 }
 _FINAL_ATTRIBUTES: Final = {**_NO_GENERIC_ATTRIBUTES, **ALLOWED_ATTRIBUTES}
 
+# Tags that end a line in html_to_text. Containers are included so the function
+# also separates words correctly in HTML that hasn't been sanitised.
+_TEXT_BREAK_TAGS: Final = _BLOCK_TAGS | _CONTAINERS | {"br"}
+
+_TAG_RE: Final = re.compile(r"<[^>]*>")
+
+log = get_logger(__name__)
+
 
 def sanitize_html(html: str, base_url: str, *, title: str | None = None) -> str:
     """Return ``html`` reduced to the reader's safe HTML subset.
@@ -182,6 +212,8 @@ def sanitize_html(html: str, base_url: str, *, title: str | None = None) -> str:
         url_relative="pass_through",
     )
     normalised = _normalise(permissive, base_url, title)
+    if not normalised.strip() and unescape(_TAG_RE.sub("", permissive)).strip():
+        _warn_text_lost(base_url, len(html))
     return nh3.clean(
         normalised,
         tags=ALLOWED_TAGS,
@@ -202,7 +234,7 @@ def html_to_text(html: str) -> str:
         return ""
     root = _parse_fragment(html.replace(_BREAK, ""))
     for el in root.iter():
-        if el.tag in _BLOCK_TAGS or el.tag == "br":
+        if el.tag in _TEXT_BREAK_TAGS:
             # Mark block boundaries, so words in adjacent blocks stay apart while
             # newlines inside the source text are collapsed like other spaces.
             el.tail = _BREAK + (el.tail or "")
@@ -213,8 +245,28 @@ def html_to_text(html: str) -> str:
 
 
 def _parse_fragment(html: str) -> HtmlElement:
-    """Parse ``html`` into a wrapper ``<div>`` whose children are the fragment."""
-    return lxml_html.fragment_fromstring(html, create_parent="div")
+    """Parse ``html`` into a wrapper ``<div>`` whose children are the fragment.
+
+    ``huge_tree`` lifts libxml2's nesting limit: without it, markup nested about
+    255 levels deep silently parses to an empty tree. A parser is created per
+    call because lxml parsers mustn't be shared between threads.
+    """
+    parser = HTMLParser(huge_tree=True)
+    return lxml_html.fragment_fromstring(html, create_parent="div", parser=parser)
+
+
+def _warn_text_lost(url: str, input_chars: int) -> None:
+    """Log that sanitising turned input with text into nothing (a parser limit)."""
+    log.warning(
+        "sanitiser lost all text",
+        extra={
+            "stage": "extract",
+            "url": url,
+            "error_type": "SanitiserTextLost",
+            "error": "input had text but the sanitised output is empty",
+            "input_chars": input_chars,
+        },
+    )
 
 
 def _serialise_children(root: HtmlElement) -> str:
@@ -289,9 +341,43 @@ def _flatten_containers(root: HtmlElement) -> None:
         if el is root:
             continue
         if any(child.tag in _BLOCK_TAGS for child in el):
+            _wrap_inline_runs(el)
             el.drop_tag()
         else:
             el.tag = "p"
+
+
+def _new_paragraph() -> HtmlElement:
+    return lxml_html.Element("p")
+
+
+def _wrap_inline_runs(el: HtmlElement) -> None:
+    """Wrap each run of text and inline children of ``el`` in its own ``<p>``.
+
+    Called before unwrapping a container that also holds blocks, so loose text
+    can't merge with text in a neighbouring element once the container is gone.
+    """
+    run: HtmlElement | None = None
+    if el.text and el.text.strip():
+        run = _new_paragraph()
+        run.text = el.text
+        el.text = None
+        el.insert(0, run)
+    for child in list(el):
+        if child is run:
+            continue
+        if child.tag in _BLOCK_TAGS:
+            run = None
+            if child.tail and child.tail.strip():
+                run = _new_paragraph()
+                run.text = child.tail
+                child.tail = None
+                child.addnext(run)
+            continue
+        if run is None:
+            run = _new_paragraph()
+            child.addprevious(run)
+        run.append(child)  # moves the child together with its tail
 
 
 def _has_content(el: HtmlElement) -> bool:
@@ -305,8 +391,17 @@ def _remove_empty(root: HtmlElement) -> None:
     for el in reversed(list(root.iter())):
         if el is root or el.tag in _KEEP_EMPTY:
             continue
-        if not _has_content(el):
+        if _has_content(el):
+            continue
+        if el.tag in _BLOCK_TAGS:
+            # A block separates the text around it; keep a space in its place.
+            if el.tail and not el.tail[0].isspace():
+                el.tail = " " + el.tail
             el.drop_tree()
+        else:
+            # Unwrap rather than delete, so whitespace inside an inline element
+            # (``foo<em> </em>bar``) still separates the words around it.
+            el.drop_tag()
 
 
 def _normalise_text(text: str) -> str:

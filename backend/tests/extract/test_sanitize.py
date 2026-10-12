@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 import re
 
 import pytest
 
+from newsfeed.extract import sanitize
 from newsfeed.extract.sanitize import ALLOWED_TAGS, html_to_text, sanitize_html
 
 BASE = "https://news.example.com/section/story.html"
@@ -143,6 +145,36 @@ def test_layout_containers_become_paragraphs_or_are_unwrapped() -> None:
     assert out == "<p>First block.</p><p>Second block.</p><p>Inner para.</p><p>Loose text.</p>"
 
 
+@pytest.mark.parametrize(
+    ("markup", "expected"),
+    [
+        ("<dl><dt>Term</dt><dd>Definition</dd></dl>", "<p>Term</p><p>Definition</p>"),
+        (
+            "<dl><dt>Term</dt><dd>Lead <em>in</em><ul><li>item</li></ul>after</dd></dl>",
+            "<p>Term</p><p>Lead <em>in</em></p><ul><li>item</li></ul><p>after</p>",
+        ),
+        (
+            "<details><summary>More</summary>Hidden text<p>Para</p>tail</details>",
+            "<p>More</p><p>Hidden text</p><p>Para</p><p>tail</p>",
+        ),
+        ("<nav>Home</nav><address>1 Invented Road</address>", "<p>Home</p><p>1 Invented Road</p>"),
+        (
+            "<div>x<p>y</p>z</div><div>w<p>v</p></div>",
+            "<p>x</p><p>y</p><p>z</p><p>w</p><p>v</p>",
+        ),
+    ],
+)
+def test_block_containers_keep_block_boundaries(markup: str, expected: str) -> None:
+    assert clean(markup) == expected
+
+
+def test_table_caption_keeps_a_block_boundary() -> None:
+    out = clean("<table><caption>Results</caption><tr><td>Row</td></tr></table>")
+    # The caption becomes a paragraph; the HTML parser moves it ahead of the table.
+    assert out == "<p>Results</p><table><tbody><tr><td>Row</td></tr></tbody></table>"
+    assert html_to_text(out) == "Results\nRow"
+
+
 def test_nested_pre_becomes_pre_code() -> None:
     assert clean("<pre><pre>x = 1</pre></pre>") == "<pre><code>x = 1</code></pre>"
 
@@ -227,6 +259,24 @@ def test_removes_empty_elements(markup: str) -> None:
     assert clean(f"<p>Text</p>{markup}") == "<p>Text</p>"
 
 
+@pytest.mark.parametrize(
+    ("markup", "expected"),
+    [
+        ("<p>foo<em> </em>bar</p>", "<p>foo bar</p>"),
+        ("<p>foo<strong>\n</strong>bar</p>", "<p>foo\nbar</p>"),
+        ("<p>foo<span> <b> </b></span>bar</p>", "<p>foo  bar</p>"),
+        ('<p>foo<a href="/x"> </a>bar</p>', "<p>foo bar</p>"),
+        ("<p>foo<code>&nbsp;</code>bar</p>", "<p>foo&nbsp;bar</p>"),
+        ("foo<p> </p>bar", "foo bar"),
+    ],
+)
+def test_removing_whitespace_only_elements_keeps_words_apart(markup: str, expected: str) -> None:
+    out = clean(markup)
+    assert out == expected
+    assert "foobar" not in html_to_text(out)
+    assert html_to_text(out).split() == ["foo", "bar"]
+
+
 def test_keeps_elements_whose_only_content_is_an_image() -> None:
     html = (
         '<p><a href="https://news.example.com/big.jpg">'
@@ -278,6 +328,40 @@ def test_empty_results(html: str) -> None:
 def test_escapes_text_and_preserves_entities() -> None:
     out = clean("Loose &lt;b&gt; text<p>Fish &amp; chips &lt;script&gt;</p>")
     assert out == "Loose &lt;b&gt; text<p>Fish &amp; chips &lt;script&gt;</p>"
+
+
+@pytest.mark.parametrize("depth", [300, 1000])
+def test_deeply_nested_markup_keeps_its_text(
+    depth: int, log_records: list[logging.LogRecord]
+) -> None:
+    blocks = "<div>" * depth + "<p>Deep paragraph text.</p>" + "</div>" * depth
+    inline = "<span>" * depth + "Deep inline text." + "</span>" * depth
+    assert clean(blocks) == "<p>Deep paragraph text.</p>"
+    assert clean(f"<p>{inline}</p>") == "<p>Deep inline text.</p>"
+    assert html_to_text(blocks) == "Deep paragraph text."
+    assert not [r for r in log_records if r.levelno >= logging.WARNING]
+
+
+def test_warns_when_text_is_lost(
+    monkeypatch: pytest.MonkeyPatch, log_records: list[logging.LogRecord]
+) -> None:
+    # Simulate a parser limit that drops everything.
+    monkeypatch.setattr(sanitize, "_normalise", lambda *args: "")
+    assert clean("<p>Some &amp; text</p>") == ""
+    warnings = [r for r in log_records if r.levelno == logging.WARNING]
+    assert len(warnings) == 1
+    record = vars(warnings[0])
+    assert record["stage"] == "extract"
+    assert record["url"] == BASE
+    assert record["error_type"] == "SanitiserTextLost"
+    assert record["error"]
+    assert record["input_chars"] == len("<p>Some &amp; text</p>")
+
+
+@pytest.mark.parametrize("html", ["<p>&nbsp;</p>", "<script>x()</script>", "<p><br></p>"])
+def test_no_warning_when_input_had_no_text(html: str, log_records: list[logging.LogRecord]) -> None:
+    assert clean(html) == ""
+    assert not log_records
 
 
 def test_is_idempotent() -> None:
