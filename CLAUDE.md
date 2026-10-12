@@ -165,6 +165,7 @@ Architecture decisions are recorded in `docs/adr/`. Read the relevant ADRs befor
 - `docs/adr/`: decision records
 - `config/sources.yaml`, `config/interests.yaml`: sources and ranking rules
 - `config/extraction.yaml`: per-domain extractor overrides
+- `config/url_params.yaml`: per-domain tracking-parameter rules for canonical URLs (evidence-backed only)
 - `eval/`: extraction evaluation set (`urls.yaml`) and results; snapshots live in `NEWSFEED_FIXTURES_DIR`
 - `.github/ISSUE_TEMPLATE/`: `agent-task.yml` and `needs-human.yml`, the shape every issue follows
 - `scripts/bootstrap_github.py`: creates labels, milestones and seed issues
