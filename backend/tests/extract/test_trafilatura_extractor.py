@@ -243,6 +243,20 @@ def test_whitespace_only_inline_elements_keep_words_apart() -> None:
     assert result.word_count == len(text.split())
 
 
+def test_title_only_page_fails_without_a_text_lost_warning(
+    log_records: list[logging.LogRecord],
+) -> None:
+    page = (
+        "<html><head><title>Mayor opens new bridge</title></head>"
+        "<body><article><h1>Mayor opens new bridge</h1></article></body></html>"
+    )
+    result = TrafilaturaExtractor().extract(page, URL)
+    assert result.status is ExtractionStatus.FAILED
+    assert result.error == "no text extracted"
+    assert result.title == "Mayor opens new bridge"
+    assert not [r for r in log_records if r.levelno >= logging.WARNING]
+
+
 def test_content_without_text_is_failed_but_keeps_metadata(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

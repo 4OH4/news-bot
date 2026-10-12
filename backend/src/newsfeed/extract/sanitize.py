@@ -212,8 +212,11 @@ def sanitize_html(html: str, base_url: str, *, title: str | None = None) -> str:
         url_relative="pass_through",
     )
     normalised = _normalise(permissive, base_url, title)
-    if not normalised.strip() and unescape(_TAG_RE.sub("", permissive)).strip():
-        _warn_text_lost(base_url, len(html))
+    if not normalised.strip():
+        # Text that was only the repeated title is removed on purpose, not lost.
+        input_text = _normalise_text(unescape(_TAG_RE.sub(" ", permissive)))
+        if input_text and input_text != _normalise_text(title or ""):
+            _warn_text_lost(base_url, len(html))
     return nh3.clean(
         normalised,
         tags=ALLOWED_TAGS,
