@@ -98,7 +98,9 @@ Development runs as one **lead** session coordinating up to **3 worker** agents,
 
 **Session lifecycle.** Every lead session starts with `/lead-start` and ends with `/lead-finish` (`.claude/skills/`).
 - Both run `scripts/lead.py`, which does the mechanical steps: update `main`, check dependencies and the pre-commit hook, remove merged worktrees and branches, sync the board, and print the status.
-- The skills add the steps that need judgement: starting workers from a standard brief, reviewing PRs, reporting, and writing a handoff note for the next session.
+- The skills add the steps that need judgement: starting workers and reviewers, reviewing PRs, reporting, and writing a handoff note for the next session.
+- Workers and reviewers are project subagents defined in `.claude/agents/` (`worker.md`, `reviewer.md`). Their briefs live there, so the lead sends each one only the issue or PR numbers and any specifics.
+- Workers run on Sonnet. The lead and reviewers run on Opus, and the lead switches a worker to Opus for `needs-human` or design-heavy issues. The reviewer agent has no file-editing tools.
 - `lead.py` never deletes anything with uncommitted or unmerged work; it lists it instead.
 
 **The human's role is to read and merge.** Agents do all the preparation, so every PR reaches the human ready to merge as it is:
