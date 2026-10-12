@@ -69,7 +69,7 @@ These are hard rules. If a task seems to require breaking one, stop and say so i
 ### Writing issues
 Agents write most new issues: follow-ups, splits and new work. The human reads an issue first to understand what is being built and why, then reviews the PR against it, so write for that reader before the implementing agent. `gh issue create` doesn't apply the issue forms, so follow `.github/ISSUE_TEMPLATE/` section by section, and:
 - **Context** opens with a short plain-language paragraph that a reader new to the area can follow: the problem or gap today, what the change makes possible (in terms of the feed where you can), and why it's needed now (what it unblocks). References (FR/NFR IDs, PROJECT_PLAN.md sections, ADRs, related issues) come after it, not instead of it.
-- **Task** opens with **Summary:**, two to four sentences on what is being built and how it fits the pipeline: which stage, what goes in and what comes out, and the main pieces. The precise spec follows under **Details:**.
+- **Task** opens with **Summary:**, two to four sentences on what is being built and how it fits the pipeline (which stage, what goes in and what comes out, and the main pieces) or, for infra and docs issues, the workflow. The precise spec follows under **Details:**.
 - For `needs-human` issues, "What's needed" opens with one or two sentences on the decision or task and what depends on the outcome.
 - Explain internal names and jargon on first use, e.g. "the Algolia HN Search API (the public search service for Hacker News)".
 - Keep the precision: acceptance criteria, scope, interfaces and verification stay as specific as before.
