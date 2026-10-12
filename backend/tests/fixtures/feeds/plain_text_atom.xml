@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Synthetic Atom 1.0 feed mixing text, html and xhtml constructs. Invented content. -->
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Example Markup Notes</title>
+  <id>tag:markup.example.org,2026:feed</id>
+  <updated>2026-10-06T12:00:00Z</updated>
+  <entry>
+    <title type="text">Why &lt;script&gt; tags block rendering</title>
+    <id>tag:markup.example.org,2026:1</id>
+    <link href="https://markup.example.org/posts/script-tags"/>
+    <updated>2026-10-06T12:00:00Z</updated>
+    <summary type="text">Using &lt;canvas&gt; &amp; &lt;svg&gt; together.</summary>
+  </entry>
+  <entry>
+    <title type="xhtml"><div xmlns="http://www.w3.org/1999/xhtml">An <b>xhtml</b> title</div></title>
+    <id>tag:markup.example.org,2026:2</id>
+    <link href="https://markup.example.org/posts/xhtml-title"/>
+    <updated>2026-10-05T12:00:00Z</updated>
+    <content type="text">Plain content that mentions &lt;b&gt; literally.</content>
+  </entry>
+  <entry>
+    <title type="html">An &lt;i&gt;html&lt;/i&gt; title</title>
+    <id>tag:markup.example.org,2026:3</id>
+    <link href="https://markup.example.org/posts/html-title"/>
+    <updated>2026-10-04T12:00:00Z</updated>
+    <content type="html">&lt;p&gt;Html content with &lt;b&gt;bold&lt;/b&gt; text.&lt;/p&gt;</content>
+  </entry>
+</feed>

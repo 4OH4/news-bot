@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic RSS 2.0 feed whose plain-text titles mention HTML tags literally. Invented content. -->
+<rss version="2.0">
+  <channel>
+    <title>Example Web Dev Digest</title>
+    <link>https://webdev.example.com/</link>
+    <description>Invented headlines about markup.</description>
+    <item>
+      <title>Using &lt;canvas&gt; elements &amp; more</title>
+      <link>https://webdev.example.com/posts/canvas</link>
+    </item>
+    <item>
+      <title><![CDATA[Learn about <template> tags in HTML]]></title>
+      <link>https://webdev.example.com/posts/template</link>
+    </item>
+    <item>
+      <title>Comparing a &lt; b and b &gt; c in invented code</title>
+      <link>https://webdev.example.com/posts/comparisons</link>
+    </item>
+  </channel>
+</rss>
