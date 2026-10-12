@@ -121,12 +121,13 @@ Development runs as one **lead** session coordinating up to **3 worker** agents,
 
 Workers don't merge, don't edit other issues, and don't move cards other than their own. If blocked, a worker comments on the issue, leaves the card where it is and reports back.
 
-**Reviewers** give every PR an independent, adversarial review before it reaches the human. The lead starts one per finished PR, with a fresh context: the brief names only the PR and its issue, never the worker's report or the lead's reasoning. A reviewer:
-1. Checks the PR text against the diff: every claim, ticked criterion and piece of verification evidence must actually hold.
+**Reviewers** give every PR an independent, adversarial review before it reaches the human. The lead starts one per finished PR, with a fresh context: the brief names only the PR and its issue, never the worker's report or the lead's reasoning. Reviewers are **read-only**: they never commit, push or correct anything, including the PR text. A reviewer:
+1. Checks the PR text against the diff and its own lint/test run: every claim, ticked criterion and piece of verification evidence must actually hold.
 2. Tries to show the change falls short of the issue's goals, then looks at wider effects: downstream issues that consume it, PROJECT_PLAN.md, ADRs, the architecture rules, and assumptions that may not survive real data.
-3. **Fixes easy problems itself**, pushing to the PR branch. Easy means within the issue's scope, with no change to a public interface, contract or design decision, and covered by a test where it changes behaviour.
-4. **Records uncertainty for the human** in a "For human review" section at the top of the PR body (directly below "Decisions you approve by merging" on `needs-human` PRs): judgement calls the human is implicitly approving, risks, and anything the reviewer couldn't settle. Each item is one or two lines. If there's nothing, it says "None".
-5. Reports larger defects to the lead instead of fixing them. The lead sends the worker back, and starts a fresh reviewer if the rework changed behaviour. There are at most two reviews per PR; if the second still finds larger defects, the lead reports the PR to the human instead of looping.
+3. **Writes its recommendations and risk areas for the human** in a "For human review" section at the top of the PR body (directly below "Decisions you approve by merging" on `needs-human` PRs), changing nothing else in the body. It covers judgement calls the human is implicitly approving, risks, inaccuracies in the PR text, and open questions, each with a recommendation. Each item is one or two lines; if there's nothing, it says "None".
+4. Reports to the lead the findings it considers clear defects.
+
+The lead decides what happens to the defects. It sends the worker back to fix them, and starts a fresh reviewer if the rework changed behaviour. There are at most two reviews per PR; if the second still finds defects, the lead reports the PR to the human instead of looping. Once a defect is fixed, the lead marks its "For human review" item as resolved; any defect left unfixed stays there for the human to weigh.
 
 Reviewers don't merge, move cards or touch other PRs. They don't count towards the 3-worker limit, and they never run on a PR whose worker is still active.
 
@@ -134,7 +135,7 @@ Reviewers don't merge, move cards or touch other PRs. They don't count towards t
 1. Run `board.py promote`.
 2. Start workers for Ready issues, up to 3 at a time. Prefer issues whose scopes don't overlap, and never run two issues touching the same file at once.
 3. When a worker reports a PR, start a reviewer for it.
-4. When the reviewer reports, check its fixes, re-run the checks, and post a short "Lead review" comment on the PR with the verdict and merge order.
+4. When the reviewer reports, send the worker back for any defects. Once the PR is final, re-run the checks and post a short "Lead review" comment on the PR with the verdict and merge order.
 5. Tell the human which PRs are ready to merge and which `needs-human` issues are now unblocked.
 
 The lead also starts workers for `needs-human` issues that an agent can prepare, e.g. those with an "Agent prep" section. The worker produces a complete, merge-ready PR (see "The human's role" above), and the lead lists any choices the human is implicitly approving at the top of the PR description.
