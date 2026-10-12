@@ -6,9 +6,9 @@ RSS ingester's ``ingest_feed``. A source may instead give a full Google News
 RSS ``url`` (for example a topic or section feed), which is used as is.
 
 Item links are ``news.google.com/rss/articles/...`` redirect URLs, not the
-publishers' URLs, and are kept as given: resolving them is an open question
-(see the PR for #11 and its follow-up issue). Only the documented RSS feeds are
-used; Google's undocumented internal endpoints are never called.
+publishers' URLs, and are kept as given: how to resolve them is an open
+decision (#50). Only the documented RSS feeds are used; Google's undocumented
+internal endpoints are never called.
 
 Google formats each item's title as "Headline - Publisher" and its description
 as the headline and publisher again, so ``adapt_entry`` strips the publisher
