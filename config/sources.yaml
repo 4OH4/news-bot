@@ -9,13 +9,30 @@
 #     - id: bbc-news          # required, unique; lowercase letters, digits, '-' and '_'
 #       type: rss             # required: rss | google_news | hn | reddit
 #       url: https://...      # feed or listing URL; required for type rss
-#       query: "..."          # search query, for google_news (#11)
+#       query: "..."          # search query, for google_news
 #       weight: 1.0           # ranking multiplier, >= 0; 0 disables in ranking (default 1.0)
 #       enabled: true         # false skips the source entirely (default true)
 #       tags: [news, uk]      # free-form labels (default [])
 #       options: {}           # type-specific settings, read by the ingester (default {})
 #
-# Only the rss ingester exists so far; google_news and hn arrive with #11.
+# Type-specific settings (unknown option keys are rejected when ingesting):
+#
+#   google_news: exactly one of
+#       query: "..."          # a Google News search, or
+#       url: https://news.google.com/rss/...   # a full Google News RSS URL, used as is
+#     options (query only):
+#       hl: en-GB             # language (default en-GB)
+#       gl: GB                # edition country (default GB)
+#       ceid: GB:en           # edition id (default <gl>:<language part of hl>)
+#     Item links are news.google.com redirect URLs, not publisher URLs (see #11).
+#
+#   hn: the Hacker News front page, via the Algolia HN Search API
+#       url: https://hn.algolia.com/api/v1/search?...   # optional; overrides the front-page query
+#     options:
+#       min_points: 0         # skip stories with fewer points (default 0)
+#       max_items: 30         # keep at most this many, highest points first (default 30)
+#
+#   reddit: no ingester yet.
 
 sources:
   - id: bbc-news
@@ -39,3 +56,23 @@ sources:
     weight: 0.5
     enabled: false
     tags: [science]
+
+  # EXAMPLES of the discovery sources (#11), disabled until the curated list (#16)
+  # decides on queries. The query is a placeholder.
+  - id: example-google-news
+    type: google_news
+    query: "example placeholder topic"
+    enabled: false
+    weight: 0.5
+    tags: [example, discovery]
+    options:
+      hl: en-GB
+      gl: GB
+
+  - id: example-hacker-news
+    type: hn
+    enabled: false
+    tags: [example, tech, discovery]
+    options:
+      min_points: 100
+      max_items: 20
