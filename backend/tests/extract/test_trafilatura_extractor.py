@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -211,6 +212,35 @@ def test_relative_and_unsafe_metadata_images(monkeypatch: pytest.MonkeyPatch) ->
         "https://news.example.com/img/card.png"
     )
     assert extractor.extract(with_unsafe, URL).lead_image is None
+
+
+WHITESPACE_EMPHASIS_PAGE = (
+    "<html><head><title>Invented fair</title></head><body><article>"
+    "<h1>Invented fair</h1>"
+    "<p>Organisers said the<em> </em>event would return to the invented village green next"
+    " spring, with stalls, a brass band and a competition for the largest marrow.</p>"
+    "<p>Volunteers spent the<strong> </strong>weekend repainting the bandstand and mending"
+    " the bunting that a storm had torn down during the previous autumn.</p>"
+    "</article></body></html>"
+)
+
+
+def test_whitespace_only_inline_elements_keep_words_apart() -> None:
+    raw = trafilatura_extractor.trafilatura.extract(
+        WHITESPACE_EMPHASIS_PAGE, url=URL, output_format="html", include_formatting=True
+    )
+    # The page reproduces the Trafilatura output that triggered the bug.
+    assert raw is not None
+    assert re.search(r"the<(i|em)> </\1>event", raw)
+
+    result = TrafilaturaExtractor().extract(WHITESPACE_EMPHASIS_PAGE, URL)
+    text = result.text or ""
+    assert "the event" in text
+    assert "the weekend" in text
+    assert "theevent" not in text
+    assert "theweekend" not in text
+    assert "theevent" not in (result.content_html or "")
+    assert result.word_count == len(text.split())
 
 
 def test_content_without_text_is_failed_but_keeps_metadata(
