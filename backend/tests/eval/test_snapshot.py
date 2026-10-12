@@ -12,6 +12,7 @@ import pytest
 
 from newsfeed.eval.snapshot import (
     SnapshotError,
+    SnapshotPaths,
     SnapshotStatus,
     SnapshotSummary,
     UnsafeFixturesDirError,
@@ -322,6 +323,85 @@ def test_failed_refresh_keeps_the_existing_snapshot(
     assert summary.outcomes[0].status is SnapshotStatus.FAILED
     assert summary.outcomes[0].reason == "HTTP 503 (kept existing snapshot)"
     assert (paths.html.read_bytes(), paths.meta.read_bytes()) == before
+
+
+def add_meta_field(paths: SnapshotPaths) -> None:
+    """Add a key this version doesn't know, as a meta file from another version would."""
+    data = json.loads(paths.meta.read_bytes())
+    data["charset"] = "utf-8"
+    paths.meta.write_text(json.dumps(data))
+
+
+def test_meta_with_unknown_fields_still_reads(fixtures_dir: Path, fetcher: FakeFetcher) -> None:
+    take_snapshots([ARTICLE], fetcher, fixtures_dir, now=now)
+    paths = snapshot_paths(fixtures_dir, ARTICLE)
+    add_meta_field(paths)
+
+    meta, html = read_snapshot(paths)
+
+    assert (meta.id, html) == (ARTICLE.id, PAGE)
+
+
+def test_plain_rerun_with_unknown_meta_fields_keeps_snapshot(fixtures_dir: Path) -> None:
+    """Regression: this used to refetch, get a 404 and delete the saved HTML."""
+    gone = EvalEntry(id="gone", url="https://news.example.com/gone")
+    fake = FakeFetcher()
+    fake.add(gone.url, PAGE)
+    take_snapshots([gone], fake, fixtures_dir, now=now)
+    paths = snapshot_paths(fixtures_dir, gone)
+    add_meta_field(paths)
+    before = paths.html.read_bytes(), paths.meta.read_bytes()
+    fake.add(gone.url, status=404)
+    fake.calls.clear()
+
+    summary = take_snapshots([gone], fake, fixtures_dir, now=now)
+
+    assert [o.status for o in summary.outcomes] == [SnapshotStatus.SKIPPED]
+    assert fake.calls == []
+    assert (paths.html.read_bytes(), paths.meta.read_bytes()) == before
+
+
+def test_failed_refresh_with_unknown_meta_fields_keeps_snapshot(
+    fixtures_dir: Path, fetcher: FakeFetcher
+) -> None:
+    take_snapshots([ARTICLE], fetcher, fixtures_dir, now=now)
+    paths = snapshot_paths(fixtures_dir, ARTICLE)
+    add_meta_field(paths)
+    before = paths.html.read_bytes(), paths.meta.read_bytes()
+    fetcher.add(ARTICLE.url, status=404)
+
+    summary = take_snapshots([ARTICLE], fetcher, fixtures_dir, refresh=True, now=now)
+
+    assert summary.outcomes[0].status is SnapshotStatus.FAILED
+    assert summary.outcomes[0].reason == "HTTP 404 (kept existing snapshot)"
+    assert (paths.html.read_bytes(), paths.meta.read_bytes()) == before
+
+
+@pytest.mark.parametrize("refresh", [False, True])
+@pytest.mark.parametrize(
+    "damage",
+    ["unreadable meta", "missing meta", "html not matching meta"],
+)
+def test_failed_fetch_never_touches_existing_html(
+    fixtures_dir: Path, fetcher: FakeFetcher, damage: str, refresh: bool
+) -> None:
+    """With HTML on disk that can't be validated, a failed fetch changes no files."""
+    take_snapshots([ARTICLE], fetcher, fixtures_dir, now=now)
+    paths = snapshot_paths(fixtures_dir, ARTICLE)
+    if damage == "unreadable meta":
+        paths.meta.write_bytes(b"{not json")
+    elif damage == "missing meta":
+        paths.meta.unlink()
+    else:
+        paths.html.write_bytes(gzip.compress(b"older copy"))
+    before = sorted((p, p.read_bytes()) for p in fixtures_dir.rglob("*") if p.is_file())
+    fetcher.add(ARTICLE.url, status=None, error="connection reset")
+
+    summary = take_snapshots([ARTICLE], fetcher, fixtures_dir, refresh=refresh, now=now)
+
+    assert summary.outcomes[0].status is SnapshotStatus.FAILED
+    assert summary.outcomes[0].reason == "connection reset (kept existing snapshot)"
+    assert sorted((p, p.read_bytes()) for p in fixtures_dir.rglob("*") if p.is_file()) == before
 
 
 def test_corrupt_snapshot_is_fetched_again(fixtures_dir: Path, fetcher: FakeFetcher) -> None:

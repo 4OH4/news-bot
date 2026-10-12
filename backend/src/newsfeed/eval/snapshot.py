@@ -12,6 +12,12 @@ so failures are visible without saving an error page. The meta file is written
 last and its ``sha256`` must match the HTML, so a half-written snapshot is never
 mistaken for a complete one.
 
+A failed fetch never deletes or overwrites an existing ``.html.gz`` or its meta
+file, with or without ``--refresh``: pages that have gone offline or behind a
+paywall can't be fetched again, so whatever is on disk is kept and only the
+summary reports the failure. A failure is written to the meta file only when no
+HTML is saved for that entry.
+
 Snapshots are third-party content and this repo is public, so the fixtures
 directory must be outside every git working tree (``ensure_outside_git``).
 The scorer (#18) and the settings module (#19) reuse ``resolve_fixtures_dir``,
@@ -153,7 +159,10 @@ class SnapshotMeta(BaseModel):
     says what happened.
     """
 
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    # Unknown keys are ignored rather than rejected, so a meta file written by
+    # another version of this tool still reads as a valid snapshot instead of
+    # making the entry look unsnapshotted (and so liable to be re-fetched).
+    model_config = ConfigDict(extra="ignore", frozen=True)
 
     id: str
     url: str
@@ -349,13 +358,13 @@ def _snapshot_one(
         return SnapshotOutcome(entry.id, entry.url, SnapshotStatus.FETCHED)
 
     reason = meta.error or "unknown error"
-    if had_snapshot:
-        # A refresh that fails (site down, now blocked) keeps the good snapshot.
+    if had_snapshot or paths.html.exists():
+        # Never touch saved HTML on a failure: the page may be gone for good (offline,
+        # now paywalled), so a saved copy we can't validate is still worth keeping.
         return SnapshotOutcome(
             entry.id, entry.url, SnapshotStatus.FAILED, f"{reason} (kept existing snapshot)"
         )
     _write_atomic(paths.meta, meta.model_dump_json(indent=2).encode("utf-8"))
-    paths.html.unlink(missing_ok=True)
     return SnapshotOutcome(entry.id, entry.url, SnapshotStatus.FAILED, reason)
 
 
@@ -371,9 +380,11 @@ def take_snapshots(
 
     Entries that already have a complete snapshot are skipped unless
     ``refresh`` is True. An entry whose earlier fetch failed has no complete
-    snapshot, so it is tried again. A non-200 result writes only the meta file;
-    if a refresh fails, the existing snapshot is kept. One bad entry never
-    stops the run: its failure is logged and recorded in the summary.
+    snapshot, so it is tried again. A non-200 result writes only the meta file,
+    and only when no HTML is saved for the entry: a failed fetch never deletes
+    or overwrites an existing ``.html.gz`` or its meta file, with or without
+    ``refresh``. One bad entry never stops the run: its failure is logged and
+    recorded in the summary.
 
     Raises:
         UnsafeFixturesDirError: if ``fixtures_dir`` is inside a git working
