@@ -15,7 +15,7 @@ import threading
 from collections import Counter, defaultdict
 from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from urllib.parse import urlsplit
 
@@ -118,9 +118,12 @@ def _codec(name: str) -> str | None:
 def decode_html(content: bytes, headers: dict[str, str] | None = None) -> str:
     """Decode a fetched page: Content-Type charset, then ``<meta charset>``, then a fallback.
 
-    The fallback is UTF-8, then Windows-1252 (the browsers' default for
-    undeclared legacy pages), with undecodable bytes replaced so a bad byte
-    never loses the page. A BOM wins over everything.
+    A declared charset is trusted: if no candidate decodes the page cleanly,
+    the first declared one (UTF-8 if it was ASCII) is applied with undecodable
+    bytes replaced, so one bad byte costs one character, not the whole page.
+    Windows-1252 (the browsers' default for undeclared legacy pages) is only
+    the fallback for pages that declare nothing and aren't valid UTF-8. A BOM
+    wins over everything.
     """
     if content.startswith(codecs.BOM_UTF8):
         return content[len(codecs.BOM_UTF8) :].decode("utf-8", errors="replace")
@@ -131,15 +134,16 @@ def decode_html(content: bytes, headers: dict[str, str] | None = None) -> str:
     meta_match = _META_CHARSET.search(content[:_SNIFF_BYTES])
     if meta_match:
         candidates.append(meta_match.group(1).decode("ascii", errors="ignore"))
-    candidates.append("utf-8")
-    for candidate in candidates:
-        codec = _codec(candidate)
-        if codec is None:
-            continue
+    declared = [codec for name in candidates if (codec := _codec(name)) is not None]
+    for codec in [*declared, "utf-8"]:
         try:
             return content.decode(codec)
         except UnicodeDecodeError:
             continue
+    if declared:
+        # A page that says it is ASCII but isn't is far more likely UTF-8.
+        codec = "utf-8" if declared[0] == "ascii" else declared[0]
+        return content.decode(codec, errors="replace")
     return content.decode("cp1252", errors="replace")
 
 
@@ -274,16 +278,20 @@ def _ingest_source(
     try:
         articles, new_state = ingester.ingest(source, services.fetcher, state)
         entries = _canonicalise(services, articles, tally)
+        in_range = entries
         if since is not None:
-            entries = [a for a in entries if a.published_at is None or a.published_at >= since]
-        fresh = dedupe(entries, known)
+            in_range = [a for a in entries if a.published_at is None or a.published_at >= since]
+        fresh = dedupe(in_range, known)
+        dropped = len(in_range) < len(entries) or (limit is not None and len(fresh) > limit)
         if limit is not None:
             fresh = fresh[:limit]
         for article in fresh:
             services.repository.upsert_article(article)
         # The state goes last: if storing the articles failed, the next run must
-        # not get a 304 for entries we never kept.
-        services.repository.save_source_state(new_state)
+        # not get a 304 for entries we never kept. The same goes for entries that
+        # --since or --limit dropped: the old ETag lets a later run see them.
+        if not dropped:
+            services.repository.save_source_state(new_state)
     except Exception as exc:
         tally.error()
         tally.count(stage, "sources_failed")
@@ -362,6 +370,8 @@ def _merge(article: Article, result: ExtractionResult, content_ref: str | None) 
 class _ExtractRun:
     services: Services
     tally: RunTally
+    # Serialises the check-then-store in _refine_canonical across worker threads.
+    refine_lock: threading.Lock = field(default_factory=threading.Lock)
 
 
 def _finish_skipped(run: _ExtractRun, article: Article, reason: str, domain: str) -> None:
@@ -503,14 +513,15 @@ def _refine_canonical(run: _ExtractRun, article: Article, page: FetchedPage) -> 
             "new_id": new.id,
         },
     )
-    if services.repository.get_article(new.id) is not None:
+    with run.refine_lock:
+        if services.repository.get_article(new.id) is not None:
+            services.repository.delete_article(article.id)
+            run.tally.count(PipelineStage.EXTRACT, "merged")
+            return None
+        # Store the new id before retiring the old one, so a crash in between
+        # leaves a duplicate that the next run merges, never a lost article.
+        services.repository.upsert_article(new)
         services.repository.delete_article(article.id)
-        run.tally.count(PipelineStage.EXTRACT, "merged")
-        return None
-    # Store the new id before retiring the old one, so a crash in between
-    # leaves a duplicate that the next run merges, never a lost article.
-    services.repository.upsert_article(new)
-    services.repository.delete_article(article.id)
     run.tally.count(PipelineStage.EXTRACT, "refined")
     return new
 
@@ -527,17 +538,30 @@ def extract_pending(
     services: Services,
     tally: RunTally,
     *,
+    sources: Sequence[Source] = (),
     since: datetime | None = None,
     limit: int | None = None,
 ) -> None:
     """Fetch and extract pending articles in a bounded thread pool.
 
+    ``sources``, when given, restricts this to those sources' articles.
     ``since`` only considers articles ingested at or after it, ``limit`` at most
     that many. Failed articles are not retried automatically.
     """
-    pending = services.repository.list_articles(
-        status=ExtractionStatus.PENDING, since=since, limit=limit
-    )
+    if sources:
+        wanted = {s.id for s in sources}
+        # The limit applies after the source filter, so it can't be pushed down.
+        pending = [
+            a
+            for a in services.repository.list_articles(status=ExtractionStatus.PENDING, since=since)
+            if a.source_id in wanted
+        ]
+        if limit is not None:
+            pending = pending[:limit]
+    else:
+        pending = services.repository.list_articles(
+            status=ExtractionStatus.PENDING, since=since, limit=limit
+        )
     tally.count(PipelineStage.EXTRACT, "attempted", len(pending))
     run = _ExtractRun(services, tally)
     with ThreadPoolExecutor(max_workers=services.concurrency) as pool:
@@ -565,23 +589,28 @@ def extract_saved_url(
     """Store ``url`` as an ad hoc article, extract it, and return the stored article.
 
     Goes through the same path as feed articles, including canonical
-    refinement, so the result is what a run would have stored.
+    refinement, so the result is what a run would have stored. If the URL is
+    already stored (say from a feed), that article is re-extracted with its
+    feed metadata intact rather than replaced by an ad hoc one.
     """
-    article = Article(
-        canonical_url=normalise_url(url, rules=services.url_rules),
+    canonical = normalise_url(url, rules=services.url_rules)
+    existing = services.repository.get_article(article_id(canonical))
+    article = existing or Article(
+        canonical_url=canonical,
         url=url,
         source_id=AD_HOC_SOURCE_ID,
         title=url,
         fetched_at=clock(),
     )
-    services.repository.upsert_article(article)
+    if existing is None:
+        services.repository.upsert_article(article)
     _extract_safely(_ExtractRun(services, RunTally()), article)
     stored = services.repository.get_article(article.id)
     if stored is not None:
         return stored
     # The page declared another canonical URL, so the article was re-keyed.
     for candidate in services.repository.list_articles(limit=50):
-        if candidate.url == url and candidate.source_id == AD_HOC_SOURCE_ID:
+        if candidate.url == article.url and candidate.source_id == article.source_id:
             return candidate
     return article
 
@@ -608,7 +637,7 @@ def run_pipeline(
     if ingest:
         ingest_sources(services, sources, tally, since=since, limit=limit)
     if extract:
-        extract_pending(services, tally, since=since, limit=limit)
+        extract_pending(services, tally, sources=sources, since=since, limit=limit)
     stats = tally.stats(run_id, started, clock())
     services.repository.save_run_stats(stats)
     log.info(
