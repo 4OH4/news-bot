@@ -41,9 +41,9 @@ Keep the lead and the reviewers on Opus. If reviewers start finding noticeably m
 For each finished PR:
 1. **Independent review.** Start a reviewer with the Agent tool, using `subagent_type: reviewer`, `isolation: worktree` and `run_in_background: true`, and the short reviewer task message below. Give it only the PR number, the issue number and the consuming issues. Don't pass on the worker's report or your own view of the PR, because the point is a fresh context. Only start it once that PR's worker has finished.
 2. **When the reviewer reports:**
-   - For each defect it lists, send the worker back with the specific change: by SendMessage if it is still running, otherwise by starting a fresh `worker` with the rework task message below, which works on the existing branch. If the rework changes behaviour, start a fresh reviewer afterwards. At most two reviews per PR: if the second still finds defects, report the PR to the human instead of starting a third, and `python3 scripts/board.py set <N> "Human review"`.
-   - In "For human review", mark items fixed by rework as resolved, and leave the rest for the human. Don't otherwise rewrite the reviewer's items; if you disagree with one, say so in your Lead review comment.
-3. **Re-run the checks.** In the worker's worktree, run `uv sync` in `backend/`, then `make lint` and `make test`. Run `make eval` too if `extract/` was touched. Confirm CI is green.
+   - For each defect it lists, send the worker back with the specific change: by SendMessage if it is still running, otherwise by starting a fresh `worker` with the rework task message below, which works on the existing branch. Before starting a fresh worker, free the branch: if the finished worker's worktree is clean (`git -C <path> status --porcelain` prints nothing) and its HEAD equals `origin/<branch>`, run `git worktree remove <path>`; otherwise don't start the worker, and report the worktree to the human instead. If the rework changes behaviour, start a fresh reviewer afterwards. At most two reviews per PR: if the second still finds defects, report the PR to the human instead of starting a third, and `python3 scripts/board.py set <N> "Human review"`.
+   - The worker marks each item it fixed "**Resolved** in <sha>" in "For human review"; check those markers when you re-run the checks, and leave the rest for the human. Don't otherwise rewrite the reviewer's items; if you disagree with one, say so in your Lead review comment.
+3. **Re-run the checks.** In a detached checkout, never one holding the branch (`git fetch origin`, then `git checkout --detach origin/<branch>`, in the worker's worktree or your own), run `uv sync` in `backend/`, then `make lint` and `make test`. Run `make eval` too if `extract/` was touched. Confirm CI is green.
 4. **Shared files.** If the PR shares `pyproject.toml` or `uv.lock` with another open PR, either stack it on that PR's branch (resolve `uv.lock` with `uv lock`) or tell the human the merge order.
 5. **Comment.** Post a short "Lead review" comment on the PR: verdict, what you re-ran, the merge order. Then `python3 scripts/board.py set <N> "Human review"`. Workers set "Agent review" when they open the PR; only you set "Human review".
 6. **Sending work back.** If the human requests changes on a Human review PR, or a defect turns up late, set the card back with `python3 scripts/board.py set <N> "Agent review"` and send the work back as in step 2.
@@ -82,4 +82,5 @@ Reviewer:
 
 ```
 PR #<P>, closing issue #<N>. Consuming issues: <list, or "none">.
+<For a second review: "Second review.">
 ```

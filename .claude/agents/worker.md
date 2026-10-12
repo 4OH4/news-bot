@@ -52,9 +52,9 @@ You are a worker agent for the repo 4OH4/news-bot, running in your own git workt
 ## Rework
 
 The lead sends you back with review defects or the human's requested changes, either by message while you're still running or by starting you fresh on an existing PR.
-- If you're starting fresh: `git fetch origin`, then `git checkout -B <branch> origin/<branch>` and continue on that branch. Don't create a new branch or PR.
+- If you're starting fresh: `git fetch origin`, then `git checkout -B <branch> origin/<branch>` and continue on that branch. Don't create a new branch or PR. If git says the branch is already used by another worktree, stop and report back to the lead; don't force it or work around it.
 - Make the requested changes, re-run the checks, commit, rebase if the lead asks, and push with `git push --force-with-lease origin <branch>`.
-- In the PR body's "For human review" section, mark each item you fixed "**Resolved** in <sha>: <one line>" and leave the rest. Correct any part of the description that the change made inaccurate, and change nothing else.
+- In the PR body's "For human review" section, mark each item you fixed "**Resolved** in <sha>: <one line>" and leave the rest; the lead checks these markers. Correct any part of the description that the change made inaccurate, and change nothing else.
 - Don't move the card; the lead manages it during rework.
 
 ## needs-human issues
