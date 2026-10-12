@@ -20,15 +20,36 @@ COPY backend/src ./src
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev --no-editable
 
-FROM ${PYTHON_IMAGE} AS runtime
+# Same dependencies plus the optional Playwright group (PROJECT_PLAN.md §11).
+FROM builder AS playwright-builder
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --locked --no-dev --no-editable --group playwright
+
+# Shared by both final targets: the unprivileged user, config and environment.
+FROM ${PYTHON_IMAGE} AS base
 RUN useradd --create-home --uid 10001 newsfeed \
     && mkdir /data && chown newsfeed:newsfeed /data
-COPY --from=builder /app/.venv /app/.venv
 COPY config /app/config
 ENV PATH=/app/.venv/bin:$PATH \
     PYTHONUNBUFFERED=1 \
     NEWSFEED_CONFIG_DIR=/app/config \
     NEWSFEED_DATA_DIR=/data
 WORKDIR /app
-USER newsfeed
 ENTRYPOINT ["newsfeed"]
+
+# Opt-in image with Chromium, for domains flagged `render: playwright`:
+#   docker build -f backend/Dockerfile --target playwright -t newsfeed:playwright .
+FROM base AS playwright
+COPY --from=playwright-builder /app/.venv /app/.venv
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+# Installs Chromium and its system libraries as root, then hands over to the user.
+RUN playwright install --with-deps --only-shell chromium \
+    && rm -rf /var/lib/apt/lists/* \
+    && chmod -R a+rX /ms-playwright
+USER newsfeed
+
+# Keep this stage last: it is what `docker build` builds without --target, and
+# it must stay slim.
+FROM base AS runtime
+COPY --from=builder /app/.venv /app/.venv
+USER newsfeed
