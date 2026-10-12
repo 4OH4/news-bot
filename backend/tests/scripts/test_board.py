@@ -216,3 +216,49 @@ def test_lead_loads_the_board_once(
     assert len(calls) == 1 and "board.py" in calls[0][1] and "--show" in calls[0]
     assert "GraphQL: 1 point(s) used" in shown
     assert "#2 [agent] Issue 2" in shown and "#1" not in shown
+
+
+def test_missing_dependency_is_treated_as_open(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    nodes = [
+        issue_node(7, "Backlog", "OPEN", ("agent-ready",), "Depends on #999"),
+        issue_node(8, "Backlog", "OPEN", ("agent-ready",)),
+    ]
+    not_found = done('{"message": "Not Found", "status": "404"}', "gh: Not Found (HTTP 404)", 1)
+    script_gh(monkeypatch, [done(page(nodes)), not_found, done(MUTATION_OK)])
+    loaded = board.Board.load("o", 1)
+    board.promote(loaded, "o/r", dry_run=False)
+    assert [i["status"] for i in loaded.items] == ["Backlog", "Ready"]
+    assert "#999" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("kind", ["RATE_LIMITED", "RATE_LIMIT"])
+def test_both_rate_limit_error_types(monkeypatch: pytest.MonkeyPatch, kind: str) -> None:
+    limited = {
+        "data": {"rateLimit": {"cost": 0, "remaining": 0, "resetAt": "2026-10-12T15:30:00Z"}},
+        "errors": [{"type": kind, "message": "API rate limit exceeded"}],
+    }
+    script_gh(monkeypatch, [done(limited, code=1)])
+    with pytest.raises(SystemExit, match="resets at 2026-10-12 15:30 UTC"):
+        board.main(["show"])
+
+
+def test_secondary_rate_limit_has_its_own_message(monkeypatch: pytest.MonkeyPatch) -> None:
+    stderr = "gh: You have exceeded a secondary rate limit (HTTP 403)"
+    script_gh(monkeypatch, [done("", stderr, 1)])
+    with pytest.raises(SystemExit, match="secondary rate limit hit; wait a minute"):
+        board.main(["show"])
+
+
+def test_quiet_after_subcommand(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    script_gh(monkeypatch, [done(page(BOARD_NODES))])
+    board.main(["show", "--quiet"])
+    assert capsys.readouterr().err == ""
+
+
+def test_draft_items_keep_their_title() -> None:
+    node = {"id": "d", "status": None, "content": {"__typename": "DraftIssue", "title": "Idea"}}
+    assert board.parse_item(node)["title"] == "Idea"

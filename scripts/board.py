@@ -18,7 +18,7 @@ whose every "Depends on #N" issue is closed to Ready. `needs-human` issues are n
 promoted automatically.
 
 GraphQL budget: GitHub allows 5,000 GraphQL points per user per hour, shared by every
-agent and `gh` itself. `set` costs ~1 point (one targeted query plus one mutation);
+agent and `gh` itself. `set` costs 2 points (one targeted query plus one mutation);
 `show` and `promote` read the board with one paginated query (~1 point per 50 items).
 The points used and the allowance left are printed to stderr after each command
 (silence with --quiet). If the allowance is exhausted the script says when it resets
@@ -92,6 +92,7 @@ query($owner: String!, $project: Int!, $after: String) {{
             __typename
             ... on Issue {{ number title state body labels(first: 20) {{ nodes {{ name }} }} }}
             ... on PullRequest {{ number title state }}
+            ... on DraftIssue {{ title }}
           }}
         }}
       }}
@@ -188,7 +189,10 @@ def graphql(query: str, **variables: str | int | None) -> dict[str, Any]:
         payload = {}
     errors = payload.get("errors") or []
     data = payload.get("data") or {}
-    if any(e.get("type") == "RATE_LIMIT" for e in errors) or (
+    blob = (result.stderr + json.dumps(errors)).lower()
+    if "secondary rate limit" in blob:  # abuse protection, not the hourly allowance
+        raise RateLimitError("GitHub secondary rate limit hit; wait a minute and retry")
+    if any(e.get("type") in ("RATE_LIMITED", "RATE_LIMIT") for e in errors) or (
         "rate limit" in result.stderr.lower() and not data
     ):
         raise RateLimitError(rate_limit_message((data.get("rateLimit") or {}).get("resetAt")))
@@ -309,7 +313,13 @@ def promote(board: Board, repo: str, dry_run: bool) -> None:
 
     def dep_state(n: int) -> str | None:
         if n not in state:  # a dependency that isn't on the board: ask REST
-            state[n] = json.loads(gh("api", f"repos/{repo}/issues/{n}"))["state"].upper()
+            result = _run_gh("api", f"repos/{repo}/issues/{n}")
+            try:
+                state[n] = json.loads(result.stdout)["state"].upper()
+            except (ValueError, KeyError):
+                # e.g. a 404: treat as not closed so one bad reference can't abort promote
+                print(f"warning: can't read dependency #{n}; treating as open", file=sys.stderr)
+                state[n] = None
         return state[n]
 
     # The board's built-in "closed -> Done" workflow isn't enabled, so sync it here.
@@ -364,14 +374,20 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--repo", default=DEFAULT_REPO)
     parser.add_argument("--owner", default=DEFAULT_OWNER)
     parser.add_argument("--project", type=int, default=DEFAULT_PROJECT)
-    parser.add_argument("--quiet", action="store_true", help="don't print the GraphQL allowance")
+    common = argparse.ArgumentParser(add_help=False)
+    # SUPPRESS so a flag given before the subcommand isn't overwritten by the default
+    common.add_argument(
+        "--quiet", action="store_true", default=argparse.SUPPRESS,
+        help="don't print the GraphQL allowance",
+    )
+    parser.add_argument("--quiet", action="store_true", help=argparse.SUPPRESS)
     sub = parser.add_subparsers(dest="command", required=True)
-    sub.add_parser("show", help="list issues grouped by status").set_defaults(fn=cmd_show)
-    p_set = sub.add_parser("set", help="move an issue to a status")
+    sub.add_parser("show", parents=[common], help="list issues grouped by status").set_defaults(fn=cmd_show)
+    p_set = sub.add_parser("set", parents=[common], help="move an issue to a status")
     p_set.add_argument("issue", type=int)
     p_set.add_argument("status", choices=STATUSES, help="one of: %(choices)s")
     p_set.set_defaults(fn=cmd_set)
-    p_promote = sub.add_parser("promote", help="move unblocked agent-ready issues to Ready")
+    p_promote = sub.add_parser("promote", parents=[common], help="move unblocked agent-ready issues to Ready")
     p_promote.add_argument("--dry-run", action="store_true")
     p_promote.add_argument("--show", action="store_true", help="then print the board")
     p_promote.set_defaults(fn=cmd_promote)
