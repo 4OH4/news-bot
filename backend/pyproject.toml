@@ -5,6 +5,7 @@ description = "Self-hosted personalised news feed pipeline: ingest, extract, ran
 requires-python = ">=3.12"
 license = "MIT"
 dependencies = [
+    "httpx>=0.28.1",
     "pydantic>=2.14.1",
     "typer>=0.27.3",
 ]
