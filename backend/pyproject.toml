@@ -8,9 +8,11 @@ dependencies = [
     "feedparser>=6.0.14",
     "httpx>=0.28.1",
     "lxml>=6.1.3",
+    "newspaper4k>=0.9.6",
     "nh3>=0.3.7",
     "pydantic>=2.14.1",
     "pyyaml>=6.0.3",
+    "readability-lxml>=0.9",
     "trafilatura>=2.3.1,<2.4",
     "typer>=0.27.3",
 ]
@@ -54,6 +56,12 @@ mypy_path = "src"
 # are treated as Any and checked at runtime in ingest/rss.py.
 [[tool.mypy.overrides]]
 module = ["feedparser", "feedparser.*"]
+ignore_missing_imports = true
+
+# readability-lxml and newspaper4k ship no type hints either; their results are
+# passed through extract/common.py's build_result, which validates them.
+[[tool.mypy.overrides]]
+module = ["readability", "readability.*", "newspaper", "newspaper.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
