@@ -9,6 +9,9 @@ pipeline (#12, #19).
 The work is split so other feed-based ingesters (e.g. Google News, #11) can
 reuse it: ``ingest_feed`` does the conditional fetch and state update for any
 feed URL, and ``parse_feed`` is a pure function from feed bytes to articles.
+Both take an optional ``adapt_entry`` hook that lets an ingester post-process
+each article using the raw feedparser entry (Google News uses it to strip the
+publisher from titles).
 """
 
 from __future__ import annotations
@@ -24,6 +27,7 @@ from urllib.parse import urljoin, urlsplit
 
 import feedparser
 
+from newsfeed.ingest.source_fetch import FeedFetchError, fetch_source, next_state
 from newsfeed.ingest.text import collapse_whitespace, html_to_text, truncate
 from newsfeed.logging import get_logger
 from newsfeed.models import Article, Source, SourceState, SourceType
@@ -31,6 +35,7 @@ from newsfeed.ports import Fetcher
 
 __all__ = [
     "SUMMARY_MAX_CHARS",
+    "EntryAdapter",
     "FeedFetchError",
     "RssIngester",
     "ingest_feed",
@@ -51,21 +56,11 @@ _BENIGN_BOZO = (feedparser.NonXMLContentType, feedparser.CharacterEncodingOverri
 # decoded to plain text, and decoding it again would eat text like "<canvas>".
 _HTML_TYPES = frozenset({"text/html", "application/xhtml+xml"})
 
+EntryAdapter = Callable[[Mapping[str, Any], Article], Article]
+"""Post-processes the article built from a feedparser entry, given that entry.
 
-class FeedFetchError(RuntimeError):
-    """The feed could not be fetched (network error, robots.txt, HTTP 4xx/5xx).
-
-    Raised rather than returning no articles, so the pipeline's per-source
-    error handling logs and counts it, and the saved state stays as it was.
-
-    Attributes:
-        status_code: the HTTP status (e.g. 404 or 410 for a dead feed), or None
-            when there was no response (network error, robots.txt refusal).
-    """
-
-    def __init__(self, message: str, *, status_code: int | None = None) -> None:
-        super().__init__(message)
-        self.status_code = status_code
+May raise to skip the entry; the failure is logged like any other bad entry.
+"""
 
 
 def _utc_now() -> datetime:
@@ -123,6 +118,7 @@ def ingest_feed(
     *,
     clock: Callable[[], datetime] = _utc_now,
     summary_max_chars: int = SUMMARY_MAX_CHARS,
+    adapt_entry: EntryAdapter | None = None,
 ) -> tuple[list[Article], SourceState]:
     """Conditionally fetch the feed at ``feed_url`` and parse it into articles.
 
@@ -134,19 +130,9 @@ def ingest_feed(
     * A malformed feed is logged and whatever parsed is returned; entries that
       can't become an ``Article`` are skipped and logged (see ``parse_feed``).
     """
-    result = fetcher.fetch(feed_url, etag=state.etag, last_modified=state.last_modified)
-    if result.not_modified:
-        log.info(
-            "feed not modified",
-            extra={"stage": _STAGE, "source_id": source.id, "url": feed_url},
-        )
+    result = fetch_source(source, feed_url, fetcher, state)
+    if result is None:
         return [], state.model_copy(deep=True)
-    if result.error is not None or result.status_code is None or result.status_code >= 400:
-        reason = result.error or f"HTTP {result.status_code}"
-        raise FeedFetchError(
-            f"fetching feed {feed_url} for source {source.id!r} failed: {reason}",
-            status_code=result.status_code,
-        )
 
     fetched_at = clock()
     articles = parse_feed(
@@ -156,16 +142,9 @@ def ingest_feed(
         fetched_at=fetched_at,
         headers=result.headers,
         summary_max_chars=summary_max_chars,
+        adapt_entry=adapt_entry,
     )
-    new_state = SourceState.model_validate(
-        {
-            **state.model_dump(),
-            "etag": result.headers.get("etag"),
-            "last_modified": result.headers.get("last-modified"),
-            "last_fetched_at": fetched_at,
-            "last_status": result.status_code,
-        }
-    )
+    new_state = next_state(state, result, fetched_at)
     log.info(
         "feed ingested",
         extra={
@@ -186,6 +165,7 @@ def parse_feed(
     fetched_at: datetime,
     headers: Mapping[str, str] | None = None,
     summary_max_chars: int = SUMMARY_MAX_CHARS,
+    adapt_entry: EntryAdapter | None = None,
 ) -> list[Article]:
     """Parse RSS/Atom ``content`` into pending articles, in feed order.
 
@@ -197,6 +177,8 @@ def parse_feed(
     whatever parsed is returned; a feed whose only fault is a non-XML
     Content-Type is logged at debug level. An entry that can't become an ``Article`` is
     skipped with a structured warning; the rest of the feed is still returned.
+    ``adapt_entry``, if given, is applied to each article together with its
+    entry, and an exception it raises skips that entry in the same way.
     """
     response_headers = {"content-location": feed_url}
     content_type = (headers or {}).get("content-type")
@@ -229,15 +211,14 @@ def parse_feed(
     articles: list[Article] = []
     for entry in parsed.get("entries", []):
         try:
-            articles.append(
-                _entry_to_article(
-                    entry,
-                    source_id=source_id,
-                    base_url=feed_url,
-                    fetched_at=fetched_at,
-                    summary_max_chars=summary_max_chars,
-                )
+            article = _entry_to_article(
+                entry,
+                source_id=source_id,
+                base_url=feed_url,
+                fetched_at=fetched_at,
+                summary_max_chars=summary_max_chars,
             )
+            articles.append(adapt_entry(entry, article) if adapt_entry else article)
         # Feed content is untrusted third-party data, and one odd entry must
         # not lose the rest of the feed, so any per-entry failure is a skip.
         except Exception as exc:
