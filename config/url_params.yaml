@@ -1,0 +1,29 @@
+# Per-domain query-parameter rules for canonical URLs (FR-4, issue #35),
+# loaded by newsfeed.config.load_url_params and passed to
+# newsfeed.ingest.canonical.normalise_url.
+#
+# normalise_url always strips a global list of vendor-defined tracking
+# parameters (utm_*, fbclid, ref, ...; see TRACKING_PARAMS in canonical.py).
+# Publisher-specific tags are not in that list, because a short name can select
+# content on another site, and stripping it there would merge two articles
+# under one id. Add them here, per domain, instead.
+#
+# Schema (unknown keys are rejected; invalid config fails at load time):
+#
+#   domains:
+#     example.com:              # lowercase hostname, at least two labels; IDNs as xn--
+#                               # also applies to every subdomain (www., edition., ...)
+#       strip: [smid]           # exact parameter names to remove (case-insensitive)
+#       strip_prefixes: [at_]   # remove every parameter starting with one of these
+#       keep: [ref]             # never remove these, even if the global list or a
+#                               # strip rule matches; keep always wins
+#
+# When a host matches several entries (www.example.com and example.com), their
+# rules are combined. A name can't be in both strip and keep of one entry.
+# keep doesn't affect AMP flags such as ?amp=1, which resolve_amp handles.
+#
+# Policy: only add a rule backed by evidence from real runs (a duplicate caused
+# by a tracker, or a merge caused by stripping a content parameter), and say
+# what the evidence was in the commit or PR. Don't add rules from guesses.
+
+domains: {}
