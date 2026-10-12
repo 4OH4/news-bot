@@ -6,7 +6,8 @@ request including each redirect hop:
 * an identifiable User-Agent;
 * robots.txt, fetched once per origin per process. A 2xx is parsed, any other
   4xx means "allow all", and a 429, 5xx or network failure means "disallow the
-  whole origin" for the rest of the run;
+  whole origin" for the rest of the run. Refusals report ``ROBOTS_DISALLOWED``
+  or ``ROBOTS_UNAVAILABLE`` so callers can tell the two apart;
 * a minimum interval between requests to the same host (default 2s, overridable
   per host), shared by all threads;
 * conditional GETs (``If-None-Match`` / ``If-Modified-Since``);
@@ -47,6 +48,8 @@ __all__ = [
     "DEFAULT_TIMEOUT",
     "DEFAULT_USER_AGENT",
     "MAX_RETRY_AFTER",
+    "ROBOTS_DISALLOWED",
+    "ROBOTS_UNAVAILABLE",
     "HttpFetcher",
     "parse_retry_after",
 ]
@@ -61,6 +64,9 @@ DEFAULT_BACKOFF_BASE = 1.0
 MAX_RETRY_AFTER = 60.0
 # RFC 9309 lets crawlers ignore anything past the first 500 KiB of robots.txt.
 ROBOTS_MAX_BYTES = 500 * 1024
+
+ROBOTS_DISALLOWED = "disallowed by robots.txt"
+ROBOTS_UNAVAILABLE = "robots.txt unavailable"
 
 _RETRY_STATUSES = frozenset({429, 502, 503, 504})
 _REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
@@ -84,7 +90,8 @@ def parse_retry_after(value: str | None, now: datetime) -> float | None:
     if value is None:
         return None
     value = value.strip()
-    if value.isdigit():
+    # isascii() too: str.isdigit() accepts characters like "²" that float() rejects.
+    if value.isascii() and value.isdigit():
         return float(value)
     try:
         when = parsedate_to_datetime(value)
@@ -97,15 +104,23 @@ def parse_retry_after(value: str | None, now: datetime) -> float | None:
 
 @dataclass(frozen=True)
 class _RobotsPolicy:
-    """The robots.txt decision for one origin: a parsed file or a blanket rule."""
+    """The robots.txt decision for one origin: a parsed file or a blanket rule.
+
+    ``unavailable`` marks a blanket refusal because robots.txt couldn't be
+    fetched (5xx, 429, network error), as opposed to rules that disallow us.
+    """
 
     parser: RobotFileParser | None
     allow_all: bool
+    unavailable: bool = False
 
-    def allows(self, url: str, user_agent: str) -> bool:
+    def refusal(self, url: str, user_agent: str) -> str | None:
+        """Return why ``url`` may not be fetched, or None if it may."""
+        if self.unavailable:
+            return ROBOTS_UNAVAILABLE
         if self.parser is None:
-            return self.allow_all
-        return self.parser.can_fetch(user_agent, url)
+            return None if self.allow_all else ROBOTS_DISALLOWED
+        return None if self.parser.can_fetch(user_agent, url) else ROBOTS_DISALLOWED
 
 
 @dataclass
@@ -261,14 +276,10 @@ class HttpFetcher:
 
         current = url
         for _hop in range(self._max_redirects + 1):
-            problem = _url_problem(current)
-            if problem is not None:
-                return self._result(url, current, started, _Response(error=problem))
-            if not self.is_allowed(current):
-                log.info("fetch disallowed by robots.txt", extra={"url": current})
-                return self._result(
-                    url, current, started, _Response(error="disallowed by robots.txt")
-                )
+            refusal = self._refusal(current)
+            if refusal is not None:
+                log.info("fetch refused", extra={"url": current, "error": refusal})
+                return self._result(url, current, started, _Response(error=refusal))
             response = self._get_with_retries(current, request_headers)
             if response.status in _REDIRECT_STATUSES and response.error is None:
                 location = response.headers.get("location")
@@ -291,9 +302,7 @@ class HttpFetcher:
         Fetches and caches the origin's robots.txt on first use. Malformed or
         non-HTTP URLs are never allowed.
         """
-        if _url_problem(url) is not None:
-            return False
-        return self._robots_policy(_origin(url)).allows(url, self.user_agent)
+        return self._refusal(url) is None
 
     @contextmanager
     def permit(self, url: str) -> Iterator[None]:
@@ -309,6 +318,13 @@ class HttpFetcher:
         yield
 
     # --- Internals -----------------------------------------------------------
+
+    def _refusal(self, url: str) -> str | None:
+        """Return why ``url`` may not be fetched (bad URL or robots.txt), or None."""
+        problem = _url_problem(url)
+        if problem is not None:
+            return problem
+        return self._robots_policy(_origin(url)).refusal(url, self.user_agent)
 
     def _get_with_retries(self, url: str, headers: Mapping[str, str]) -> _Response:
         host = _host(url)
@@ -343,7 +359,8 @@ class HttpFetcher:
                 return self._read(resp)
         except _RETRYABLE_ERRORS as exc:
             return _Response(error=_describe(exc), retryable=True)
-        except (httpx.HTTPError, httpx.InvalidURL) as exc:
+        except (httpx.HTTPError, httpx.InvalidURL, ValueError) as exc:
+            # ValueError covers IDNA/Unicode errors raised while encoding the host.
             return _Response(error=_describe(exc))
 
     def _read(self, resp: httpx.Response) -> _Response:
@@ -359,7 +376,7 @@ class HttpFetcher:
             error=f"response body exceeds {self._max_body_bytes} bytes",
         )
         declared = resp.headers.get("content-length", "")
-        if declared.isdigit() and int(declared) > self._max_body_bytes:
+        if declared.isascii() and declared.isdigit() and int(declared) > self._max_body_bytes:
             return too_big
         # Count decoded bytes, so a small compressed body can't inflate past the cap.
         chunks: list[bytes] = []
@@ -418,13 +435,13 @@ class HttpFetcher:
             with self._client.stream("GET", robots_url, follow_redirects=True) as resp:
                 status = resp.status_code
                 body = _read_capped(resp, ROBOTS_MAX_BYTES) if resp.is_success else b""
-        except (httpx.HTTPError, httpx.InvalidURL) as exc:
-            policy = _RobotsPolicy(parser=None, allow_all=False)
+        except (httpx.HTTPError, httpx.InvalidURL, ValueError) as exc:
+            policy = _RobotsPolicy(parser=None, allow_all=False, unavailable=True)
             reason = _describe(exc)
         else:
             if 200 <= status < 300:
                 parser = RobotFileParser(robots_url)
-                parser.parse(body.decode("utf-8", errors="replace").splitlines())
+                parser.parse(body.decode("utf-8-sig", errors="replace").splitlines())
                 policy = _RobotsPolicy(parser=parser, allow_all=False)
                 reason = "parsed"
             elif 400 <= status < 500 and status != 429:
@@ -433,7 +450,7 @@ class HttpFetcher:
                 reason = f"HTTP {status}: allow all"
             else:
                 # Server trouble or rate limiting: stay away from the origin this run.
-                policy = _RobotsPolicy(parser=None, allow_all=False)
+                policy = _RobotsPolicy(parser=None, allow_all=False, unavailable=True)
                 reason = f"HTTP {status}: disallow all"
         log_fn = log.info if policy.parser is not None or policy.allow_all else log.warning
         log_fn(
@@ -471,6 +488,12 @@ def _url_problem(url: str) -> str | None:
         return f"unsupported URL scheme: {parts.scheme or '(none)'}"
     if not hostname:
         return "invalid URL: no host"
+    try:
+        # httpx encodes the host (IDNA) when building a request; check it here
+        # so a bad host is a refusal rather than an exception mid-fetch.
+        httpx.Request("GET", url)
+    except (httpx.InvalidURL, ValueError) as exc:
+        return f"invalid URL: {exc}"
     return None
 
 
