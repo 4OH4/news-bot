@@ -5,7 +5,8 @@ two URLs for the same page must normalise to exactly the same string or the
 article is stored twice. Everything here is a pure function: no fetching.
 
 * ``normalise_url`` cleans a URL syntactically (case, ports, tracking
-  parameters, query order, trailing slash, AMP variants).
+  parameters, query order, trailing slash, AMP variants). Per-domain parameter
+  rules from ``config/url_params.yaml`` (#35) are passed in by the caller.
 * ``canonical_from_html`` reads the publisher's own ``<link rel="canonical">``
   or ``og:url`` from a fetched page, which the extract stage uses to refine the
   canonical URL (#19).
@@ -29,6 +30,7 @@ from urllib.parse import (
     urlunsplit,
 )
 
+from newsfeed.config import DomainParamRules, UrlParamsConfig
 from newsfeed.logging import get_logger
 from newsfeed.models import Article
 
@@ -126,7 +128,9 @@ _PCT_ESCAPE = re.compile(r"%([0-9A-Fa-f]{2})")
 _UNRESERVED = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
 
 
-def normalise_url(url: str, *, resolve_amp: bool = True) -> str:
+def normalise_url(
+    url: str, *, resolve_amp: bool = True, rules: UrlParamsConfig | None = None
+) -> str:
     """Return a normalised form of an absolute http(s) URL.
 
     Lowercases the scheme and host, IDNA-encodes the host, drops default ports,
@@ -135,6 +139,16 @@ def normalise_url(url: str, *, resolve_amp: bool = True) -> str:
     segments, and strips trailing slashes except at the root. With
     ``resolve_amp`` (the default), common AMP URL patterns and AMP cache URLs
     are mapped to their non-AMP form.
+
+    ``rules`` (loaded from ``config/url_params.yaml`` by the caller) adds
+    per-domain parameter rules for the URL's host and its parent domains:
+    ``strip`` and ``strip_prefixes`` remove more parameters, and ``keep``
+    protects a parameter from every strip rule, global ones included. Without
+    ``rules`` only the global lists apply. AMP query flags (``?amp=1``) are
+    handled by ``resolve_amp``, not by ``keep``.
+
+    Stripped parameter names are logged at debug level with ``url`` and
+    ``stage``, so an unexpected merge of two articles can be traced.
 
     The result is stable: ``normalise_url(normalise_url(x)) == normalise_url(x)``.
     URLs with another scheme (``mailto:``, ``ftp:``) are returned stripped of
@@ -163,16 +177,24 @@ def normalise_url(url: str, *, resolve_amp: bool = True) -> str:
             unwrapped = _unwrap_amp_cache(netloc, path)
         if unwrapped is not None:
             query = f"?{parts.query}" if parts.query else ""
-            return normalise_url(unwrapped + query, resolve_amp=resolve_amp)
+            return normalise_url(unwrapped + query, resolve_amp=resolve_amp, rules=rules)
 
+    domain_rules = _rules_for_host(rules, netloc)
     # surrogateescape keeps non-UTF-8 escapes (e.g. Latin-1 "%E9") byte-for-byte.
     # The default, errors="replace", turns them all into U+FFFD, so distinct URLs
     # would share one id.
-    params = [
-        (key, value)
-        for key, value in parse_qsl(parts.query, keep_blank_values=True, errors=_QUERY_ERRORS)
-        if not _is_tracking_param(key)
-    ]
+    params: list[tuple[str, str]] = []
+    stripped: set[str] = set()
+    for key, value in parse_qsl(parts.query, keep_blank_values=True, errors=_QUERY_ERRORS):
+        if _is_tracking_param(key, domain_rules):
+            stripped.add(key)
+        else:
+            params.append((key, value))
+    if stripped:
+        log.debug(
+            "stripped query parameters",
+            extra={"url": url, "stage": "ingest", "params": sorted(stripped)},
+        )
     if resolve_amp:
         params = [(k, v) for k, v in params if not _is_amp_flag(k, v)]
     query = urlencode(sorted(params), quote_via=quote_plus, errors=_QUERY_ERRORS)
@@ -233,8 +255,43 @@ def _remove_dot_segments(path: str) -> str:
     return "/" + "/".join(output)
 
 
-def _is_tracking_param(key: str) -> bool:
+def _rules_for_host(rules: UrlParamsConfig | None, netloc: str) -> DomainParamRules | None:
+    """Combine the rules for a normalised host and each of its parent domains.
+
+    ``edition.example.com`` picks up the rules for ``edition.example.com`` and
+    ``example.com``. Matching is by whole labels, so ``badexample.com`` doesn't
+    match ``example.com``. Returns None if no rule applies.
+    """
+    if rules is None or not rules.domains:
+        return None
+    host = urlsplit(f"//{netloc}").hostname or ""
+    labels = host.split(".")
+    matches = [
+        rule
+        for i in range(len(labels) - 1)
+        if (rule := rules.domains.get(".".join(labels[i:]))) is not None
+    ]
+    if not matches:
+        return None
+    if len(matches) == 1:
+        return matches[0]
+    # model_construct: each rule is already validated, and a combination may
+    # legitimately keep a name that another domain's rule strips.
+    return DomainParamRules.model_construct(
+        strip=frozenset().union(*(r.strip for r in matches)),
+        strip_prefixes=tuple(p for r in matches for p in r.strip_prefixes),
+        keep=frozenset().union(*(r.keep for r in matches)),
+    )
+
+
+def _is_tracking_param(key: str, domain_rules: DomainParamRules | None) -> bool:
+    """Whether a query parameter is stripped: ``keep`` first, then every strip rule."""
     lowered = key.lower()
+    if domain_rules is not None:
+        if lowered in domain_rules.keep:
+            return False
+        if lowered in domain_rules.strip or lowered.startswith(domain_rules.strip_prefixes):
+            return True
     return lowered in TRACKING_PARAMS or lowered.startswith(TRACKING_PREFIXES)
 
 
@@ -313,7 +370,9 @@ class _CanonicalParser(HTMLParser):
         self.handle_starttag(tag, attrs)
 
 
-def canonical_from_html(html: str, base_url: str) -> str | None:
+def canonical_from_html(
+    html: str, base_url: str, *, rules: UrlParamsConfig | None = None
+) -> str | None:
     """Return the page's declared canonical URL, absolutised and normalised.
 
     Looks at ``<link rel="canonical">`` first, then ``<meta property="og:url">``,
@@ -329,6 +388,9 @@ def canonical_from_html(html: str, base_url: str) -> str | None:
     ``canonical`` and ``stage="ingest"``. Returns None if no usable canonical is
     declared.
 
+    ``rules`` are the per-domain parameter rules for ``normalise_url``. Pass the
+    same rules used at ingest, so a refined id is derived the same way.
+
     Raises:
         ValueError: if ``base_url`` is not absolute (it has no scheme or no host).
     """
@@ -336,10 +398,10 @@ def canonical_from_html(html: str, base_url: str) -> str | None:
     parser.feed(html)
     parser.close()
 
-    page = normalise_url(base_url)
+    page = normalise_url(base_url, rules=rules)
     base = urljoin(base_url, parser.base_href) if parser.base_href else base_url
     for candidate in [*parser.canonical, *parser.og_url]:
-        canonical = _resolve_candidate(candidate, base, page)
+        canonical = _resolve_candidate(candidate, base, page, rules)
         if canonical is None:
             continue
         if _site(canonical) != _site(page):
@@ -351,13 +413,15 @@ def canonical_from_html(html: str, base_url: str) -> str | None:
     return None
 
 
-def _resolve_candidate(candidate: str, base: str, page: str) -> str | None:
+def _resolve_candidate(
+    candidate: str, base: str, page: str, rules: UrlParamsConfig | None
+) -> str | None:
     """Absolutise and normalise one declared canonical, or None if unusable."""
     absolute = urljoin(base, candidate)
     if urlsplit(absolute).scheme.lower() not in _DEFAULT_PORTS:
         return None
     try:
-        canonical = normalise_url(absolute)
+        canonical = normalise_url(absolute, rules=rules)
     except ValueError:
         return None
     if _is_site_root(canonical) and not _is_site_root(page):
