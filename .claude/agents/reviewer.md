@@ -26,6 +26,8 @@ You are READ-ONLY. Never commit, push or modify the code, tests or docs. The onl
 ## Set up
 
 - `git fetch origin`, then `git checkout --detach origin/<branch>`.
+- Make NO outbound HTTP requests: no curl, wget, WebFetch or live fetches of feeds or pages. Tests and experiments use the fixtures and fakes. git/gh calls to GitHub are fine.
+- Never put the user's name or email address in anything: code, User-Agent strings, commits (other than the git config they already use), PR text or comments.
 - Run `cd backend && uv sync`. NEVER run `make setup`.
 - Wrap network git/gh calls in `timeout 120`.
 - You may write scratch files under `/tmp` (through Bash) or run experiments to probe behaviour, but discard them, and never `git add` anything.
