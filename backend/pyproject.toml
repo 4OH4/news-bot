@@ -36,6 +36,9 @@ dev = [
     "types-lxml>=2026.2.16",
     "types-pyyaml>=6.0.12.20260906",
 ]
+playwright = [
+    "playwright>=1.63.0",
+]
 
 [tool.ruff]
 line-length = 100
@@ -63,6 +66,12 @@ ignore_missing_imports = true
 # passed through extract/common.py's build_result, which validates them.
 [[tool.mypy.overrides]]
 module = ["readability", "readability.*", "newspaper", "newspaper.*"]
+ignore_missing_imports = true
+
+# playwright is an optional dependency group, absent from the default dev
+# environment; extract/playwright_renderer.py imports it lazily.
+[[tool.mypy.overrides]]
+module = ["playwright", "playwright.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
