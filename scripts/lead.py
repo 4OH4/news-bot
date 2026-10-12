@@ -30,6 +30,7 @@ import sys
 from pathlib import Path
 
 REPO = "4OH4/news-bot"
+BOARD_MARKER = "--- board ---"  # must match scripts/board.py
 TIMEOUT = 180  # seconds; network calls must never hang a session
 
 
@@ -150,9 +151,17 @@ def tidy_branches(root: Path, merged_heads: set[str]) -> list[str]:
     return kept
 
 
-def sync_board(root: Path) -> None:
-    result = run("python3", "scripts/board.py", "promote", cwd=root)
-    print(result.stdout.strip())
+def sync_board(root: Path) -> list[str]:
+    """Promote and read the board in one load (one GraphQL query, not two).
+
+    Returns the board listing for `status_board`; promote's own output is printed.
+    """
+    result = run("python3", "scripts/board.py", "promote", "--show", cwd=root)
+    promoted, _, listing = result.stdout.partition(BOARD_MARKER)
+    print(promoted.strip())
+    if result.stderr.strip():
+        print(result.stderr.strip())  # the remaining GraphQL allowance
+    return listing.strip().splitlines()
 
 
 def summary() -> None:
@@ -166,8 +175,7 @@ def summary() -> None:
         print(f"  #{pr['number']}{draft} {pr['title']}  [{pr['headRefName']}]")
 
 
-def status_board(root: Path) -> None:
-    lines = run("python3", "scripts/board.py", "show", cwd=root).stdout.splitlines()
+def status_board(lines: list[str]) -> None:
     shown, current = [], ""
     for line in lines:
         if not line.startswith(" "):
@@ -193,11 +201,11 @@ def cmd(kind: str) -> None:
     warnings += tidy_branches(root, merged_heads)
 
     step("Sync board")
-    sync_board(root)
+    board_lines = sync_board(root)
 
     step("Status")
     summary()
-    status_board(root)
+    status_board(board_lines)
 
     if warnings:
         step("Kept back / needs attention")

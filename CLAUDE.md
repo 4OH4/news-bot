@@ -147,6 +147,7 @@ The lead also starts workers for `needs-human` issues that an agent can prepare,
 **Tooling notes.**
 - Agent worktrees live under `.claude/worktrees/` (git-ignored). Never `git add` them.
 - In a worktree, install dependencies with `uv sync` (in `backend/`), **not** `make setup`. `pre-commit install` writes a hook into the shared `.git/hooks/`, which then points at that worktree's environment and breaks commits everywhere once the worktree is removed. The lead installs the hook once, from the main checkout.
+- **GraphQL budget.** GitHub allows 5,000 GraphQL points per user per hour, shared by the lead, every agent and `gh` itself (`gh pr view/edit/list` and `gh project` all use it). Prefer REST (`gh api repos/4OH4/news-bot/pulls/<n>`, `.../issues/<n>`), which has a separate allowance, for reading PRs and issues in loops. Don't call `board.py show` repeatedly: `board.py` prints the points used and the allowance left after each command, and `lead.py start` already loads the board once. If it reports "GraphQL rate limit exhausted; resets at <time> UTC", wait or use REST; `gh project` shows the same failure as the misleading "unknown owner type".
 
 ## Things agents must not do
 
