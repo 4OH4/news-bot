@@ -105,7 +105,17 @@ def load_boilerplate(path: Path) -> tuple[str, ...]:
 
 
 def _boilerplate_hits(text: str, phrases: Iterable[str]) -> int:
-    return sum(text.count(phrase) for phrase in phrases if phrase)
+    """Count boilerplate phrase occurrences, each stretch of text at most once.
+
+    One alternation, longest phrase first, so "newsletter" doesn't also count
+    inside "sign up for our newsletter". Word boundaries stop it matching inside
+    longer words such as "newsletters".
+    """
+    unique = sorted({p for p in phrases if p}, key=len, reverse=True)
+    if not unique:
+        return 0
+    pattern = r"\b(?:" + "|".join(re.escape(p) for p in unique) + r")\b"
+    return len(re.findall(pattern, text, re.IGNORECASE))
 
 
 def score_result(

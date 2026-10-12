@@ -63,9 +63,14 @@ def test_run_writes_report_and_lists_missing(layout: tuple[Path, Path]) -> None:
     assert data["headline"]["extractor"] == "chain"
 
 
-def test_run_filters_by_extractor_and_compares(layout: tuple[Path, Path]) -> None:
+def test_run_filters_by_extractor_and_compares(
+    layout: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
     root, fixtures = layout
     base = ["eval", "run", "--fixtures-dir", str(fixtures), "--extractor", "trafilatura"]
+    # Distinct commits, so the second report doesn't overwrite the first.
+    shas = iter(["aaaaaaa", "bbbbbbb"])
+    monkeypatch.setattr(cli, "git_short_sha", lambda _cwd: next(shas))
     assert runner.invoke(cli.app, base).exit_code == 0
     (first,) = (root / "eval" / "results").glob("*.json")
 
@@ -75,6 +80,7 @@ def test_run_filters_by_extractor_and_compares(layout: tuple[Path, Path]) -> Non
     assert "Compared with" in result.output
     assert "`trafilatura`" in result.output
     assert "readability" not in json.loads(first.read_text(encoding="utf-8"))["extractors"]
+    assert len(list((root / "eval" / "results").glob("*.json"))) == 2
 
 
 def test_run_rejects_unknown_extractor(layout: tuple[Path, Path]) -> None:

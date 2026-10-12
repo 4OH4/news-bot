@@ -254,3 +254,17 @@ def test_load_report_round_trips_and_rejects_junk(fixtures_dir: Path, tmp_path: 
         load_report(junk)
     with pytest.raises(ValueError, match="cannot read"):
         load_report(tmp_path / "absent.json")
+
+
+def test_extractors_get_the_snapshots_final_url(tmp_path: Path) -> None:
+    entry = EvalEntry(id="moved", url="https://old.example.com/m")
+    final = "https://new.example.com/m"
+    fetcher = FakeFetcher()
+    fetcher.add(entry.url, b"<html><body><p>x</p></body></html>", final_url=final)
+    target = tmp_path / "fixtures"
+    take_snapshots([entry], fetcher, target)
+    extractor = FakeExtractor("spy", default=ok("t", "text", 1))
+
+    run_evaluation([entry], target, [extractor])
+
+    assert [url for url, _ in extractor.calls] == [final]
