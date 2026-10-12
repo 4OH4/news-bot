@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- Synthetic fixture shaped like a Google News search RSS feed. Every title,
+     publisher, link and id is invented. -->
+<rss xmlns:media="http://search.yahoo.com/mrss/" version="2.0">
+  <channel>
+    <generator>NFE/5.0</generator>
+    <title>"floating bike lanes" - Google News</title>
+    <link>https://news.google.com/search?q=%22floating%20bike%20lanes%22&amp;hl=en-GB&amp;gl=GB&amp;ceid=GB:en</link>
+    <language>en-GB</language>
+    <webMaster>news-webmaster@google.com</webMaster>
+    <copyright>Copyright notice placeholder</copyright>
+    <lastBuildDate>Wed, 07 Oct 2026 05:30:00 GMT</lastBuildDate>
+    <description>Google News</description>
+    <item>
+      <title>Placeville trials floating bike lanes on the canal - The Placeville Gazette</title>
+      <link>https://news.google.com/rss/articles/CBMiSYNTHETIC0001aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa?oc=5</link>
+      <guid isPermaLink="false">CBMiSYNTHETIC0001aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa</guid>
+      <pubDate>Wed, 07 Oct 2026 04:15:00 GMT</pubDate>
+      <description>&lt;a href="https://news.google.com/rss/articles/CBMiSYNTHETIC0001aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa?oc=5" target="_blank"&gt;Placeville trials floating bike lanes on the canal&lt;/a&gt;&amp;nbsp;&amp;nbsp;&lt;font color="#6f6f6f"&gt;The Placeville Gazette&lt;/font&gt;</description>
+      <source url="https://gazette.example.com">The Placeville Gazette</source>
+    </item>
+    <item>
+      <title>Cyclists - and ducks - review the new lanes - Example Herald</title>
+      <link>https://news.google.com/rss/articles/CBMiSYNTHETIC0002bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb?oc=5</link>
+      <guid isPermaLink="false">CBMiSYNTHETIC0002bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb</guid>
+      <pubDate>Tue, 06 Oct 2026 18:00:00 GMT</pubDate>
+      <description>&lt;ol&gt;&lt;li&gt;&lt;a href="https://news.google.com/rss/articles/CBMiSYNTHETIC0002bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb?oc=5" target="_blank"&gt;Cyclists - and ducks - review the new lanes&lt;/a&gt;&amp;nbsp;&amp;nbsp;&lt;font color="#6f6f6f"&gt;Example Herald&lt;/font&gt;&lt;/li&gt;&lt;li&gt;&lt;a href="https://news.google.com/rss/articles/CBMiSYNTHETIC0003cccccccccccccccccccccccccccccccccccccc?oc=5" target="_blank"&gt;Canal lanes open to mixed reviews&lt;/a&gt;&amp;nbsp;&amp;nbsp;&lt;font color="#6f6f6f"&gt;Sample Times&lt;/font&gt;&lt;/li&gt;&lt;/ol&gt;</description>
+      <source url="https://herald.example.org">Example Herald</source>
+    </item>
+    <item>
+      <title>Lane markings without a publisher suffix</title>
+      <link>https://news.google.com/rss/articles/CBMiSYNTHETIC0004dddddddddddddddddddddddddddddddddddddd?oc=5</link>
+      <guid isPermaLink="false">CBMiSYNTHETIC0004dddddddddddddddddddddddddddddddddddddd</guid>
+      <pubDate>Tue, 06 Oct 2026 09:45:00 GMT</pubDate>
+      <description>&lt;a href="https://news.google.com/rss/articles/CBMiSYNTHETIC0004dddddddddddddddddddddddddddddddddddddd?oc=5" target="_blank"&gt;Lane markings without a publisher suffix&lt;/a&gt;</description>
+    </item>
+  </channel>
+</rss>
