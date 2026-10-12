@@ -33,11 +33,11 @@ For each chosen issue, use the Agent tool with `subagent_type: general-purpose`,
 For each finished PR:
 1. **Independent review.** Start a reviewer with the Agent tool, using `subagent_type: general-purpose`, `isolation: worktree` and `run_in_background: true`, and the reviewer brief below. Give it only the PR number, the issue number and the consuming issues. Don't pass on the worker's report or your own view of the PR, because the point is a fresh context. Only start it once that PR's worker has finished.
 2. **When the reviewer reports:**
-   - For each defect it lists, use SendMessage to send the worker back with the specific change. If the rework changes behaviour, start a fresh reviewer afterwards. At most two reviews per PR: if the second still finds defects, report the PR to the human instead of starting a third.
+   - For each defect it lists, use SendMessage to send the worker back with the specific change. If the rework changes behaviour, start a fresh reviewer afterwards. At most two reviews per PR: if the second still finds defects, report the PR to the human instead of starting a third, and `python3 scripts/board.py set <N> "Human review"`.
    - In "For human review", mark items fixed by rework as resolved, and leave the rest for the human. Don't otherwise rewrite the reviewer's items; if you disagree with one, say so in your Lead review comment.
 3. **Re-run the checks.** In the worker's worktree, run `uv sync` in `backend/`, then `make lint` and `make test`. Run `make eval` too if `extract/` was touched. Confirm CI is green.
 4. **Shared files.** If the PR shares `pyproject.toml` or `uv.lock` with another open PR, either stack it on that PR's branch (resolve `uv.lock` with `uv lock`) or tell the human the merge order.
-5. **Comment.** Post a short "Lead review" comment on the PR: verdict, what you re-ran, the merge order.
+5. **Comment.** Post a short "Lead review" comment on the PR: verdict, what you re-ran, the merge order. Then `python3 scripts/board.py set <N> "Human review"`. Workers set "Agent review" when they open the PR; only you set "Human review".
 
 ## 5. Report
 
@@ -76,7 +76,7 @@ Steps:
    - design notes;
    - follow-ups.
    End the body with a blank line, then `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
-7. `python3 scripts/board.py set <N> "In review"`.
+7. `python3 scripts/board.py set <N> "Agent review"`.
 8. Never merge or push to main, and don't touch other issues or cards.
 
 Report back: the PR URL, the result of each verification command, and every judgement call.
