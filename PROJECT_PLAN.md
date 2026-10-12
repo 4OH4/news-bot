@@ -234,7 +234,7 @@ Extraction quality is the riskiest assumption, so it gets a dedicated, repeatabl
 ### 9.1 Where the backlog lives
 **GitHub Issues + a GitHub Project board** is the backlog. It is visible to me, to Claude Code locally (via the `gh` CLI) and to Claude in GitHub Actions, and every issue links naturally to its branch and PR.
 
-- **Project board columns:** `Backlog` → `Ready` → `In progress` → `In review` → `Done`.
+- **Project board columns:** `Backlog` → `Ready` → `In progress` → `Agent review` → `Human review` → `Done`. A PR sits in `Agent review` while agents review and rework it, and moves to `Human review` once the lead has posted its review and it waits only for me.
 - **Milestones** = phases (`Phase 0`, `Phase 1`, ...).
 - **Labels:**
   - `area:ingest|extract|rank|store|api|client|infra|eval|docs`

@@ -27,8 +27,8 @@ Anything with uncommitted or unmerged work is **kept and listed**. Never force-d
 ## 3. Hand off
 
 Update the `lead-handoff` memory file, replacing its contents. Use absolute dates. Record:
-- what merged this session, and which PRs are open and ready to merge, in order;
-- what is In progress or kept back, and why;
+- what merged this session, and which PRs are open and ready to merge (cards in "Human review"), in order;
+- what is In progress, in Agent review or kept back, and why;
 - the next steps: which issues become Ready after the pending merges, which `needs-human` PRs to prepare next, and any decision waiting on the user.
 
 Don't copy information the board or git history already holds. Record only what the next session needs to act.
