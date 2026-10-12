@@ -13,12 +13,21 @@ function that calls ``load_config``. ``load_sources`` is the example.
 
 from __future__ import annotations
 
+import re
 from collections import Counter
 from pathlib import Path
 from typing import Any, Self
 
 import yaml
-from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 from pydantic_core import ErrorDetails
 
 from newsfeed.models import Source
@@ -26,9 +35,12 @@ from newsfeed.models import Source
 __all__ = [
     "ConfigError",
     "ConfigFile",
+    "DomainParamRules",
     "SourcesConfig",
+    "UrlParamsConfig",
     "load_config",
     "load_sources",
+    "load_url_params",
 ]
 
 
@@ -184,3 +196,83 @@ def load_sources(path: Path) -> list[Source]:
         ConfigError: if the file is missing or invalid (see ``load_config``).
     """
     return load_config(path, SourcesConfig).sources
+
+
+# --- config/url_params.yaml --------------------------------------------------
+
+# A lowercase ASCII hostname with at least two labels. Single labels ("com")
+# are refused because a rule there would apply to a whole top-level domain.
+_DOMAIN = re.compile(r"^(?!-)[a-z0-9-]{1,63}(?<!-)(\.(?!-)[a-z0-9-]{1,63}(?<!-))+$")
+# Characters that can't appear in a decoded query parameter name we compare
+# against: whitespace and the query delimiters.
+_BAD_PARAM_CHARS = re.compile(r"[\s&=#?]")
+
+
+def _param_names(values: list[str], field: str) -> list[str]:
+    """Lowercase parameter names (matching is case-insensitive) and reject bad ones."""
+    problems = [repr(v) for v in values if not v or _BAD_PARAM_CHARS.search(v)]
+    if problems:
+        raise ValueError(
+            f"invalid {field} entries {', '.join(problems)}: must be non-empty, "
+            "with no whitespace or '&', '=', '#', '?'"
+        )
+    return [v.lower() for v in values]
+
+
+class DomainParamRules(BaseModel):
+    """Query-parameter rules for one domain and its subdomains (#35).
+
+    ``strip`` names and ``strip_prefixes`` are removed on top of the global
+    tracking list in ``ingest.canonical``; ``keep`` names are never removed,
+    overriding both. Names are matched case-insensitively.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    strip: frozenset[str] = frozenset()
+    strip_prefixes: tuple[str, ...] = ()
+    keep: frozenset[str] = frozenset()
+
+    @field_validator("strip", "keep", "strip_prefixes", mode="before")
+    @classmethod
+    def _names(cls, value: object, info: ValidationInfo) -> object:
+        if isinstance(value, list) and all(isinstance(v, str) for v in value):
+            return _param_names(value, info.field_name or "")
+        return value  # let Pydantic report the type error
+
+    @model_validator(mode="after")
+    def _no_contradictions(self) -> Self:
+        both = sorted(self.strip & self.keep)
+        if both:
+            raise ValueError(f"listed in both strip and keep: {', '.join(both)}")
+        return self
+
+
+class UrlParamsConfig(ConfigFile):
+    """Schema of ``config/url_params.yaml``: per-domain query-parameter rules.
+
+    Keys of ``domains`` are lowercase ASCII hostnames (IDNs in their ``xn--``
+    form) with at least two labels; a rule also applies to every subdomain.
+    """
+
+    domains: dict[str, DomainParamRules] = Field(default_factory=dict)
+
+    @field_validator("domains", mode="after")
+    @classmethod
+    def _valid_domains(cls, value: dict[str, DomainParamRules]) -> dict[str, DomainParamRules]:
+        bad = [repr(domain) for domain in value if not _DOMAIN.fullmatch(domain)]
+        if bad:
+            raise ValueError(
+                f"invalid domain {', '.join(bad)}: use a lowercase hostname such as "
+                "'example.com' (no scheme, path, port or wildcard; IDNs as 'xn--')"
+            )
+        return value
+
+
+def load_url_params(path: Path) -> UrlParamsConfig:
+    """Load the per-domain URL parameter rules in ``path`` (``config/url_params.yaml``).
+
+    Raises:
+        ConfigError: if the file is missing or invalid (see ``load_config``).
+    """
+    return load_config(path, UrlParamsConfig)
