@@ -1,0 +1,41 @@
+# News sources for the ingest stage, loaded by newsfeed.config.load_sources.
+#
+# PLACEHOLDERS: the feeds below are well-known public feeds used as examples
+# only. The real list of sources is curated in issue #16.
+#
+# Schema (validated by models.Source; unknown keys are rejected):
+#
+#   sources:
+#     - id: bbc-news          # required, unique; lowercase letters, digits, '-' and '_'
+#       type: rss             # required: rss | google_news | hn | reddit
+#       url: https://...      # feed or listing URL; required for type rss
+#       query: "..."          # search query, for google_news (#11)
+#       weight: 1.0           # ranking multiplier, >= 0; 0 disables in ranking (default 1.0)
+#       enabled: true         # false skips the source entirely (default true)
+#       tags: [news, uk]      # free-form labels (default [])
+#       options: {}           # type-specific settings, read by the ingester (default {})
+#
+# Only the rss ingester exists so far; google_news and hn arrive with #11.
+
+sources:
+  - id: bbc-news
+    type: rss
+    url: https://feeds.bbci.co.uk/news/rss.xml
+    tags: [news, uk]
+
+  - id: guardian-world
+    type: rss
+    url: https://www.theguardian.com/world/rss
+    tags: [news, world]
+
+  - id: ars-technica
+    type: rss
+    url: https://feeds.arstechnica.com/arstechnica/index
+    tags: [tech]
+
+  - id: nasa-news
+    type: rss
+    url: https://www.nasa.gov/news-release/feed/
+    weight: 0.5
+    enabled: false
+    tags: [science]
