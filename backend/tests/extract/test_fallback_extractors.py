@@ -206,16 +206,38 @@ def test_newspaper_metadata() -> None:
     assert result.lead_image == "https://cdn.example.com/images/marrowby-bridge-lead.jpg"
 
 
-def test_newspaper_does_not_follow_meta_refresh() -> None:
-    # Following it would fetch another page; sockets are blocked, so a fetch
-    # would surface as a failed result.
+@pytest.mark.parametrize(
+    "refresh",
+    ["0;url=https://elsewhere.example/x", "0;URL='https://elsewhere.example/x'"],
+)
+def test_newspaper_does_not_follow_meta_refresh(
+    monkeypatch: pytest.MonkeyPatch, refresh: str
+) -> None:
+    import requests
+    from newspaper import network
+    from newspaper.utils import extract_meta_refresh
+
+    fetched: list[tuple[object, ...]] = []
+
+    def no_network(*args: object, **kwargs: object) -> str:
+        fetched.append(args)
+        raise AssertionError("newspaper4k tried to fetch")
+
+    monkeypatch.setattr(network, "get_html", no_network)
+    monkeypatch.setattr(requests.Session, "send", no_network)
     body = " ".join(["Invented sentence about a harbour festival."] * 40)
     page = (
-        '<html><head><meta http-equiv="refresh" content="0; url=https://elsewhere.example/x">'
+        f'<html><head><meta http-equiv="refresh" content="{refresh}">'
         f"<title>Harbour festival</title></head><body><article><p>{body}</p>"
         "</article></body></html>"
     )
+    # newspaper4k must recognise this form as a redirect; otherwise following
+    # it would be a no-op and the test would pass whatever the config says.
+    assert extract_meta_refresh(page) == "https://elsewhere.example/x"
+
     result = Newspaper4kExtractor().extract(page, URL)
+    # The extractor swallows exceptions, so check the record as well as the result.
+    assert fetched == []
     assert result.status is ExtractionStatus.OK
     assert "harbour festival" in (result.text or "")
 
