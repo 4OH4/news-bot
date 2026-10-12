@@ -8,6 +8,10 @@ Used by the lead agent and by worker agents (see CLAUDE.md, "Agent automation"):
   python3 scripts/board.py promote --dry-run       # list Backlog issues that are now unblocked
   python3 scripts/board.py promote                 # ...and move them to Ready
 
+Statuses: Backlog, Ready, In progress, Agent review, Human review, Done. A worker
+sets "Agent review" when it opens its PR; the lead sets "Human review" when the PR
+waits only for the human (see CLAUDE.md, "Agent automation").
+
 `promote` first moves closed issues to Done, then moves open `agent-ready` issues
 whose every "Depends on #N" issue is closed to Ready. `needs-human` issues are never
 promoted automatically.
@@ -27,7 +31,7 @@ from typing import Any
 DEFAULT_REPO = "4OH4/news-bot"
 DEFAULT_OWNER = "4OH4"
 DEFAULT_PROJECT = 1
-STATUSES = ["Backlog", "Ready", "In progress", "In review", "Done"]
+STATUSES = ["Backlog", "Ready", "In progress", "Agent review", "Human review", "Done"]
 DEPENDS_RE = re.compile(r"^Depends on #(\d+)", re.MULTILINE)
 
 
@@ -147,7 +151,7 @@ def main() -> None:
     sub.add_parser("show", help="list issues grouped by status").set_defaults(fn=cmd_show)
     p_set = sub.add_parser("set", help="move an issue to a status")
     p_set.add_argument("issue", type=int)
-    p_set.add_argument("status", choices=STATUSES)
+    p_set.add_argument("status", choices=STATUSES, help="one of: %(choices)s")
     p_set.set_defaults(fn=cmd_set)
     p_promote = sub.add_parser("promote", help="move unblocked agent-ready issues to Ready")
     p_promote.add_argument("--dry-run", action="store_true")
