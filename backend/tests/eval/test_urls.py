@@ -57,7 +57,11 @@ def test_empty_list_is_allowed(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("text", "message"),
     [
-        ("- id: a\n  url: https://a.example/x\n", "expected a mapping at the top level"),
+        (
+            "- id: a\n  url: https://a.example/x\n",
+            "expected a mapping at the top level, got list. A top-level 'urls:' key is required",
+        ),
+        ("just text\n", "expected a mapping at the top level, got str"),
         ("urls:\n  - id: Bad Id\n    url: https://a.example/x\n", "urls[0] (id 'Bad Id').id"),
         ("urls:\n  - id: a\n    url: ftp://a.example/x\n", "http(s) URL"),
         ("urls:\n  - id: a\n    url: https:///no-host\n", "http(s) URL"),

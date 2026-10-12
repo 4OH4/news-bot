@@ -28,7 +28,7 @@ from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from newsfeed.config import ConfigFile, load_config
+from newsfeed.config import ConfigError, ConfigFile, load_config
 
 __all__ = ["EvalEntry", "EvalUrlsConfig", "find_urls_file", "load_eval_urls"]
 
@@ -90,7 +90,15 @@ def load_eval_urls(path: Path) -> list[EvalEntry]:
     Raises:
         ConfigError: if the file is missing or invalid (see ``load_config``).
     """
-    return load_config(path, EvalUrlsConfig).urls
+    try:
+        return load_config(path, EvalUrlsConfig).urls
+    except ConfigError as exc:
+        # A bare list of entries is an easy mistake; say what the fix is.
+        if str(exc).endswith("expected a mapping at the top level, got list"):
+            raise ConfigError(
+                f"{exc}. A top-level 'urls:' key is required: put the list of entries under it"
+            ) from None
+        raise
 
 
 def find_urls_file(start: Path) -> Path | None:
