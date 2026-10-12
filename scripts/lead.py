@@ -110,11 +110,6 @@ def is_merged(branch: str, root: Path, merged_heads: set[str]) -> bool:
     return branch in merged_heads or branch.startswith("worktree-agent-")
 
 
-def on_remote(path: Path) -> bool:
-    """True if the worktree's HEAD is contained in at least one remote-tracking branch."""
-    return bool(out("git", "branch", "-r", "--contains", "HEAD", cwd=path))
-
-
 def tidy_worktrees(root: Path, merged_heads: set[str]) -> list[str]:
     kept: list[str] = []
     blocks = out("git", "worktree", "list", "--porcelain", cwd=root).split("\n\n")
@@ -130,10 +125,6 @@ def tidy_worktrees(root: Path, merged_heads: set[str]) -> list[str]:
             kept.append(f"{path.name} ({branch or 'detached'}): uncommitted changes")
         elif branch and not is_merged(branch, root, merged_heads):
             kept.append(f"{path.name} ({branch}): not merged yet")
-        elif not branch and not on_remote(path):
-            # Reviewers work on a detached checkout of a PR branch and push with
-            # HEAD:<branch>; commits not on any remote branch would be orphaned.
-            kept.append(f"{path.name} (detached): commits not pushed to any remote branch")
         else:
             run("git", "worktree", "remove", str(path), cwd=root)
             print(f"removed worktree {path.name}")
