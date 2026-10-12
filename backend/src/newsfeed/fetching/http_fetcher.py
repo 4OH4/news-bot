@@ -282,11 +282,15 @@ class HttpFetcher:
                 return self._result(url, current, started, _Response(error=refusal))
             response = self._get_with_retries(current, request_headers)
             if response.status in _REDIRECT_STATUSES and response.error is None:
-                location = response.headers.get("location")
+                location = response.headers.get("location", "").strip()
                 if not location:
                     response.error = f"HTTP {response.status} redirect without Location"
                     return self._result(url, current, started, response)
-                current = urljoin(current, location.strip())
+                try:
+                    current = urljoin(current, location)
+                except ValueError as exc:  # e.g. "Invalid IPv6 URL"
+                    response.error = f"invalid redirect Location: {exc}"
+                    return self._result(url, current, started, response)
                 continue
             return self._result(url, current, started, response)
         return self._result(
@@ -441,9 +445,16 @@ class HttpFetcher:
         else:
             if 200 <= status < 300:
                 parser = RobotFileParser(robots_url)
-                parser.parse(body.decode("utf-8-sig", errors="replace").splitlines())
-                policy = _RobotsPolicy(parser=parser, allow_all=False)
-                reason = "parsed"
+                try:
+                    parser.parse(body.decode("utf-8-sig", errors="replace").splitlines())
+                except ValueError as exc:
+                    # The stdlib parser calls int() on Crawl-delay and Request-rate
+                    # values, so a value like "²" raises. Treat the file as unusable.
+                    policy = _RobotsPolicy(parser=None, allow_all=False, unavailable=True)
+                    reason = f"unparseable: {_describe(exc)}"
+                else:
+                    policy = _RobotsPolicy(parser=parser, allow_all=False)
+                    reason = "parsed"
             elif 400 <= status < 500 and status != 429:
                 # No robots.txt (or not for us to read) means no restrictions.
                 policy = _RobotsPolicy(parser=None, allow_all=True)

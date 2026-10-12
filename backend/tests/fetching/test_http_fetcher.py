@@ -314,6 +314,30 @@ def test_robots_with_utf8_bom_is_parsed(
     assert fetcher.fetch("https://a.example/x").error == "disallowed by robots.txt"
 
 
+@pytest.mark.parametrize(
+    "body",
+    [
+        b"User-agent: *\nCrawl-delay: \xc2\xb2\nDisallow: /\n",
+        "User-agent: *\nRequest-rate: ²/5\nDisallow: /\n".encode(),
+    ],
+    ids=["crawl-delay", "request-rate"],
+)
+def test_unparseable_robots_is_unavailable_and_cached(
+    body: bytes, server: Server, make_fetcher: Callable[..., HttpFetcher]
+) -> None:
+    # Regression: RobotFileParser.parse raises ValueError on non-ASCII digits.
+    server.routes["https://a.example/robots.txt"] = lambda _request: httpx.Response(
+        200, content=body
+    )
+    fetcher = make_fetcher()
+
+    assert not fetcher.is_allowed("https://a.example/x")
+    assert fetcher.fetch("https://a.example/x").error == "robots.txt unavailable"
+    with pytest.raises(FetchNotAllowedError), fetcher.permit("https://a.example/y"):
+        pass
+    assert server.urls() == ["https://a.example/robots.txt"]  # downloaded once
+
+
 def test_robots_body_is_capped(server: Server, make_fetcher: Callable[..., HttpFetcher]) -> None:
     # A Disallow rule past the 500 KiB cap is ignored, as RFC 9309 permits.
     padding = "# " + "x" * (600 * 1024) + "\n"
@@ -764,6 +788,33 @@ def test_redirect_without_location_is_an_error(
 
     assert result.status_code == 302
     assert result.error == "HTTP 302 redirect without Location"
+
+
+@pytest.mark.parametrize("location", ["http://a.example]/x", "//[bad/x"])
+def test_malformed_redirect_location_is_an_error(
+    location: str, server: Server, make_fetcher: Callable[..., HttpFetcher]
+) -> None:
+    # Regression: urljoin raised "ValueError: Invalid IPv6 URL".
+    server.route("https://example.com/a", httpx.Response(302, headers={"Location": location}))
+
+    result = make_fetcher().fetch("https://example.com/a")
+
+    assert result.final_url == "https://example.com/a"
+    assert result.error is not None and "Invalid IPv6 URL" in result.error
+    assert server.page_urls() == ["https://example.com/a"]
+
+
+def test_whitespace_only_redirect_location_is_an_error(
+    server: Server, make_fetcher: Callable[..., HttpFetcher]
+) -> None:
+    # Regression: an all-space Location resolved to the same URL until "too many redirects".
+    server.route("https://example.com/a", httpx.Response(302, headers={"Location": "   "}))
+
+    result = make_fetcher().fetch("https://example.com/a")
+
+    assert result.status_code == 302
+    assert result.error == "HTTP 302 redirect without Location"
+    assert server.page_urls() == ["https://example.com/a"]
 
 
 def test_redirect_to_unsupported_scheme_is_an_error(
