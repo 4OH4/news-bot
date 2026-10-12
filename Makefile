@@ -34,8 +34,8 @@ fmt: ## Auto-format and apply safe lint fixes
 test: ## Run unit tests (network disabled, live tests excluded)
 	$(UV) run pytest --cov=newsfeed --cov-report=term-missing
 
-eval: ## Run the extraction evaluation (not implemented yet)
-	@echo "eval: not implemented yet"
+eval: ## Run the extraction evaluation over saved snapshots (EVAL_ARGS="--domain d")
+	$(UV) run newsfeed eval run $(EVAL_ARGS)
 
 run: ## Run the full pipeline locally
 	@mkdir -p "$(NEWSFEED_DATA_DIR)"
