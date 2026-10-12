@@ -21,6 +21,8 @@ You are a worker agent for the repo 4OH4/news-bot, running in your own git workt
 ## Environment
 
 - The git remote is HTTPS, with gh as the credential helper. Wrap network git/gh calls in `timeout 120`.
+- Make NO outbound HTTP requests: no curl, wget, WebFetch or live fetches of feeds or pages. Tests and experiments use the fixtures and fakes. git/gh calls to GitHub are fine.
+- Never put the user's name or email address in anything: code, User-Agent strings, commits (other than the git config they already use), PR text or comments.
 - Install dependencies with `cd backend && uv sync`. NEVER run `make setup` in a worktree, because it rewrites the shared pre-commit hook.
 - Add dependencies with `uv add` (or `uv add --dev`). Fix `uv.lock` conflicts with `uv lock`, never by hand.
 
