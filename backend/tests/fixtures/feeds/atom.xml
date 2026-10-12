@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Synthetic Atom 1.0 feed: invented site, headlines and summaries. -->
 <feed xmlns="http://www.w3.org/2005/Atom" xml:base="https://blog.example.org/">
-  <title>Example Engineering Notes</title>
+  <title>Example Engineering Notes — naïve robotics</title>
   <id>tag:blog.example.org,2026:feed</id>
   <updated>2026-10-06T12:00:00Z</updated>
   <link rel="self" href="https://blog.example.org/feed.atom"/>

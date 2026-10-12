@@ -2,7 +2,7 @@
 <!-- Synthetic RSS 2.0 feed: invented site, headlines and summaries. -->
 <rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:media="http://search.yahoo.com/mrss/">
   <channel>
-    <title>Example Daily Gazette</title>
+    <title>Example Daily Gazette — Café edition</title>
     <link>https://news.example.com/</link>
     <description>Invented headlines for parser tests.</description>
     <language>en-gb</language>

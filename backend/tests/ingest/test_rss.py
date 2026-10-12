@@ -137,6 +137,31 @@ def test_atom_entries_are_normalised() -> None:
     assert second.author is None
 
 
+def test_plain_text_rss_titles_are_not_decoded_twice() -> None:
+    # feedparser has already decoded these text/plain titles; parsing them as
+    # HTML again would drop "<canvas>", "<template>" and everything after "<".
+    articles = parse("plain_text_rss.xml", feed_url="https://webdev.example.com/rss")
+    assert [a.title for a in articles] == [
+        "Using <canvas> elements & more",
+        "Learn about <template> tags in HTML",
+        "Comparing a < b and b > c in invented code",
+    ]
+
+
+def test_atom_text_constructs_respect_their_type() -> None:
+    first, second, third = parse("plain_text_atom.xml", feed_url="https://markup.example.org/a")
+
+    # type="text": literal, not markup
+    assert first.title == "Why <script> tags block rendering"
+    assert first.summary == "Using <canvas> & <svg> together."
+    # type="xhtml" title is markup; type="text" content is literal
+    assert second.title == "An xhtml title"
+    assert second.summary == "Plain content that mentions <b> literally."
+    # type="html": markup stripped
+    assert third.title == "An html title"
+    assert third.summary == "Html content with bold text."
+
+
 def test_relative_links_are_resolved_against_the_feed_url() -> None:
     articles = parse("relative_links.xml", feed_url="https://relative.example.net/feeds/main.xml")
     assert [a.url for a in articles] == [
@@ -177,13 +202,24 @@ def test_non_feed_content_yields_no_articles(records: list[logging.LogRecord]) -
 
 @pytest.mark.parametrize(
     "content_type",
-    [None, "application/rss+xml; charset=utf-8", "text/xml", "text/plain", "text/html"],
+    [
+        None,
+        "application/rss+xml; charset=utf-8",
+        "application/xml",
+        "text/xml",
+        "text/xml; charset=utf-8",
+        "text/plain",
+        "text/html",
+    ],
 )
 def test_well_formed_feed_logs_no_warnings(
     records: list[logging.LogRecord], content_type: str | None
 ) -> None:
     headers = {"content-type": content_type} if content_type else {}
     for name in ("rss2.xml", "atom.xml"):
+        # Non-ASCII text makes feedparser raise CharacterEncodingOverride for
+        # text/* types without a charset; that case must stay quiet too.
+        assert not feed(name).isascii()
         articles = parse_feed(
             feed(name), source_id="example", feed_url=FEED_URL, fetched_at=NOW, headers=headers
         )
@@ -350,25 +386,29 @@ def test_relative_links_resolve_against_the_final_url_after_redirects() -> None:
 
 
 @pytest.mark.parametrize(
-    ("response", "reason"),
+    ("response", "reason", "status_code"),
     [
-        (FakeResponse(status=500), "HTTP 500"),
-        (FakeResponse(status=None, error="connection reset"), "connection reset"),
+        (FakeResponse(status=500), "HTTP 500", 500),
+        (FakeResponse(status=410), "HTTP 410", 410),
+        (FakeResponse(status=None, error="connection reset"), "connection reset", None),
     ],
 )
-def test_fetch_failure_raises(response: FakeResponse, reason: str) -> None:
+def test_fetch_failure_raises(response: FakeResponse, reason: str, status_code: int | None) -> None:
     fetcher = FakeFetcher({FEED_URL: response})
-    with pytest.raises(FeedFetchError, match=reason):
+    with pytest.raises(FeedFetchError, match=reason) as info:
         RssIngester(clock=clock).ingest(make_source(), fetcher, SourceState(source_id="example"))
+    assert info.value.status_code == status_code
 
 
 def test_unknown_url_and_robots_disallow_raise() -> None:
     state = SourceState(source_id="example")
-    with pytest.raises(FeedFetchError, match="404"):
+    with pytest.raises(FeedFetchError, match="404") as not_found:
         RssIngester().ingest(make_source(), FakeFetcher(), state)
+    assert not_found.value.status_code == 404
     blocked = FakeFetcher({FEED_URL: feed("rss2.xml")}, disallowed=["https://news.example.com/"])
-    with pytest.raises(FeedFetchError, match=r"robots\.txt"):
+    with pytest.raises(FeedFetchError, match=r"robots\.txt") as refused:
         RssIngester().ingest(make_source(), blocked, state)
+    assert refused.value.status_code is None
 
 
 def test_source_without_url_is_rejected() -> None:

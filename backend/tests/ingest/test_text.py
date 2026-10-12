@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from newsfeed.ingest.text import html_to_text, truncate
+from newsfeed.ingest.text import collapse_whitespace, html_to_text, truncate
 
 
 @pytest.mark.parametrize(
@@ -45,3 +45,8 @@ def test_truncate_cuts_mid_word_when_there_is_no_late_space() -> None:
 def test_truncate_rejects_a_non_positive_limit() -> None:
     with pytest.raises(ValueError):
         truncate("text", 0)
+
+
+def test_collapse_whitespace_keeps_markup_literally() -> None:
+    assert collapse_whitespace(None) == ""
+    assert collapse_whitespace("  Using <canvas>\n &amp;  more ") == "Using <canvas> &amp; more"

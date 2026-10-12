@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from pydantic import Field
 
-from newsfeed.config import ConfigError, ConfigFile, load_config, load_sources
+from newsfeed.config import ConfigError, ConfigFile, SourcesConfig, load_config, load_sources
 from newsfeed.models import SourceType
 
 REPO_SOURCES = Path(__file__).resolve().parents[2] / "config" / "sources.yaml"
@@ -147,6 +147,55 @@ sources:
     assert "2 validation errors" in message
     assert "sources[0] (id 'one').type" in message
     assert "sources[1] (id 'two')" in message
+
+
+def test_merge_keys_are_supported(tmp_path: Path) -> None:
+    path = write(
+        tmp_path,
+        """
+defaults: &news
+  type: rss
+  tags: [news]
+sources:
+  - <<: *news
+    id: merged-one
+    url: https://a.example.com/rss
+  - <<: *news
+    id: merged-two
+    url: https://b.example.com/rss
+    tags: [override]
+""",
+    )
+
+    class WithDefaults(SourcesConfig):
+        defaults: dict[str, object] = Field(default_factory=dict)
+
+    first, second = load_config(path, WithDefaults).sources
+    assert (first.id, first.type, first.tags) == ("merged-one", SourceType.RSS, ["news"])
+    # An explicit key overrides the merged one without counting as a duplicate.
+    assert (second.id, second.tags) == ("merged-two", ["override"])
+
+
+def test_duplicate_keys_are_still_rejected_next_to_a_merge_key(tmp_path: Path) -> None:
+    path = write(
+        tmp_path,
+        """
+defaults: &news {type: rss}
+sources:
+  - <<: *news
+    id: twice
+    url: https://a.example.com/rss
+    url: https://b.example.com/rss
+""",
+    )
+    with pytest.raises(ConfigError, match="found duplicate key 'url'"):
+        load_sources(path)
+
+
+def test_complex_key_is_a_config_error(tmp_path: Path) -> None:
+    path = write(tmp_path, "? [a, b]\n: value\nsources: []\n")
+    with pytest.raises(ConfigError, match="found unhashable key"):
+        load_sources(path)
 
 
 def test_missing_file_is_a_config_error(tmp_path: Path) -> None:
