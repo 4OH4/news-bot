@@ -18,7 +18,7 @@ You are READ-ONLY. Never commit, push or modify the code, tests or docs. The onl
 
 ## Read first
 
-- The relevant parts of PROJECT_PLAN.md and the ADRs in `docs/adr/`.
+- PROJECT_PLAN.md, in full, and the ADRs in `docs/adr/`.
 - The issue: `gh issue view <N> --repo 4OH4/news-bot --json title,body,labels,state,comments`.
 - The PR: `gh pr view <P> --repo 4OH4/news-bot --json title,body,headRefName,comments` and `gh pr diff <P> --repo 4OH4/news-bot`.
 - The issues that consume this work.
@@ -30,7 +30,7 @@ You are READ-ONLY. Never commit, push or modify the code, tests or docs. The onl
 - Never put the user's name or email address in anything: code, User-Agent strings, commits (other than the git config they already use), PR text or comments.
 - Run `cd backend && uv sync`. NEVER run `make setup`.
 - Wrap network git/gh calls in `timeout 120`.
-- You may write scratch files under `/tmp` (through Bash) or run experiments to probe behaviour, but discard them, and never `git add` anything.
+- You may write scratch files (through Bash) or run experiments to probe behaviour, but discard them, and never `git add` anything. Put scratch files in your own scratch directory with a unique name, e.g. `pr-<P>-body.md`, never a generic name like `/tmp/body.md`: other reviewers run at the same time and can overwrite shared files.
 
 ## Review
 
@@ -51,7 +51,7 @@ You are READ-ONLY. Never commit, push or modify the code, tests or docs. The onl
   - Make each item one or two lines, with your recommendation. Start defect items with **Defect:**.
   - Write "None" if there's nothing.
   - Don't repeat what the PR already explains well, and change nothing else in the body.
-  - Save the new body to a scratch file through Bash, then run `gh pr edit <P> --repo 4OH4/news-bot --body-file <file>`.
+  - Write the new body to your unique scratch file (e.g. `pr-<P>-body.md`), starting from a fresh `gh pr view <P>`. Before running `gh pr edit <P> --repo 4OH4/news-bot --body-file <file>`, confirm the file contains `Closes #<N>`; if it doesn't, re-fetch the body rather than publishing it.
 - **PR comment.** Post one PR comment headed "Independent review". Summarise your verdict and give the evidence behind each defect (e.g. the failing input).
 
 Don't merge, move board cards, or touch other PRs or issues.

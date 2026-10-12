@@ -30,8 +30,9 @@ For each chosen issue, use the Agent tool with `subagent_type: worker`, `isolati
 
 Workers run on Sonnet by default (set in `.claude/agents/worker.md`). Pass `model: opus` instead for:
 - `needs-human` issues (ADRs, contracts, curation);
-- issues that call for design judgement the issue doesn't settle;
-- rework after a second review still found defects.
+- issues that call for design judgement the issue doesn't settle.
+
+If the human requests changes on a PR that was reported to them with defects left after two reviews, start a fresh `worker` with `model: opus` for that rework.
 
 Keep the lead and the reviewers on Opus. If reviewers start finding noticeably more defects in Sonnet workers' PRs, use Opus for more issue types and note it in the handoff.
 
@@ -40,11 +41,12 @@ Keep the lead and the reviewers on Opus. If reviewers start finding noticeably m
 For each finished PR:
 1. **Independent review.** Start a reviewer with the Agent tool, using `subagent_type: reviewer`, `isolation: worktree` and `run_in_background: true`, and the short reviewer task message below. Give it only the PR number, the issue number and the consuming issues. Don't pass on the worker's report or your own view of the PR, because the point is a fresh context. Only start it once that PR's worker has finished.
 2. **When the reviewer reports:**
-   - For each defect it lists, use SendMessage to send the worker back with the specific change. If the rework changes behaviour, start a fresh reviewer afterwards. At most two reviews per PR: if the second still finds defects, report the PR to the human instead of starting a third, and `python3 scripts/board.py set <N> "Human review"`.
+   - For each defect it lists, send the worker back with the specific change: by SendMessage if it is still running, otherwise by starting a fresh `worker` with the rework task message below, which works on the existing branch. If the rework changes behaviour, start a fresh reviewer afterwards. At most two reviews per PR: if the second still finds defects, report the PR to the human instead of starting a third, and `python3 scripts/board.py set <N> "Human review"`.
    - In "For human review", mark items fixed by rework as resolved, and leave the rest for the human. Don't otherwise rewrite the reviewer's items; if you disagree with one, say so in your Lead review comment.
 3. **Re-run the checks.** In the worker's worktree, run `uv sync` in `backend/`, then `make lint` and `make test`. Run `make eval` too if `extract/` was touched. Confirm CI is green.
 4. **Shared files.** If the PR shares `pyproject.toml` or `uv.lock` with another open PR, either stack it on that PR's branch (resolve `uv.lock` with `uv lock`) or tell the human the merge order.
 5. **Comment.** Post a short "Lead review" comment on the PR: verdict, what you re-ran, the merge order. Then `python3 scripts/board.py set <N> "Human review"`. Workers set "Agent review" when they open the PR; only you set "Human review".
+6. **Sending work back.** If the human requests changes on a Human review PR, or a defect turns up late, set the card back with `python3 scripts/board.py set <N> "Agent review"` and send the work back as in step 2.
 
 ## 5. Report
 
@@ -66,6 +68,14 @@ Worker:
 Issue #<N> ("<title>"). Consuming issues: <list, or "none">.
 <For needs-human issues: "This is a needs-human issue.">
 <Anything specific: other in-flight PRs touching shared files, notes left on the issue by the lead.>
+```
+
+Worker, rework by a fresh worker (the original has finished):
+
+```
+Rework PR #<P> (issue #<N>, branch `<branch>`). Continue on the existing branch; don't create a new one or move the card.
+Changes: <each defect or requested change, with the suggested fix>.
+<Rebase target, if any.>
 ```
 
 Reviewer:
