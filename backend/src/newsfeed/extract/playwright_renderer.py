@@ -11,10 +11,27 @@ renders and then delegates to ``TrafilaturaExtractor``. The extractor chain
 (#14) uses it as its ``renderer`` for domains flagged ``render: playwright`` in
 ``config/extraction.yaml``.
 
-Politeness (CLAUDE.md rule 6): navigation goes through ``Fetcher.permit`` (robots.txt
-and the per-host rate limit), including any main-frame redirect to another URL,
-and the browser sends the project User-Agent. Images, media, fonts and known ad
-and tracker hosts are never requested.
+Politeness (CLAUDE.md rule 6). The browser sends the project User-Agent, and
+images, media, fonts and known ad and tracker hosts are never requested. Main-frame
+navigations go through ``Fetcher.permit`` (robots.txt and the per-host rate limit):
+
+- the requested URL is permitted before ``goto``;
+- Playwright does not run route handlers for HTTP 3xx hops, so after ``goto`` the
+  response's final URL and every URL in its ``redirected_from`` chain are permitted
+  too, and a refusal raises ``FetchNotAllowedError`` before any content is returned.
+  The redirected requests themselves have already been made by then, but only the
+  redirect responses and the final page are fetched, and nothing is extracted;
+- JavaScript and meta-refresh navigations of the main frame are permitted by the
+  route handler before the request is sent (and aborted if refused).
+
+Not covered: iframe navigations, and same-host subresources (scripts, XHR, CSS),
+which don't go through ``permit``. That is acceptable in Phase 1: they load only as
+part of rendering a page we were permitted to fetch, as a normal browser would,
+and are not extracted as articles; iframe documents are not part of the extracted
+page. Revisit if a flagged domain's subresources live under robots.txt rules.
+
+A response of ``None`` or with status 400 or above is a render failure
+(``RenderError``), so an error page is never extracted as an article.
 
 Playwright's sync API is bound to one thread, so every browser call runs on a
 single dedicated worker thread; the renderer is safe to call from the extract
@@ -41,6 +58,7 @@ __all__ = [
     "PageRenderer",
     "PlaywrightExtractor",
     "PlaywrightRenderer",
+    "RenderError",
     "is_blocked_host",
 ]
 
@@ -79,6 +97,10 @@ BLOCKED_HOSTS: Final = frozenset(
 """Ad and tracker domains; subdomains match too."""
 
 log = get_logger(__name__)
+
+
+class RenderError(Exception):
+    """A page could not be rendered: no response, or an HTTP error status."""
 
 
 class PageRenderer(Protocol):
@@ -207,9 +229,11 @@ class PlaywrightRenderer:
         context = self._browser.new_context(user_agent=self._user_agent)
         try:
             page = context.new_page()
-            page.route("**/*", lambda route: self._handle_route(route, url))
+            permitted: set[str] = {url}
+            page.route("**/*", lambda route: self._handle_route(route, page, permitted))
             with self._fetcher.permit(url):
-                page.goto(url, wait_until="domcontentloaded", timeout=self._timeout_ms)
+                response = page.goto(url, wait_until="domcontentloaded", timeout=self._timeout_ms)
+            self._check_response(response, url, permitted)
             try:
                 page.wait_for_load_state("networkidle", timeout=self._idle_timeout_ms)
             except self._timeout_error:
@@ -219,18 +243,40 @@ class PlaywrightRenderer:
         finally:
             context.close()
 
-    def _handle_route(self, route: Any, original_url: str) -> None:
-        """Abort unwanted requests; permit main-frame redirects to other URLs."""
+    def _check_response(self, response: Any, url: str, permitted: set[str]) -> None:
+        """Fail on a missing or error response; permit the redirect chain it came through.
+
+        Route handlers don't see HTTP redirect hops, so they are checked here.
+        """
+        if response is None:
+            raise RenderError(f"no response for {url}")
+        request = response.request
+        chain = [response.url]
+        while request is not None:
+            chain.append(request.url)
+            request = request.redirected_from
+        for hop in chain:
+            if hop not in permitted:
+                with self._fetcher.permit(hop):  # raises FetchNotAllowedError if refused
+                    permitted.add(hop)
+        if response.status >= 400:
+            raise RenderError(f"HTTP {response.status} for {url}")
+
+    def _handle_route(self, route: Any, page: Any, permitted: set[str]) -> None:
+        """Abort unwanted requests; permit main-frame navigations to new URLs."""
         request = route.request
         if request.resource_type in BLOCKED_RESOURCE_TYPES or is_blocked_host(
             request.url, self._blocked_hosts
         ):
             route.abort()
             return
-        if request.is_navigation_request() and request.url != original_url:
+        is_main_frame_navigation = (
+            request.is_navigation_request() and request.frame == page.main_frame
+        )
+        if is_main_frame_navigation and request.url not in permitted:
             try:
                 with self._fetcher.permit(request.url):
-                    pass
+                    permitted.add(request.url)
             except FetchNotAllowedError:
                 log.info(
                     "navigation refused by robots.txt",
