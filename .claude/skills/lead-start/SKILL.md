@@ -71,7 +71,7 @@ If the usage guard blocks starting agents, count the session as idle even with w
 
 **When you become idle**, after reporting as in step 5:
 1. Note the time as `IDLE_SINCE`, in UTC (`date -u +%Y-%m-%dT%H:%M:%SZ`). It is used only in the GitHub `since=` filters.
-2. Check `CronList` for an existing idle check and don't add a second. Otherwise schedule one with `CronCreate`, `recurring: false`, about 30 minutes ahead. Cron fields are in **local time**, not UTC, so take them from `date -d '+30 min' '+%M %H %d %m'`. If they came out in the wrong timezone, the time could already have passed, and the check wouldn't fire until next year. Pin the minute, hour, day and month, and nudge the minute off :00 or :30. Prompt: `Lead idle check (idle since <IDLE_SINCE>): follow /lead-start step 6.`
+2. Check `CronList` for an existing idle check and don't add a second. Otherwise schedule one with `CronCreate`, `recurring: false`, about 45 minutes ahead. Cron fields are in **local time**, not UTC, so take them from `date -d '+45 min' '+%M %H %d %m'`. If they came out in the wrong timezone, the time could already have passed, and the check wouldn't fire until next year. Pin the minute, hour, day and month, and nudge the minute off :00 or :30. Prompt: `Lead idle check (idle since <IDLE_SINCE>): follow /lead-start step 6.`
 3. Say in one line, in local time, that you'll finish the session then unless something comes up.
 
 **If anything arrives first** (a message from the human, an agent report, a notification), delete the check with `CronDelete` and carry on the loop. Go idle again afterwards if nothing is left.
