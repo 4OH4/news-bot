@@ -104,7 +104,7 @@ Stop and leave a comment on the issue, rather than guessing, when:
 ### Agent automation
 Development runs as one **lead** session coordinating up to **3 worker** agents, plus a short-lived **reviewer** agent for each finished PR (PROJECT_PLAN.md §9.4).
 
-**Session lifecycle.** Every lead session starts with `/lead-start` and ends with `/lead-finish` (`.claude/skills/`).
+**Session lifecycle.** Every lead session starts with `/lead-start` and ends with `/lead-finish` (`.claude/skills/`). The lead runs `/lead-finish` itself once it has been idle for 45 minutes: no agents running, nothing to start, and no new human activity (`/lead-start` step 6). Restarting a fresh lead is cheaper than reloading a long session whose prompt cache has gone cold.
 - Both run `scripts/lead.py`, which does the mechanical steps: update `main`, check dependencies and the pre-commit hook, remove merged worktrees and branches, sync the board, and print the status.
 - The skills add the steps that need judgement: starting workers and reviewers, reviewing PRs, reporting, and writing a handoff note for the next session.
 - Workers and reviewers are project subagents defined in `.claude/agents/` (`worker.md`, `reviewer.md`). Their briefs live there, so the lead sends each one only the issue or PR numbers and any specifics.
