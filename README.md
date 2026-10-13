@@ -23,6 +23,20 @@ docker build -f backend/Dockerfile -t newsfeed .
 docker run --rm newsfeed run
 ```
 
+### JavaScript rendering (optional)
+
+Domains flagged `render: playwright` in `config/extraction.yaml` are rendered in headless
+Chromium. Playwright is not in the default install or image:
+
+```bash
+cd backend
+uv sync --group playwright
+uv run playwright install chromium   # one-off browser download
+
+# from the repo root: the image with Chromium (the default image stays slim)
+docker build -f backend/Dockerfile --target playwright -t newsfeed:playwright .
+```
+
 ## Layout
 
 ```

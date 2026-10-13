@@ -14,7 +14,9 @@
 #       order: [readability, trafilatura]   # extractors to try, in order
 #                                  # (trafilatura | readability | newspaper4k)
 #       render: playwright         # also try the JavaScript renderer (#15),
-#                                  # after the static extractors
+#                                  # after the static extractors. Needs the
+#                                  # optional `playwright` group and Chromium
+#                                  # (see README.md)
 #       min_words: 80              # words needed for "ok" (default 150)
 #     paywalled.example.org:
 #       mode: summary_only         # don't extract; keep the feed summary
