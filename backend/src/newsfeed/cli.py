@@ -19,6 +19,7 @@ from newsfeed.eval.report import (
     render_summary,
     write_report,
 )
+from newsfeed.eval.runlog import build_log_records, log_path, write_log
 from newsfeed.eval.runner import (
     default_extractors,
     filter_entries,
@@ -153,7 +154,8 @@ def eval_run(
 ) -> None:
     """Run the extractors over the saved snapshots and write a report to eval/results/.
 
-    Works offline. Exits 0 whatever the score; non-zero only on harness errors.
+    Also writes a per-entry detailed log to eval/logs/ (git-ignored). Works
+    offline. Exits 0 whatever the score; non-zero only on harness errors.
     """
     urls_path = urls if urls is not None else find_urls_file(Path.cwd())
     if urls_path is None:
@@ -176,21 +178,31 @@ def eval_run(
             )
         extractors = [e for e in extractors if e.name in set(extractor)]
 
+    started = datetime.now(UTC)
+    target = resolve_fixtures_dir(fixtures_dir)
     evaluation = run_evaluation(
         entries,
-        resolve_fixtures_dir(fixtures_dir),
+        target,
         extractors,
         load_boilerplate(urls_path.parent / "boilerplate.txt"),
     )
-    report = build_report(
-        evaluation,
-        date=datetime.now(UTC).date().isoformat(),
-        commit=git_short_sha(urls_path.parent),
-    )
+    commit = git_short_sha(urls_path.parent)
+    report = build_report(evaluation, date=started.date().isoformat(), commit=commit)
     comparison = compare_reports(previous, report) if previous is not None else None
     typer.echo(render_summary(report, comparison))
+    # The detailed log is written even when nothing was evaluated: it says why.
+    records = build_log_records(
+        entries,
+        evaluation,
+        started=started,
+        commit=commit,
+        fixtures_dir=target,
+        urls_path=urls_path,
+    )
+    detail_path = write_log(records, log_path(urls_path.parent / "logs", started, commit))
     if evaluation.evaluated == 0:
         typer.echo("No entries have a snapshot, so no report was written.")
-        return
-    md_path, json_path = write_report(report, urls_path.parent / "results", comparison)
-    typer.echo(f"Wrote {md_path} and {json_path}")
+    else:
+        md_path, json_path = write_report(report, urls_path.parent / "results", comparison)
+        typer.echo(f"Wrote {md_path} and {json_path}")
+    typer.echo(f"Detailed log: {detail_path}")

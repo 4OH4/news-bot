@@ -140,3 +140,37 @@ def test_run_with_bad_compare_file_is_a_harness_error(layout: tuple[Path, Path])
 
     assert result.exit_code == 1
     assert "cannot read report" in result.output
+
+
+def test_run_writes_detailed_log_and_prints_its_path(layout: tuple[Path, Path]) -> None:
+    root, fixtures = layout
+
+    result = runner.invoke(cli.app, ["eval", "run", "--fixtures-dir", str(fixtures)])
+
+    assert result.exit_code == 0, result.output
+    (log,) = (root / "eval" / "logs").glob("*.jsonl")
+    assert f"Detailed log: {log}" in result.output
+    content = log.read_text(encoding="utf-8")
+    records = [json.loads(line) for line in content.splitlines()]
+    assert records[0]["record"] == "run"
+    entries = {r["entry"]: r for r in records[1:]}
+    assert entries["unsnapshotted"]["snapshot"] == "missing"
+    harbour = entries["harbour"]
+    assert set(harbour["results"]) == {"trafilatura", "readability", "newspaper4k", "chain"}
+    assert harbour["results"]["chain"]["attempts"]
+    # Metrics only: the page body never reaches the log.
+    assert "made-up harbour town" not in content
+
+
+def test_run_with_no_snapshots_still_writes_the_log(
+    layout: tuple[Path, Path], tmp_path: Path
+) -> None:
+    root, _ = layout
+
+    result = runner.invoke(cli.app, ["eval", "run", "--fixtures-dir", str(tmp_path / "none")])
+
+    assert result.exit_code == 0, result.output
+    (log,) = (root / "eval" / "logs").glob("*.jsonl")
+    assert f"Detailed log: {log}" in result.output
+    lines = log.read_text(encoding="utf-8").splitlines()
+    assert [json.loads(line).get("snapshot") for line in lines] == [None, "missing", "missing"]
