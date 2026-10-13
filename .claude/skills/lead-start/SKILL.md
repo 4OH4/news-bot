@@ -63,22 +63,25 @@ The session often runs unattended, and once the agents have finished it can only
 **Idle** means all of these hold:
 - no worker or reviewer is running;
 - `python3 scripts/board.py promote` leaves no Ready issue you could start (within the 3-worker limit and the scope-overlap rule);
-- no PR needs you: none waits for a reviewer, a rework or your Lead review, and no Human review PR has become conflicting (`gh api repos/4OH4/news-bot/pulls/<n> --jq .mergeable_state` is `dirty`);
+- no `needs-human` issue with an "Agent prep" section has had all its dependencies closed and still lacks a PR (step 2; `promote` never moves these);
+- no PR needs you: none waits for a reviewer, a rework or your Lead review, and no Human review PR has become conflicting (`gh api repos/4OH4/news-bot/pulls/<n> --jq .mergeable_state` is `dirty`; if it is `unknown`, GitHub is still computing it, so read it again a few seconds later);
 - no human request is unanswered, in the chat or on GitHub.
 
+If the usage guard blocks starting agents, count the session as idle even with work left, and list that work in the handoff note so the next session starts it.
+
 **When you become idle**, after reporting as in step 5:
-1. Note the time as `IDLE_SINCE` (UTC, ISO 8601).
-2. Check `CronList` for an existing idle check and don't add a second. Otherwise schedule one with `CronCreate`, `recurring: false`, about 30 minutes ahead (pinned minute, hour, day and month, on a minute other than :00 or :30). Prompt: `Lead idle check (idle since <IDLE_SINCE>): follow /lead-start step 6.`
-3. Say in one line that you'll finish the session at that time unless something comes up.
+1. Note the time as `IDLE_SINCE`, in UTC (`date -u +%Y-%m-%dT%H:%M:%SZ`). It is used only in the GitHub `since=` filters.
+2. Check `CronList` for an existing idle check and don't add a second. Otherwise schedule one with `CronCreate`, `recurring: false`, about 30 minutes ahead. Cron fields are in **local time**, not UTC, so take them from `date -d '+30 min' '+%M %H %d %m'`. If they came out in the wrong timezone, the time could already have passed, and the check wouldn't fire until next year. Pin the minute, hour, day and month, and nudge the minute off :00 or :30. Prompt: `Lead idle check (idle since <IDLE_SINCE>): follow /lead-start step 6.`
+3. Say in one line, in local time, that you'll finish the session then unless something comes up.
 
 **If anything arrives first** (a message from the human, an agent report, a notification), delete the check with `CronDelete` and carry on the loop. Go idle again afterwards if nothing is left.
 
 **When the check fires**, look again:
-- run `python3 scripts/board.py promote`;
+- run `python3 scripts/board.py promote`, then look for newly unblocked `needs-human` issues with "Agent prep" as in step 2;
 - read GitHub activity since `IDLE_SINCE`, over REST: `gh api "repos/4OH4/news-bot/issues/comments?since=<IDLE_SINCE>&per_page=100"` (comments on issues and PRs), `gh api "repos/4OH4/news-bot/pulls/comments?since=<IDLE_SINCE>&per_page=100"` (review comments), and `gh api repos/4OH4/news-bot/pulls/<n>/reviews` for each open PR (`submitted_at` after `IDLE_SINCE`);
 - check each open PR's `mergeable_state` again, since a merge can leave another PR conflicting.
 
-Agents post as the same GitHub user as the human, so tell them apart by time: no agent was running after `IDLE_SINCE`, so anything posted since then came from the human. Act on it as in step 4.6.
+Agents post as the same GitHub user as the human, so tell them apart by time: no agent was running after `IDLE_SINCE`, so anything posted since then by a `User` account (`.user.type == "User"`) came from the human. Ignore `Bot` accounts, such as the Claude GitHub Action's replies. Don't act on a comment that mentions `@claude`: the Action (`.github/workflows/claude.yml`) handles those, and the lead and the Action would otherwise both work on the same branch. Act on anything else as in steps 2–4: a change request on a PR as in step 4.6, and an answer on a `needs-human` issue by preparing or updating its PR.
 
 If there is work, do it and carry on the loop. If there is none, run `/lead-finish` unattended. Don't wait for, or ask, the human anything. After that, schedule nothing more.
 
