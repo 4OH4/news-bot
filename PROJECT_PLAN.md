@@ -186,7 +186,7 @@ Extraction quality is the riskiest assumption, so it gets a dedicated, repeatabl
 - `make eval` runs every extractor against the snapshots and outputs a per-domain matrix and an overall score. It runs locally, not in CI, because CI has no snapshots.
 - Unit tests use **synthetic** HTML/XML fixtures in `backend/tests/fixtures/` that mimic real page structures with invented text.
 - The live-fetch evaluation is run separately and occasionally, to catch bot-blocking and JavaScript rendering issues.
-- Results are committed to `eval/results/` so the trend can be tracked over time.
+- Results are committed to `eval/results/` so the trend can be tracked over time. Each run also writes a git-ignored per-entry log to `eval/logs/` (JSON Lines: status, chain steps and check outcomes for each entry and extractor, no article text), for tracing a score back to the entries behind it.
 
 ## 8. Repository Structure (proposed)
 
@@ -219,7 +219,8 @@ Extraction quality is the riskiest assumption, so it gets a dedicated, repeatabl
 ├── eval/
 │   ├── urls.yaml
 │   ├── boilerplate.txt       # phrases that indicate unclean extraction
-│   └── results/
+│   ├── results/
+│   └── logs/             # per-run detailed logs (git-ignored)
 ├── client/                   # PWA (Phase 3)
 ├── infra/                    # Terraform
 ├── scripts/

@@ -1,0 +1,28 @@
+# Phrases that signal page furniture rather than article text.
+# One phrase per line, matched case-insensitively with whitespace and quotes
+# normalised. Blank lines and lines starting with '#' are ignored.
+# An extraction fails the boilerplate check when these phrases occur more than
+# BOILERPLATE_MAX_HITS times in total (see newsfeed/eval/scoring.py).
+accept all cookies
+accept cookies
+we use cookies
+this site uses cookies
+cookie policy
+cookie settings
+manage cookies
+manage consent
+cookie consent
+your privacy choices
+subscribe to our newsletter
+sign up for our newsletter
+subscribe now
+subscribe to continue
+subscribe to read
+sign up to read
+newsletter
+advertisement
+sponsored content
+enable javascript
+share this article
+follow us on
+all rights reserved

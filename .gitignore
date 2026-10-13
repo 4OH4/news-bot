@@ -225,6 +225,8 @@ data/
 # Evaluation snapshots are third-party content and live outside the repo
 # (NEWSFEED_FIXTURES_DIR); this is a safeguard against committing them.
 eval/fixtures/
+# Per-run detailed evaluation logs (one JSON line per entry); local only.
+eval/logs/
 # Claude Code: agent worktrees and personal settings (shared .claude/settings.json is committed)
 .claude/worktrees/
 .claude/settings.local.json
