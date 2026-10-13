@@ -23,12 +23,13 @@ from newsfeed.extract.overrides import ExtractionConfig, url_domain
 from newsfeed.extract.readability_extractor import ReadabilityExtractor
 from newsfeed.extract.trafilatura_extractor import TrafilaturaExtractor
 from newsfeed.logging import get_logger
-from newsfeed.models import ExtractionResult, ExtractionStatus
+from newsfeed.models import ExtractionAttempt, ExtractionResult, ExtractionStatus
 from newsfeed.ports import Extractor
 
 __all__ = [
     "Evaluation",
     "Outcome",
+    "Skipped",
     "default_extractors",
     "entry_domain",
     "filter_entries",
@@ -53,6 +54,28 @@ class Outcome:
     words: int
     score: Score
     seconds: float
+    url: str = ""
+    """The entry's URL from ``eval/urls.yaml``."""
+    final_url: str = ""
+    """The post-redirect URL the extractor was given."""
+    method: str | None = None
+    """The extractor that produced the result (for the chain, the step it chose)."""
+    error: str | None = None
+    """The extractor's error message, if any."""
+    attempts: tuple[ExtractionAttempt, ...] = ()
+    """For the chain, every step it tried, in order."""
+
+
+@dataclass(frozen=True)
+class Skipped:
+    """An entry that wasn't run, and why. ``reason`` is ``missing``, ``fetch_failed`` or
+    ``unreadable``; ``detail`` says more (the fetch error, or what is damaged)."""
+
+    entry_id: str
+    url: str
+    domain: str
+    reason: str
+    detail: str | None = None
 
 
 @dataclass
@@ -63,6 +86,14 @@ class Evaluation:
     outcomes: list[Outcome] = field(default_factory=list)
     not_snapshotted: list[str] = field(default_factory=list)
     unreadable: list[str] = field(default_factory=list)
+    skipped: list[Skipped] = field(default_factory=list)
+    """Every entry in ``not_snapshotted`` or ``unreadable``, with the reason."""
+
+    def skip(self, entry: EvalEntry, reason: str, detail: str | None = None) -> None:
+        """Record that ``entry`` wasn't run (see ``Skipped`` for the reasons)."""
+        target = self.unreadable if reason == "unreadable" else self.not_snapshotted
+        target.append(entry.id)
+        self.skipped.append(Skipped(entry.id, entry.url, entry_domain(entry), reason, detail))
 
     @property
     def evaluated(self) -> int:
@@ -183,17 +214,19 @@ def run_evaluation(
             # A missing meta file is the normal "never snapshotted" case; anything
             # else is a damaged snapshot worth a warning.
             if isinstance(exc.__cause__, FileNotFoundError):
-                evaluation.not_snapshotted.append(entry.id)
+                evaluation.skip(entry, "missing")
             else:
                 log.warning("snapshot unreadable", extra={**context, "error": str(exc)})
-                evaluation.unreadable.append(entry.id)
+                evaluation.skip(entry, "unreadable", str(exc))
             continue
         except ValueError as exc:
             log.warning("no snapshot path", extra={**context, "error": str(exc)})
-            evaluation.unreadable.append(entry.id)
+            evaluation.skip(entry, "unreadable", str(exc))
             continue
-        if meta is None or body is None:
-            evaluation.not_snapshotted.append(entry.id)
+        if body is None:
+            # The meta file records a failed fetch (an HTTP error or a robots block).
+            failed = f"HTTP {meta.status}" if meta.status is not None else "no response"
+            evaluation.skip(entry, "fetch_failed", meta.error or failed)
             continue
 
         html = _decode(body, meta.content_type)
@@ -214,6 +247,11 @@ def run_evaluation(
                     words=result.word_count,
                     score=score_result(entry, result, boilerplate),
                     seconds=seconds,
+                    url=entry.url,
+                    final_url=page_url,
+                    method=result.method,
+                    error=result.error,
+                    attempts=tuple(result.attempts),
                 )
             )
     return evaluation

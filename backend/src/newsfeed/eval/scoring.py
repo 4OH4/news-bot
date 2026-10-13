@@ -18,6 +18,7 @@ from __future__ import annotations
 import difflib
 import re
 import unicodedata
+from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
@@ -30,6 +31,7 @@ from newsfeed.models import ExtractionResult, ExtractionStatus
 __all__ = [
     "BOILERPLATE_MAX_HITS",
     "TITLE_MIN_RATIO",
+    "Checks",
     "Failure",
     "Score",
     "load_boilerplate",
@@ -71,12 +73,37 @@ class Failure(StrEnum):
 
 
 @dataclass(frozen=True)
+class Checks:
+    """The measured values behind a score, for the detailed run log.
+
+    Holds numbers, snippet positions and boilerplate phrases (which come from the
+    repo's own files), never extracted text.
+    """
+
+    title_ratio: float | None = None
+    """Similarity to ``expected_title``; None if either title is absent."""
+    snippets_found: tuple[int, ...] = ()
+    """1-based positions in ``must_contain`` of the snippets found in the text."""
+    snippets_missing: tuple[int, ...] = ()
+    """1-based positions in ``must_contain`` of the snippets not found."""
+    boilerplate: tuple[tuple[str, int], ...] = ()
+    """``(phrase, occurrences)`` for each boilerplate phrase found, sorted by phrase."""
+
+    @property
+    def boilerplate_hits(self) -> int:
+        """Total boilerplate occurrences, as compared with ``BOILERPLATE_MAX_HITS``."""
+        return sum(n for _, n in self.boilerplate)
+
+
+@dataclass(frozen=True)
 class Score:
     """The outcome of the checks for one extraction."""
 
     failures: tuple[Failure, ...] = ()
     details: tuple[str, ...] = ()
     """Short human-readable reasons, parallel to ``failures``; no article text."""
+    checks: Checks | None = None
+    """The values measured; None when extraction failed and the checks were skipped."""
 
     @property
     def clean(self) -> bool:
@@ -104,18 +131,29 @@ def load_boilerplate(path: Path) -> tuple[str, ...]:
     return tuple(normalise(p) for p in phrases if p and not p.startswith("#"))
 
 
-def _boilerplate_hits(text: str, phrases: Iterable[str]) -> int:
-    """Count boilerplate phrase occurrences, each stretch of text at most once.
+def _boilerplate_matches(text: str, phrases: Iterable[str]) -> Counter[str]:
+    """Count occurrences of each boilerplate phrase, each stretch of text at most once.
 
     One alternation, longest phrase first, so "newsletter" doesn't also count
     inside "sign up for our newsletter". Word boundaries stop it matching inside
-    longer words such as "newsletters".
+    longer words such as "newsletters". Keys are the phrases as given.
     """
     unique = sorted({p for p in phrases if p}, key=len, reverse=True)
     if not unique:
-        return 0
-    pattern = r"\b(?:" + "|".join(re.escape(p) for p in unique) + r")\b"
-    return len(re.findall(pattern, text, re.IGNORECASE))
+        return Counter()
+    # One capture group per phrase: the group that matched names the phrase, so
+    # the keys always come from the phrase list, never from the page text.
+    pattern = r"\b(?:" + "|".join(f"({re.escape(p)})" for p in unique) + r")\b"
+    return Counter(
+        unique[m.lastindex - 1]
+        for m in re.finditer(pattern, text, re.IGNORECASE)
+        if m.lastindex is not None
+    )
+
+
+def _boilerplate_hits(text: str, phrases: Iterable[str]) -> int:
+    """Total boilerplate phrase occurrences (see ``_boilerplate_matches``)."""
+    return sum(_boilerplate_matches(text, phrases).values())
 
 
 def score_result(
@@ -137,6 +175,7 @@ def score_result(
         failures.append(kind)
         details.append(detail)
 
+    ratio: float | None = None
     if entry.expected_title is not None:
         if not result.title:
             fail(Failure.TITLE_MISMATCH, "no title extracted")
@@ -148,14 +187,14 @@ def score_result(
                 fail(Failure.TITLE_MISMATCH, f"title similarity {ratio:.2f} < {TITLE_MIN_RATIO}")
 
     text = normalise(result.text or "")
-    if entry.must_contain:
-        missing = [i for i, s in enumerate(entry.must_contain, 1) if normalise(s) not in text]
-        if missing:
-            numbers = ", ".join(str(i) for i in missing)
-            fail(
-                Failure.MISSING_SNIPPET,
-                f"{len(missing)} of {len(entry.must_contain)} snippets missing (#{numbers})",
-            )
+    found = [i for i, s in enumerate(entry.must_contain, 1) if normalise(s) in text]
+    missing = [i for i in range(1, len(entry.must_contain) + 1) if i not in found]
+    if missing:
+        numbers = ", ".join(str(i) for i in missing)
+        fail(
+            Failure.MISSING_SNIPPET,
+            f"{len(missing)} of {len(entry.must_contain)} snippets missing (#{numbers})",
+        )
 
     if entry.word_range is not None:
         low, high = entry.word_range
@@ -164,8 +203,15 @@ def score_result(
         elif result.word_count > high:
             fail(Failure.WORD_COUNT_HIGH, f"{result.word_count} words > {high}")
 
-    hits = _boilerplate_hits(text, boilerplate)
+    matches = _boilerplate_matches(text, boilerplate)
+    hits = sum(matches.values())
     if hits > BOILERPLATE_MAX_HITS:
         fail(Failure.BOILERPLATE, f"{hits} boilerplate phrases > {BOILERPLATE_MAX_HITS}")
 
-    return Score(tuple(failures), tuple(details))
+    checks = Checks(
+        title_ratio=None if ratio is None else round(ratio, 3),
+        snippets_found=tuple(found),
+        snippets_missing=tuple(missing),
+        boilerplate=tuple(sorted(matches.items())),
+    )
+    return Score(tuple(failures), tuple(details), checks)

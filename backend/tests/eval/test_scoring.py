@@ -96,6 +96,26 @@ def test_overlapping_boilerplate_phrases_are_counted_once() -> None:
     assert _boilerplate_hits(normalise(text), phrases) == 1
 
 
+def test_checks_record_the_measured_values() -> None:
+    text = "The first invented sentence. Accept cookies. Accept cookies. Subscribe now."
+    phrases = ("accept cookies", "subscribe now", "unused phrase")
+
+    checks = score_result(ENTRY, result(text=text, title="Invented Headlines"), phrases).checks
+
+    assert checks is not None
+    assert checks.title_ratio is not None and 0.9 < checks.title_ratio < 1.0
+    assert checks.snippets_found == (1,)
+    assert checks.snippets_missing == (2,)
+    assert checks.boilerplate == (("accept cookies", 2), ("subscribe now", 1))
+    assert checks.boilerplate_hits == 3
+
+
+def test_failed_extraction_has_no_checks() -> None:
+    score = score_result(ENTRY, ExtractionResult(status=ExtractionStatus.FAILED))
+
+    assert score.checks is None
+
+
 @pytest.mark.parametrize(
     "status", [ExtractionStatus.FAILED, ExtractionStatus.SKIPPED, ExtractionStatus.PAYWALLED]
 )

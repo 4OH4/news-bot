@@ -42,7 +42,7 @@ docker build -f backend/Dockerfile --target playwright -t newsfeed:playwright .
 ```
 backend/   Python package `newsfeed` (uv project) and Dockerfile
 config/    sources, interest rules and extraction overrides (YAML)
-eval/      extraction evaluation set and committed results (metrics only)
+eval/      extraction evaluation set, committed results (metrics only) and local per-run logs
 docs/adr/  architecture decision records
 client/    reader PWA (Phase 3)
 infra/     infrastructure as code (Phase 2)
