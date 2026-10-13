@@ -1,4 +1,4 @@
-"""Extraction evaluation: the URL set, page snapshots and (later) scoring.
+"""Extraction evaluation: the URL set, page snapshots, scoring and the report.
 
 The evaluation runs against saved page snapshots so results are deterministic
 and sites aren't fetched repeatedly (PROJECT_PLAN.md §7). Snapshots are
