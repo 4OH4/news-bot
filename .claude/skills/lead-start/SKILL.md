@@ -56,7 +56,31 @@ Keep it short:
 - **Anything only the human can do**, with exact steps: settings, credentials, real decisions.
 - What starts next once those merge.
 
-If the human asked for autonomy between merges, use `/loop` with a fallback of 20 minutes or more. Re-run `python3 scripts/board.py promote` each time.
+## 6. Idle shutdown
+
+The session often runs unattended, and once the agents have finished it can only wait for the human. Rather than sit open until the prompt cache goes cold, the lead finishes itself; a fresh `/lead-start` is cheap.
+
+**Idle** means all of these hold:
+- no worker or reviewer is running;
+- `python3 scripts/board.py promote` leaves no Ready issue you could start (within the 3-worker limit and the scope-overlap rule);
+- no PR needs you: none waits for a reviewer, a rework or your Lead review, and no Human review PR has become conflicting (`gh api repos/4OH4/news-bot/pulls/<n> --jq .mergeable_state` is `dirty`);
+- no human request is unanswered, in the chat or on GitHub.
+
+**When you become idle**, after reporting as in step 5:
+1. Note the time as `IDLE_SINCE` (UTC, ISO 8601).
+2. Check `CronList` for an existing idle check and don't add a second. Otherwise schedule one with `CronCreate`, `recurring: false`, about 30 minutes ahead (pinned minute, hour, day and month, on a minute other than :00 or :30). Prompt: `Lead idle check (idle since <IDLE_SINCE>): follow /lead-start step 6.`
+3. Say in one line that you'll finish the session at that time unless something comes up.
+
+**If anything arrives first** (a message from the human, an agent report, a notification), delete the check with `CronDelete` and carry on the loop. Go idle again afterwards if nothing is left.
+
+**When the check fires**, look again:
+- run `python3 scripts/board.py promote`;
+- read GitHub activity since `IDLE_SINCE`, over REST: `gh api "repos/4OH4/news-bot/issues/comments?since=<IDLE_SINCE>&per_page=100"` (comments on issues and PRs), `gh api "repos/4OH4/news-bot/pulls/comments?since=<IDLE_SINCE>&per_page=100"` (review comments), and `gh api repos/4OH4/news-bot/pulls/<n>/reviews` for each open PR (`submitted_at` after `IDLE_SINCE`);
+- check each open PR's `mergeable_state` again, since a merge can leave another PR conflicting.
+
+Agents post as the same GitHub user as the human, so tell them apart by time: no agent was running after `IDLE_SINCE`, so anything posted since then came from the human. Act on it as in step 4.6.
+
+If there is work, do it and carry on the loop. If there is none, run `/lead-finish` unattended. Don't wait for, or ask, the human anything. After that, schedule nothing more.
 
 ## Task messages
 

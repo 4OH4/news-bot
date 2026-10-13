@@ -39,3 +39,10 @@ Tell the user, briefly:
 - PRs ready to merge, in order;
 - anything only they can do;
 - how to resume: start a new conversation in this folder with `/lead-start`.
+
+If the idle check in `/lead-start` step 6 started this finish, no agents are running and the human isn't watching. Don't wait for or ask them anything. Delete any idle check still scheduled (`CronList`, then `CronDelete`). Open the report with a banner that can't be missed when they come back:
+
+```
+## ✅ Lead session finished at <HH:MM, date> (idle since <HH:MM>)
+Nothing more can be done until you review. Start a new conversation in this folder with /lead-start to resume.
+```
