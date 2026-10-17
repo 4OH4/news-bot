@@ -245,7 +245,7 @@ def run_evaluation(
                     extractor=extractor.name,
                     status=str(result.status),
                     words=result.word_count,
-                    score=score_result(entry, result, boilerplate),
+                    score=score_result(entry, result, boilerplate, html),
                     seconds=seconds,
                     url=entry.url,
                     final_url=page_url,
