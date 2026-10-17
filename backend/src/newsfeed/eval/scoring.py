@@ -3,7 +3,10 @@
 An extraction is **clean** when none of these checks fails:
 
 * the extractor produced content (status ``ok`` or ``partial``);
-* the title matches ``expected_title`` (normalised ``difflib`` ratio of at least 0.9);
+* the title matches ``expected_title`` (normalised ``difflib`` ratio of at least 0.9).
+  A page has two titles, the visible ``<h1>`` and the metadata title (``og:title``,
+  ``<title>``). The extractors return the metadata one, so when the extracted title
+  is the page's metadata title the page's ``<h1>`` is accepted too (#62);
 * every ``must_contain`` snippet is in the text (whitespace, case and quotes normalised);
 * the word count is inside ``word_range``;
 * boilerplate phrases (``eval/boilerplate.txt``) occur at most ``BOILERPLATE_MAX_HITS`` times.
@@ -25,6 +28,9 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Final
 
+from lxml import html as lxml_html
+from lxml.etree import ParserError
+
 from newsfeed.eval.urls import EvalEntry
 from newsfeed.models import ExtractionResult, ExtractionStatus
 
@@ -36,6 +42,7 @@ __all__ = [
     "Score",
     "load_boilerplate",
     "normalise",
+    "page_titles",
     "score_result",
 ]
 
@@ -81,7 +88,9 @@ class Checks:
     """
 
     title_ratio: float | None = None
-    """Similarity to ``expected_title``; None if either title is absent."""
+    """Best similarity to ``expected_title``; None if either title is absent."""
+    title_via: str | None = None
+    """``extracted`` or ``h1``: which title the best similarity came from."""
     snippets_found: tuple[int, ...] = ()
     """1-based positions in ``must_contain`` of the snippets found in the text."""
     snippets_missing: tuple[int, ...] = ()
@@ -115,6 +124,51 @@ def normalise(text: str) -> str:
     """Fold ``text`` for comparison: NFKC, straight quotes, one space, case-insensitive."""
     folded = unicodedata.normalize("NFKC", text).translate(_QUOTES).casefold()
     return _SPACE.sub(" ", folded).strip()
+
+
+def _text_of(element: lxml_html.HtmlElement) -> str:
+    return " ".join(element.text_content().split())
+
+
+def page_titles(html: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Return ``(metadata titles, h1 headings)`` found in ``html``.
+
+    Metadata titles are ``og:title``, ``twitter:title`` and ``<title>``. Both
+    lists may be empty, and unparseable HTML gives two empty tuples.
+    """
+    try:
+        root = lxml_html.fromstring(html)
+    except (ValueError, ParserError):
+        return (), ()
+    meta = [
+        content
+        for prop in ("og:title", "twitter:title")
+        for node in root.xpath(f'//meta[@property="{prop}" or @name="{prop}"]')
+        if (content := " ".join(str(node.get("content") or "").split()))
+    ]
+    meta.extend(t for node in root.xpath("//title") if (t := _text_of(node)))
+    headings = [t for node in root.xpath("//h1") if (t := _text_of(node))]
+    return tuple(meta), tuple(headings)
+
+
+def _ratio(a: str, b: str) -> float:
+    return difflib.SequenceMatcher(None, normalise(a), normalise(b)).ratio()
+
+
+def _title_match(expected: str, extracted: str, html: str | None) -> tuple[float, str]:
+    """Best similarity of ``expected`` to the extracted title or, if allowed, an h1.
+
+    The page's ``<h1>`` counts only when the extracted title is itself one of the
+    page's metadata titles, so a wrong extraction can't pass via an unrelated h1.
+    """
+    best = (_ratio(expected, extracted), "extracted")
+    if html is None or best[0] >= TITLE_MIN_RATIO:
+        return best
+    meta, headings = page_titles(html)
+    if any(_ratio(extracted, m) >= TITLE_MIN_RATIO for m in meta):
+        for heading in headings:
+            best = max(best, (_ratio(expected, heading), "h1"))
+    return best
 
 
 def load_boilerplate(path: Path) -> tuple[str, ...]:
@@ -157,13 +211,17 @@ def _boilerplate_hits(text: str, phrases: Iterable[str]) -> int:
 
 
 def score_result(
-    entry: EvalEntry, result: ExtractionResult, boilerplate: Iterable[str] = ()
+    entry: EvalEntry,
+    result: ExtractionResult,
+    boilerplate: Iterable[str] = (),
+    html: str | None = None,
 ) -> Score:
     """Check ``result`` against ``entry``'s expectations.
 
     ``boilerplate`` holds normalised phrases (see ``load_boilerplate``). If the
     extractor produced no content, only that failure is reported, because the
-    other checks would all fail for the same reason.
+    other checks would all fail for the same reason. ``html`` is the page the
+    extractor ran on; with it the title check can fall back to the page's ``<h1>``.
     """
     if result.status not in {ExtractionStatus.OK, ExtractionStatus.PARTIAL}:
         return Score((Failure.EXTRACTION_FAILED,), (f"status {result.status}",))
@@ -176,13 +234,12 @@ def score_result(
         details.append(detail)
 
     ratio: float | None = None
+    via: str | None = None
     if entry.expected_title is not None:
         if not result.title:
             fail(Failure.TITLE_MISMATCH, "no title extracted")
         else:
-            ratio = difflib.SequenceMatcher(
-                None, normalise(entry.expected_title), normalise(result.title)
-            ).ratio()
+            ratio, via = _title_match(entry.expected_title, result.title, html)
             if ratio < TITLE_MIN_RATIO:
                 fail(Failure.TITLE_MISMATCH, f"title similarity {ratio:.2f} < {TITLE_MIN_RATIO}")
 
@@ -210,6 +267,7 @@ def score_result(
 
     checks = Checks(
         title_ratio=None if ratio is None else round(ratio, 3),
+        title_via=via,
         snippets_found=tuple(found),
         snippets_missing=tuple(missing),
         boilerplate=tuple(sorted(matches.items())),
