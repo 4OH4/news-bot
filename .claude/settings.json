@@ -37,6 +37,7 @@
       "Bash(gh api repos/4OH4/news-bot/:*)",
       "Bash(python3 scripts/lead.py:*)",
       "Bash(python3 scripts/board.py:*)",
+      "Bash(python3 scripts/tier.py:*)",
       "Bash(docker build:*)",
       "Bash(docker run --rm:*)",
       "Bash(docker image ls:*)"
