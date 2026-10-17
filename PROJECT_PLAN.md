@@ -150,12 +150,14 @@ Each phase has a clear exit criterion. Later phases may be re-planned based on w
 - An evaluation harness reports success rate, failure reasons and per-domain results, and compares extractors.
 - Output: local SQLite plus HTML files, and a simple local HTML index for eyeballing the results.
 - **Exit:** at least 85–90% clean extraction on the evaluation set for non-paywalled articles, with failures understood and categorised. A go/no-go decision on the concept is made here.
+- **Status (2026-10-17): done, go.** 98.9% clean on the evaluation set; decision and Phase 2 scope changes in ADR-0003, failure analysis in `docs/phase1-review.md`.
 
 ### Phase 2: Pipeline on GCP and rule-based ranking
 - Terraform (or scripts) for the project, Artifact Registry, Cloud Run Job, Scheduler, Firestore, GCS, Secret Manager, and a budget alert.
 - Firestore and GCS adapters; GitHub Actions deployment via Workload Identity Federation.
 - Dedupe by canonical URL; rule-based scoring from `config/interests.yaml`.
 - Publish `feed.json` snapshot; run stats and structured logging.
+- Added by ADR-0003: paywall and teaser detection; publish non-clean items as headline, summary and link; measure live extraction from GCP against the Phase 1 baseline.
 - **Exit:** the pipeline runs hourly unattended for a week within budget, and the feed snapshot is accessible.
 
 ### Phase 3: Reader client (PWA)

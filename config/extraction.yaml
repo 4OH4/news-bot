@@ -26,4 +26,11 @@
 # Add domains here when `make eval` (#18) shows the default chain doing badly
 # on them.
 
-domains: {}
+domains:
+  # Phase 1 review (#21, docs/phase1-review.md): trafilatura stops after the
+  # first section of some Ars Technica articles (251 of ~820 words on
+  # ars-2026-10-16-openai-models-hacked-a-crypto-wallet) and appends the
+  # affiliate disclaimer and author bio on others. Readability is clean on all
+  # four Ars evaluation entries, so it goes first.
+  arstechnica.com:
+    order: [readability, trafilatura, newspaper4k]
