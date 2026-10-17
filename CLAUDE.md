@@ -74,6 +74,7 @@ Agents write most new issues: follow-ups, splits and new work. The human reads a
 - For `needs-human` issues, "What's needed" opens with one or two sentences on the decision or task and what depends on the outcome.
 - Explain internal names and jargon on first use, e.g. "the Algolia HN Search API (the public search service for Hacker News)".
 - Keep the precision: acceptance criteria, scope, interfaces and verification stay as specific as before.
+- Don't split work into a sequence of small dependent issues in the same module just to keep each one small. One M issue is easier to review than three chained S issues. Where a chain does exist, the lead can deliver it as one PR (see "Agent automation").
 
 ### Picking up work
 - Work only on issues in the `Ready` column labelled `agent-ready`, unless I've (or the lead agent has) assigned you something directly. See "Agent automation" below.
@@ -81,7 +82,7 @@ Agents write most new issues: follow-ups, splits and new work. The human reads a
 - Stay within the files and modules listed in the issue's scope. If you need to change something out of scope, stop and comment explaining why rather than expanding the change.
 
 ### Branches and worktrees
-- One issue per branch, named `issue-<number>-<short-slug>` (e.g. `issue-13-trafilatura-extractor`).
+- One issue per branch, named `issue-<number>-<short-slug>` (e.g. `issue-13-trafilatura-extractor`). The exception is a chain of dependent issues that the lead gives to one worker: one branch and one PR, named after the first issue.
 - When running in parallel with other agents, work in your own git worktree.
 - Rebase on `main` before opening a PR.
 
@@ -90,10 +91,9 @@ Agents write most new issues: follow-ups, splits and new work. The human reads a
 - Small, coherent commits. Don't mix formatting-only changes with logic changes.
 
 ### Pull requests
-- The PR description includes `Closes #<issue>`, a summary of the change, how it was verified (commands and results) and any follow-up issues you suggest.
-- Tick off the issue's acceptance criteria in the PR description.
+- Follow `.github/pull_request_template.md`. The human reads only the top: a header line (`Closes #<issue>`, the risk tier, the merge order), "For human review" and a Summary of two or three sentences. The ticked acceptance criteria, verification (commands and results), design notes and follow-ups go in the collapsed sections below.
 - Update docs (`CLAUDE.md`, `PROJECT_PLAN.md`, ADRs, README) if your change affects them.
-- A human reviews and merges every PR. Never merge to `main` yourself.
+- The human merges every Tier B and Tier C PR. The lead merges Tier A PRs, and only through `python3 scripts/tier.py merge`. Never merge to `main` any other way.
 
 ### When to stop and ask
 Stop and leave a comment on the issue, rather than guessing, when:
@@ -111,6 +111,13 @@ Development runs as one **lead** session coordinating up to **3 worker** agents,
 - Workers and reviewers are project subagents defined in `.claude/agents/` (`worker.md`, `reviewer.md`). Their briefs live there, so the lead sends each one only the issue or PR numbers and any specifics.
 - Workers run on Sonnet. The lead and reviewers run on Opus, and the lead switches a worker to Opus for `needs-human` or design-heavy issues. The reviewer agent has no file-editing tools, and workers can't start subagents.
 - `lead.py` never deletes anything with uncommitted or unmerged work; it lists it instead.
+
+**Risk tiers.** `python3 scripts/tier.py classify <PR>` puts every PR in a tier, from its diff rather than anyone's judgement:
+- **Tier C** (the human reads it in full): it touches `models.py`, `ports.py`, `fetching/`, `docs/adr/`, `eval/urls.yaml`, `config/sources.yaml`, `config/interests.yaml`, `infra/`, `.github/`, `.claude/` or `scripts/`, or it is a `needs-human` PR or closes a `needs-human` issue.
+- **Tier A** (the lead merges): not Tier C, the title type is `fix`, `test`, `docs`, `refactor`, `perf` or `chore` (with no `!`), every file is under `docs/`, `README*`, `backend/tests/` (except the test infrastructure: `conftest.py`, `fakes.py`, `test_network_guard.py`, `contract/`), `eval/results/` or a single stage package (`ingest`, `extract`, `rank`, `publish`, `preview`, `api`; not the `eval` scorer), and it changes at most 150 source lines and 600 lines in total.
+- **Tier B** (the human merges): everything else, including every `feat`.
+
+`python3 scripts/tier.py merge <PR>` merges a Tier A PR only if it comes from a branch in this repo, is green on CI and mergeable, has no `hold` label, has an "Independent review" comment, has no **Needs human:** item and no **Defect:** item without "**Resolved** in <sha>" in its single "For human review" section, and has a "Lead review" comment saying "Verdict: merge" and naming its current head SHA. Only comments from the owner account count. It pins the merge to that SHA and labels the PR `lead-merged`. The human reads lead-merged PRs after the fact (the lead lists them in its report) and can revert any of them, add `hold` to stop a pending one, or ask the reviewer's **Needs human:** marker to be used more.
 
 **The human's role is to read and merge.** Agents do all the preparation, so every PR reaches the human ready to merge as it is:
 - Never ask the human to edit files, fill in templates, tick boxes or make follow-up commits. If a PR needs a change, including review feedback the human gives in a comment, an agent makes it.
@@ -135,10 +142,10 @@ Workers don't merge, don't edit other issues, and don't move cards other than th
 **Reviewers** give every PR an independent, adversarial review before it reaches the human. The lead starts one per finished PR, with a fresh context: the brief names only the PR and its issue, never the worker's report or the lead's reasoning. Reviewers are **read-only**: they never commit, push or correct anything, including the PR text. A reviewer:
 1. Checks the PR text against the diff and its own lint/test run: every claim, ticked criterion and piece of verification evidence must actually hold.
 2. Tries to show the change falls short of the issue's goals, then looks at wider effects: downstream issues that consume it, PROJECT_PLAN.md, ADRs, the architecture rules, and assumptions that may not survive real data.
-3. **Writes its recommendations and risk areas for the human** in a "For human review" section at the top of the PR body (directly below "Decisions you approve by merging" on `needs-human` PRs), changing nothing else in the body. It covers judgement calls the human is implicitly approving, risks, inaccuracies in the PR text, and open questions, each with a recommendation. Each item is one or two lines; if there's nothing, it says "None".
+3. **Writes its recommendations and risk areas for the human** in a "For human review" section at the top of the PR body (directly below "Decisions you approve by merging" on `needs-human` PRs), changing nothing else in the body. It covers judgement calls the human is implicitly approving, risks, inaccuracies in the PR text, and open questions, each with a recommendation. Each item is one or two lines; if there's nothing, it says "None". Defects start with **Defect:**. On a Tier A PR, anything the human should see before it merges starts with **Needs human:**, which stops the lead merging it.
 4. Reports to the lead the findings it considers clear defects.
 
-The lead decides what happens to the defects. It sends the worker back to fix them, and starts a fresh reviewer if the rework changed behaviour. There are at most two reviews per PR; if the second still finds defects, the lead reports the PR to the human instead of looping, and moves its card to Human review. Once a defect is fixed, the worker marks its "For human review" item "**Resolved** in <sha>", and the lead checks those markers when it re-runs the checks; any defect left unfixed stays there for the human to weigh.
+The lead decides what happens to the defects. It sends the worker back to fix them, and starts a fresh reviewer if the rework changed behaviour. There are at most two reviews per PR; if the second still finds defects, the lead reports the PR to the human instead of looping, and moves its card to Human review (whatever its tier). Once a defect is fixed, the worker marks its "For human review" item "**Resolved** in <sha>", and the lead checks those markers when it re-runs the checks; any defect left unfixed stays there for the human to weigh.
 
 Reviewers don't merge, move cards or touch other PRs. They don't count towards the 3-worker limit, and they never run on a PR whose worker is still active.
 
@@ -146,8 +153,10 @@ Reviewers don't merge, move cards or touch other PRs. They don't count towards t
 1. Run `board.py promote`.
 2. Start workers for Ready issues, up to 3 at a time. Prefer issues whose scopes don't overlap, and never run two issues touching the same file at once.
 3. When a worker reports a PR, start a reviewer for it.
-4. When the reviewer reports, send the worker back for any defects. Once the PR is final, re-run the checks and post a short "Lead review" comment on the PR with the verdict and merge order, then move the card to Human review.
-5. Tell the human which PRs are ready to merge and which `needs-human` issues are now unblocked.
+4. When the reviewer reports, send the worker back for any defects. Once the PR is final, re-run the checks and post a short "Lead review" comment on the PR with the verdict, merge order and the head SHA checked. Then merge it with `scripts/tier.py merge` if it is Tier A, or move the card to Human review.
+5. Tell the human which PRs are ready to merge, which Tier A PRs it merged, and which `needs-human` issues are now unblocked.
+
+The lead may give a **chain** of small dependent `agent-ready` issues in one area (about a day's work in all, no contract changes) to one worker, which delivers them as one PR closing every issue in it.
 
 The lead also starts workers for `needs-human` issues that an agent can prepare, e.g. those with an "Agent prep" section. The worker produces a complete, merge-ready PR (see "The human's role" above), and the lead lists any choices the human is implicitly approving at the top of the PR description.
 

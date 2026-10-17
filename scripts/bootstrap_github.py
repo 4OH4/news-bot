@@ -45,6 +45,11 @@ LABELS: list[tuple[str, str, str]] = [
     ("size:S", "C2E0C6", "Small: under a couple of hours"),
     ("size:M", "FEF2C0", "Medium: roughly half a day"),
     ("size:L", "F9D0C4", "Large: split before marking agent-ready"),
+    ("tier:A", "C5DEF5", "Low risk: the lead merges it (scripts/tier.py)"),
+    ("tier:B", "FBCA04", "The human merges it"),
+    ("tier:C", "B60205", "Reserved area: the human reads it in full"),
+    ("lead-merged", "5319E7", "Merged by the lead under the Tier A gate"),
+    ("hold", "000000", "Don't merge: stops the lead merging a Tier A PR"),
 ] + [(f"area:{a}", "BFD4F2", f"Area: {a}") for a in AREAS]
 
 MILESTONES: list[tuple[str, str]] = [

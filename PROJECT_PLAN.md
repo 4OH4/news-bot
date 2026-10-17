@@ -267,10 +267,11 @@ Every `agent-ready` issue must contain:
 - **Subagents within a session:** for fan-out tasks such as "write fixtures and expected values for these 20 URLs" or "review this PR against the acceptance criteria".
 - **Claude in GitHub Actions:** triggered by an `@claude` mention on an issue or PR, for small, well-specified issues, follow-up fixes and PR review.
 - **Lead and workers (adopted 2026-10-11):** one lead session runs the board. It promotes `agent-ready` issues to `Ready` once their dependencies are merged, starts up to 3 worker agents (one per issue, each in its own worktree), has each PR reviewed adversarially by a fresh-context, read-only reviewer agent (which lists its recommendations and risk areas under "For human review" in the PR, while the worker fixes any defects), and flags what needs me. Workers also draft PRs for `needs-human` issues that have an "Agent prep" section. Workers and reviewers are project subagents in `.claude/agents/`. Workers run on Sonnet (on Opus for `needs-human` or design-heavy issues), and the lead and reviewers run on Opus. This keeps token use down while the adversarial review stays on the stronger model (#47). The mechanics are in `CLAUDE.md` ("Agent automation"), with `scripts/board.py` for board moves and `.claude/settings.json` for the shared permission allow and deny lists.
+- **Risk tiers and chains (adopted 2026-10-17, #67):** I was the bottleneck, so I now spend my attention by risk. `scripts/tier.py` classifies each PR from its diff. The lead merges **Tier A** PRs (small non-feature changes to docs, tests, eval results or one stage package) once CI, the reviewer and its own re-check are clean, and I read them afterwards. I merge **Tier B** (features and everything else) and **Tier C** (contracts, ADRs, evaluation expectations, source and interest curation, infrastructure, and the automation itself). PR descriptions open with a short header and summary, with the evidence collapsed. A chain of small dependent issues in one area can be delivered as one PR.
 - **Guardrails:**
   - CI must pass.
   - Every PR links its issue (`Closes #N`).
-  - A human reviews and merges.
+  - A human merges every Tier B and C PR. The lead merges Tier A PRs only through `scripts/tier.py merge`, which checks CI, the reviews and the head SHA.
   - Agents never handle production credentials. Infrastructure applies and secret changes are `needs-human`.
 
 ### 9.5 What stays human
@@ -279,7 +280,7 @@ My role is to **read and merge**. Agents prepare every change, including ADRs, c
 - Curating the evaluation set's expectations (judging what "clean" means).
 - GCP project setup, billing, IAM and secrets.
 - Interest configuration and taste judgments.
-- Merging to `main`.
+- Merging to `main`, apart from Tier A PRs, which the lead merges (§9.4). I can revert one, put `hold` on one, or change the tier rules, which are themselves Tier C.
 
 ### 9.6 CLAUDE.md should cover
 - Project summary and a pointer to this plan.
