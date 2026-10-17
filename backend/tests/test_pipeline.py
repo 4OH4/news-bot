@@ -490,12 +490,33 @@ def test_source_option_narrows_extraction(tmp_path: Path, repository: SqliteRepo
     repository.upsert_article(a)
     repository.upsert_article(b)
 
-    stats = run_pipeline(services, [SOURCE], ingest=False)
+    stats = run_pipeline(services, [SOURCE], ingest=False, extract_source_ids=["gazette"])
 
     assert stats.stage_counts[PipelineStage.EXTRACT]["attempted"] == 1
     stored_a, stored_b = repository.get_article(a.id), repository.get_article(b.id)
     assert stored_a is not None and stored_a.extraction.status is ExtractionStatus.OK
     assert stored_b is not None and stored_b.extraction.status is ExtractionStatus.PENDING
+
+
+def test_plain_run_extracts_pending_articles_of_every_source(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    """Regression: without an explicit source filter, sources not passed to ingest
+    (disabled or removed since) and ad hoc rows are still extracted."""
+    articles = [
+        _article_for("https://a.example.com/x/1", "gazette"),
+        _article_for("https://b.example.com/y/2", "removed-source"),
+        _article_for("https://c.example.com/z/3", "adhoc"),
+    ]
+    fetcher = FakeFetcher({a.url: FakeResponse(b"<html></html>", headers=HTML) for a in articles})
+    services = _services(tmp_path, repository, fetcher, FakeExtractor(default=_ok()))
+    for article in articles:
+        repository.upsert_article(article)
+
+    stats = run_pipeline(services, [SOURCE], ingest=False)
+
+    assert stats.stage_counts[PipelineStage.EXTRACT]["attempted"] == 3
+    assert {a.extraction.status for a in repository.list_articles()} == {ExtractionStatus.OK}
 
 
 @pytest.mark.parametrize("option", [{"limit": 1}, {"since": datetime(2026, 10, 6, tzinfo=UTC)}])
@@ -593,6 +614,52 @@ def test_extract_saved_url_keeps_an_existing_feed_article(
     )
     assert article.extraction.status is ExtractionStatus.OK
     assert len(repository.list_articles()) == 1
+
+
+_STORY_PAGE = b'<html><head><link rel="canonical" href="https://a.example.com/story"></head></html>'
+
+
+def test_extract_saved_url_finds_an_article_already_rekeyed(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    """Regression: the feed URL's article was re-keyed by canonical refinement, so
+    --save must re-extract that article and report its id, not an ad hoc one."""
+    url = "https://a.example.com/x/1"
+    fetcher = FakeFetcher({url: FakeResponse(_STORY_PAGE, headers=HTML)})
+    services = _services(tmp_path, repository, fetcher, FakeExtractor(default=_ok()))
+    repository.upsert_article(_article_for(url, "gazette"))
+    run_pipeline(services, [], ingest=False)
+    (rekeyed,) = repository.list_articles()
+    assert rekeyed.canonical_url == "https://a.example.com/story"
+
+    article = extract_saved_url(services, url)
+
+    assert article.id == rekeyed.id
+    assert article.source_id == "gazette"
+    assert article.extraction.status is ExtractionStatus.OK
+    assert repository.list_articles() == [article]
+    assert len(fetcher.calls) == 2  # re-fetched, not just looked up
+
+
+def test_extract_saved_url_returns_the_article_it_merged_into(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    url = "https://a.example.com/x/1"
+    fetcher = FakeFetcher({url: FakeResponse(_STORY_PAGE, headers=HTML)})
+    services = _services(tmp_path, repository, fetcher, FakeExtractor(default=_ok()))
+    target = Article(
+        canonical_url="https://a.example.com/story",
+        url="https://a.example.com/y/2",
+        source_id="gazette",
+        title="Feed title",
+        fetched_at=datetime(2026, 10, 1, tzinfo=UTC),
+    )
+    repository.upsert_article(target)
+
+    article = extract_saved_url(services, url)
+
+    assert article == target
+    assert repository.list_articles() == [target]
 
 
 # --- Decoding ----------------------------------------------------------------------

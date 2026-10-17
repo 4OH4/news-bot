@@ -133,6 +133,9 @@ def _run_stages(
                 sources,
                 ingest=ingest,
                 extract=extract,
+                # Only an explicit --source narrows extract; a plain run also
+                # drains pending articles of disabled/removed sources and ad hoc ones.
+                extract_source_ids=source or None,
                 since=_aware(since),
                 limit=limit,
             )
