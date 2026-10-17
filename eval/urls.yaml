@@ -1,0 +1,1113 @@
+# Evaluation set for extraction (#16), loaded by newsfeed.eval.urls.
+#
+# DRAFT prepared by an agent from feed items fetched on 2026-10-17 through the
+# polite HttpFetcher; each entry still needs a human check against the live page.
+# How the fields were pre-filled:
+#   expected_title  the visible headline (the page's h1) unless the notes say
+#                   otherwise; notes record where og:title or the feed title differ.
+#   must_contain    one short fragment (a few words) that both Trafilatura and
+#                   Readability extracted, unless the notes say otherwise.
+#   word_range      about +/-20% around the word count the extractors agreed on
+#                   (wider for pages under 300 words); notes flag disagreements.
+#   paywalled       true only where the page served to us was a preview or a
+#                   refusal; the notes say when the flag is a guess.
+# Never paste article text here beyond a short must_contain fragment
+# (CLAUDE.md: this is a public repo).
+urls:
+  - id: bbc-2026-10-17-watch-mood-has-really-shifted-as
+    url: https://www.bbc.co.uk/news/videos/c6vg08xlr8g3o?at_medium=RSS&at_campaign=rss
+    source_id: bbc-news
+    expected_title: "Watch: 'Mood has really shifted' as Paris protesters clash with police"
+    must_contain:
+      - "correspondent Adina Campbell reports live from the"
+    word_range: [60, 200]
+    paywalled: false
+    tags: [news, uk, video]
+    notes: "Video page: the text is a short caption under the player."
+
+  - id: bbc-2026-10-17-more-nhs-staff-sacked-over-attacks
+    url: https://www.bbc.co.uk/news/articles/cmd7q8ld3dd3o?at_medium=RSS&at_campaign=rss
+    source_id: bbc-news
+    expected_title: "More NHS staff sacked over attacks victims' records"
+    must_contain:
+      - "system, currently under testing, is being implemented"
+    word_range: [670, 1180]
+    paywalled: false
+    tags: [news, uk]
+    notes: "og:title differs (adds 'Nottingham'); extractors may return it."
+
+  - id: bbc-2026-10-16-toxic-algorithms-wouldn-t-let-them
+    url: https://www.bbc.co.uk/news/articles/cwr7y8er1n8vo?at_medium=RSS&at_campaign=rss
+    source_id: bbc-news
+    expected_title: "Toxic algorithms wouldn't let them go - now Australia wants an off switch"
+    must_contain:
+      - "was only pulled from the manosphere after"
+    word_range: [1450, 2380]
+    paywalled: false
+    tags: [news, uk]
+    notes: "og:title differs ('Social media algorithms: What if you could turn them off?'); extractors return the og:title."
+
+  - id: bbc-2026-10-16-why-people-who-have-never-smoked
+    url: https://www.bbc.co.uk/news/articles/ck62y33489zqo?at_medium=RSS&at_campaign=rss
+    source_id: bbc-news
+    expected_title: "Why people who have never smoked are getting hooked on vapes"
+    must_contain:
+      - "aspect of regular vaping is something GP"
+    word_range: [950, 1550]
+    paywalled: false
+    tags: [news, uk, feature]
+    notes: "og:title differs ('Vaping: Why people who have never smoked are getting hooked')."
+
+  - id: guardian-2026-10-15-senegal-homosexuality-criminalised-anti-lgbtq-arrests
+    url: https://www.theguardian.com/global-development/2026/oct/15/senegal-homosexuality-criminalised-anti-lgbtq-arrests-hiv-testing-human-rights-watch
+    source_id: guardian-world
+    expected_title: "LGBTQ+ people go into hiding in Senegal as hundreds are arrested"
+    must_contain:
+      - "activity was criminalised in Senegal in 1965"
+    word_range: [590, 920]
+    paywalled: false
+    tags: [news, world]
+    notes: ""
+
+  - id: guardian-2026-10-14-guinea-bissau-vaccine-hepatitis-b-trial
+    url: https://www.theguardian.com/world/2026/oct/14/guinea-bissau-vaccine-hepatitis-b-trial-denial
+    source_id: guardian-world
+    expected_title: "Guinea-Bissau denies it has approved controversial vaccine trial in newborns"
+    must_contain:
+      - "to see Guinea-Bissau pushing back on the"
+    word_range: [860, 1300]
+    paywalled: false
+    tags: [news, world]
+    notes: ""
+
+  - id: guardian-2026-10-14-indias-cockroach-protesters-defy-modis-crackdown
+    url: https://www.theguardian.com/news/audio/2026/oct/14/indias-cockroach-protesters-defy-modis-crackdown-the-latest
+    source_id: guardian-world
+    expected_title: "India’s cockroach protesters defy Modi’s crackdown – The Latest"
+    must_contain:
+      - "wave of protests by India’s youth-led Cockroach"
+    word_range: [60, 180]
+    paywalled: false
+    tags: [news, world, audio]
+    notes: "Podcast page: only a short standfirst under the audio player."
+
+  - id: guardian-2026-10-17-california-datacenter-imperial
+    url: https://www.theguardian.com/us-news/ng-interactive/2026/oct/17/california-datacenter-imperial
+    source_id: guardian-world
+    expected_title: "Inside the long, bitter fight over one man’s quest to build the biggest AI datacenter in California"
+    must_contain:
+      - "scanning the internet, and what he found"
+    word_range: [2080, 3290]
+    paywalled: false
+    tags: [news, world, long-form, interactive]
+    notes: "ng-interactive page (custom layout)."
+
+  - id: guardian-lr-2026-10-15-a-perfect-storm-how-the-super
+    url: https://www.theguardian.com/news/2026/oct/15/a-perfect-storm-how-the-super-el-nino-is-devastating-the-fishing-industry
+    source_id: guardian-longread
+    expected_title: "A perfect storm: how the super El Niño is devastating the fishing industry"
+    must_contain:
+      - "many other shrinking natural resources, what brought"
+    word_range: [3000, 4580]
+    paywalled: false
+    tags: [long-form]
+    notes: ""
+
+  - id: guardian-lr-2026-10-13-i-was-kidnapped-and-held-hostage
+    url: https://www.theguardian.com/news/ng-interactive/2026/oct/13/i-was-kidnapped-and-held-hostage-for-977-days-could-i-forgive-my-captors
+    source_id: guardian-longread
+    expected_title: "I was kidnapped and held hostage for 977 days. Could I forgive my captors?"
+    must_contain:
+      - "became aware of Bashko as a lean"
+    word_range: [4380, 6640]
+    paywalled: false
+    tags: [long-form, interactive]
+    notes: "ng-interactive page (custom layout)."
+
+  - id: guardian-lr-2026-10-08-a-death-a-plagiarism-scandal-and
+    url: https://www.theguardian.com/news/ng-interactive/2026/oct/08/a-death-a-plagiarism-scandal-and-a-quest-for-revenge-the-bizarre-tale-of-otto-z
+    source_id: guardian-longread
+    expected_title: "A death, a plagiarism scandal and a quest for revenge: the bizarre tale of Otto Z"
+    must_contain:
+      - "waited for the results of the Hamburg"
+    word_range: [4200, 6400]
+    paywalled: false
+    tags: [long-form, interactive]
+    notes: "ng-interactive page (custom layout)."
+
+  - id: guardian-lr-2026-10-16-a-completely-unique-opportunity-the-secretive
+    url: https://www.theguardian.com/news/audio/2026/oct/16/a-completely-unique-opportunity-the-secretive-process-that-will-decide-the-bbcs-future-podcast
+    source_id: guardian-longread
+    expected_title: "‘A completely unique opportunity’: the secretive process that will decide the BBC’s future – podcast"
+    must_contain:
+      - "the BBC’s continued existence must be secured"
+    word_range: [30, 90]
+    paywalled: false
+    tags: [long-form, audio]
+    notes: "Podcast page: only a short standfirst under the audio player."
+
+  - id: independent-2026-10-17-accountant-edward-franklin-emails-abuse
+    url: https://www.independent.co.uk/news/uk/home-news/accountant-edward-franklin-emails-abuse-b3068555.html
+    source_id: independent-uk
+    expected_title: "Accountant must pay £80k for 'obscene' email about former boss's wife"
+    must_contain:
+      - "worked for a company, anonymised in the"
+    word_range: [390, 600]
+    paywalled: false
+    tags: [news, uk]
+    notes: "Page embeds an unrelated video player."
+
+  - id: independent-2026-10-17-burnham-blair-andrew-neil-dud
+    url: https://www.independent.co.uk/voices/burnham-blair-andrew-neil-dud-b3068518.html
+    source_id: independent-uk
+    expected_title: "Why Burnham could be the longest-serving PM since Blair"
+    must_contain:
+      - "an anti-Blairite in his class politics, his"
+    word_range: [900, 1400]
+    paywalled: false
+    tags: [news, uk, opinion]
+    notes: "Feed title prefixes 'Voices: '."
+
+  - id: independent-2026-10-17-russell-brand-trial-news-court
+    url: https://www.independent.co.uk/news/uk/crime/russell-brand-trial-news-court-b3068150.html
+    source_id: independent-uk
+    expected_title: "Bibles, rosary beads and Russell Brand’s unbroken resolve: I spent the week in court with him – this is what I saw"
+    must_contain:
+      - "ruthless, he was calculated, and he was"
+    word_range: [860, 1360]
+    paywalled: false
+    tags: [news, uk, feature]
+    notes: "og:title is a shorter headline ('I spent the week in court with Russell Brand - this is what I saw'); extractors return it."
+
+  - id: independent-2026-10-17-clacton-murder-daniel-fox-valley-farm
+    url: https://www.independent.co.uk/news/uk/crime/clacton-murder-daniel-fox-valley-farm-holiday-park-b3068506.html
+    source_id: independent-uk
+    expected_title: "Murder charge after man dies at Essex caravan park"
+    must_contain:
+      - "was arrested after a man was found"
+    word_range: [120, 380]
+    paywalled: false
+    tags: [news, uk, short]
+    notes: "og:title drops 'Essex'."
+
+  - id: ars-2026-10-17-science-says-your-boss-should-talk
+    url: https://arstechnica.com/science/2026/10/science-says-your-boss-should-talk-less-in-meetings/
+    source_id: ars-technica
+    expected_title: "Science says your boss should talk less in meetings"
+    must_contain:
+      - "survey of 147 employees from a variety"
+    word_range: [1540, 2330]
+    paywalled: false
+    tags: [tech]
+    notes: ""
+
+  - id: ars-2026-10-17-why-biowares-neverwinter-nights-still-has
+    url: https://arstechnica.com/gaming/2026/10/why-biowares-neverwinter-nights-still-has-thousands-of-active-players/
+    source_id: ars-technica
+    expected_title: "Why BioWare’s Neverwinter Nights still has thousands of active players"
+    must_contain:
+      - "the game’s legacy, not the story campaigns"
+    word_range: [2140, 3350]
+    paywalled: false
+    tags: [tech, feature]
+    notes: ""
+
+  - id: ars-2026-10-16-openai-models-hacked-a-crypto-wallet
+    url: https://arstechnica.com/security/2026/10/openai-models-hacked-a-crypto-wallet-and-breached-more-websites/
+    source_id: ars-technica
+    expected_title: "OpenAI models hacked a crypto wallet and breached more websites"
+    must_contain:
+      - "on Thursday issued reports of four new"
+    word_range: [650, 990]
+    paywalled: false
+    tags: [tech]
+    notes: "Trafilatura got only ~250 words at prep time against ~820 from Readability; estimate uses Readability. Check the true length."
+
+  - id: ars-2026-10-16-polymarket-saw-600-million-in-election
+    url: https://arstechnica.com/tech-policy/2026/10/polymarket-saw-600-million-in-election-trades-after-the-elections-were-over/
+    source_id: ars-technica
+    expected_title: "Polymarket saw $600 million in election trades after the elections were over"
+    must_contain:
+      - "could explain what happened with the Ethiopian"
+    word_range: [970, 1500]
+    paywalled: false
+    tags: [tech]
+    notes: ""
+
+  - id: verge-2026-10-17-spacex-starlink-elon-musk-cell-carrier
+    url: https://www.theverge.com/podcast/1012416/spacex-starlink-elon-musk-cell-carrier-wireless-mobile-att-verizon-t-mobile
+    source_id: the-verge
+    expected_title: "SpaceX’s ambitious, expensive gamble to replace AT&T, T-Mobile, and Verizon"
+    must_contain:
+      - "question is, if capital gets more scarce"
+    word_range: [7600, 11460]
+    paywalled: false
+    tags: [tech, podcast, video, js-heavy]
+    notes: "Podcast transcript (~9,500 words). Next.js page. og:title differs ('...pricey gamble to replace AT&T and Verizon')."
+
+  - id: verge-2026-10-17-meta-removes-language-that-may-have
+    url: https://www.theverge.com/tech/1013409/meta-removes-language-that-may-have-allowed-it-to-scrape-news-sites
+    source_id: the-verge
+    expected_title: "Meta removes language that may have allowed it to scrape news sites"
+    must_contain:
+      - "Neiman Lab and James Grimmelmann, a professor"
+    word_range: [200, 370]
+    paywalled: false
+    tags: [tech, js-heavy, short]
+    notes: "Next.js page. JSON-LD says isAccessibleForFree=false (metered paywall) but the served HTML had the full text at prep time; paywall flag guessed."
+
+  - id: verge-2026-10-17-jad-abumrad-radiolab-dolly-parton-fela
+    url: https://www.theverge.com/entertainment/1013381/jad-abumrad-radiolab-dolly-parton-fela-kuti-podcast-interview
+    source_id: the-verge
+    expected_title: "Jad Abumrad loves a butterfly knife and a good springy pillow"
+    must_contain:
+      - "composer Kaija Saariaho (who somehow made the"
+    word_range: [870, 1370]
+    paywalled: false
+    tags: [tech, js-heavy, interview]
+    notes: "Next.js page. JSON-LD says isAccessibleForFree=false (metered paywall) but the served HTML had the full text at prep time; paywall flag guessed."
+
+  - id: verge-2026-10-16-apple-iphone-duo-news-announcements
+    url: https://www.theverge.com/tech/1010131/apple-iphone-duo-news-announcements
+    source_id: the-verge
+    expected_title: "All the news about the iPhone Duo"
+    must_contain:
+      - "Duo foldable phone opens for preorder tomorrow"
+    word_range: [1600, 2400]
+    paywalled: false
+    tags: [tech, js-heavy, hub]
+    notes: "Storystream hub listing linked stories, not a single article; content changes as stories are added. Readability got ~95 words, Trafilatura ~2,000. Snippet and range are guesses; consider dropping."
+
+  - id: wired-2026-10-17-best-automatic-cat-feeders
+    url: https://www.wired.com/gallery/best-automatic-cat-feeders/
+    source_id: wired
+    expected_title: "The Best Automatic Feeders for Cats Who Think It’s Always Dinnertime"
+    must_contain:
+      - "two rescue cats, ages 4 and 5"
+    word_range: [1280, 1920]
+    paywalled: false
+    tags: [tech, gallery, product-roundup]
+    notes: "Product round-up ('gallery' URL). Three different titles: h1 (used), og:title 'I Let My Cats Help Test Automatic Feeders. These Are Our Favorites', feed 'These 12 Automatic Cat Feeders Were the Best We Tested in 2026'. Metered paywall; full text served at prep time."
+
+  - id: wired-2026-10-17-kernel-panic-encryption-is-getting-squeezed
+    url: https://www.wired.com/story/kernel-panic-encryption-is-getting-squeezed-from-all-sides/
+    source_id: wired
+    expected_title: "Encryption Is Getting Squeezed From All Sides"
+    must_contain:
+      - "be asked to introduce vulnerabilities, build backdoors"
+    word_range: [730, 1100]
+    paywalled: false
+    tags: [tech]
+    notes: "Metered paywall (Condé Nast); full text served at prep time."
+
+  - id: wired-2026-10-17-why-ai-isnt-ready-to-tackle
+    url: https://www.wired.com/story/why-ai-isnt-ready-to-tackle-our-convoluted-genomes/
+    source_id: wired
+    expected_title: "Why AI Isn’t Ready to Tackle Our Convoluted Genomes"
+    must_contain:
+      - "that 25 years after the Human Genome"
+    word_range: [2810, 4240]
+    paywalled: false
+    tags: [tech, long-form]
+    notes: "Metered paywall (Condé Nast); full text served at prep time."
+
+  - id: wired-2026-10-16-leap-second-is-abolished-bipm-says
+    url: https://www.wired.com/story/leap-second-is-abolished-bipm-says/
+    source_id: wired
+    expected_title: "Pour One Out for the Leap Second"
+    must_contain:
+      - "Adding a leap second is hard enough"
+    word_range: [660, 1000]
+    paywalled: false
+    tags: [tech]
+    notes: "Feed title differs ('The Leap Second Is No More'). Metered paywall; full text served at prep time."
+
+  - id: lwn-2026-10-16-introducing-gnome-os-preview
+    url: https://lwn.net/Articles/1101057/
+    source_id: lwn
+    expected_title: "Introducing GNOME OS Preview"
+    must_contain:
+      - "Preview is the current GNOME OS Nightly"
+    word_range: [140, 370]
+    paywalled: false
+    tags: [tech, linux, brief, short]
+    notes: "Short news brief quoting an announcement."
+
+  - id: lwn-2026-10-15-ubuntu-26-10-released
+    url: https://lwn.net/Articles/1100786/
+    source_id: lwn
+    expected_title: "Ubuntu 26.10 released"
+    must_contain:
+      - "26.10 also ships with GNOME 51, bringing"
+    word_range: [50, 160]
+    paywalled: false
+    tags: [tech, linux, brief, short]
+    notes: "Short brief followed by a long reader-comment thread; a clean extraction leaves the comments out."
+
+  - id: lwn-2026-10-16-safe-self-referential-data-structures-in
+    url: https://lwn.net/Articles/1099224/
+    source_id: lwn
+    expected_title: "Safe self-referential data structures in kernel Rust"
+    must_contain: []
+    word_range: null
+    paywalled: true
+    tags: [tech, linux, paywalled]
+    notes: "Subscriber-only ('[$]' in the feed): LWN serves HTTP 403 'Subscription required' to non-subscribers, so nothing was visible at prep time. Such articles usually become free about a week after publication; re-check the paywall flag and add a snippet if it is free when snapshotted."
+
+  - id: lwn-2026-10-15-vendor-hooks-in-the-android-kernel
+    url: https://lwn.net/Articles/1098493/
+    source_id: lwn
+    expected_title: "Vendor hooks in the Android kernel"
+    must_contain: []
+    word_range: null
+    paywalled: true
+    tags: [tech, linux, paywalled]
+    notes: "Subscriber-only ('[$]' in the feed): LWN serves HTTP 403 'Subscription required' to non-subscribers, so nothing was visible at prep time. Such articles usually become free about a week after publication; re-check the paywall flag and add a snippet if it is free when snapshotted."
+
+  - id: nature-2026-10-16-the-pianist-who-never-played
+    url: https://www.nature.com/articles/d41586-026-03112-0
+    source_id: nature-news
+    expected_title: "The pianist who never played"
+    must_contain:
+      - "entire family left on a rare outing"
+    word_range: [550, 830]
+    paywalled: false
+    tags: [science, fiction]
+    notes: "Short fiction (Nature Futures-style piece), not news."
+
+  - id: nature-2026-10-16-memory-stays-strong-in-old-age
+    url: https://www.nature.com/articles/d41586-026-03303-9
+    source_id: nature-news
+    expected_title: "Memory stays strong in old age when this brain enzyme is active"
+    must_contain:
+      - "in question is a phospholipase, which breaks"
+    word_range: [370, 610]
+    paywalled: false
+    tags: [science]
+    notes: ""
+
+  - id: nature-2026-10-16-phd-students-who-write-dissertation-with
+    url: https://www.nature.com/articles/d41586-026-03253-2
+    source_id: nature-news
+    expected_title: "PhD students who write dissertation with AI less likely to stay in academia"
+    must_contain:
+      - "students are only doing half the work"
+    word_range: [420, 750]
+    paywalled: false
+    tags: [science]
+    notes: ""
+
+  - id: nature-2026-10-15-world-s-timekeepers-upend-how-they
+    url: https://www.nature.com/articles/d41586-026-03329-z
+    source_id: nature-news
+    expected_title: "World’s timekeepers upend how they adjust time to avoid catastrophic ‘negative second’"
+    must_contain:
+      - "serve to align time given by the"
+    word_range: [210, 380]
+    paywalled: false
+    tags: [science, short]
+    notes: ""
+
+  - id: quanta-2026-10-16-he-wants-ai-benchmarking-to-be
+    url: https://www.quantamagazine.org/he-wants-ai-benchmarking-to-be-a-science-not-a-dark-art-20261016/
+    source_id: quanta
+    expected_title: "He Wants AI Benchmarking To Be a Science, Not a Dark Art"
+    must_contain:
+      - "really a crime: It happens every time"
+    word_range: [1450, 2210]
+    paywalled: false
+    tags: [science, long-form, interview]
+    notes: "Q&A format. og:title and Trafilatura's title add ' | Quanta Magazine'."
+
+  - id: quanta-2026-10-15-how-do-fungi-keep-the-planet
+    url: https://www.quantamagazine.org/how-do-fungi-keep-the-planet-healthy-20261015/
+    source_id: quanta
+    expected_title: "How Do Fungi Keep the Planet Healthy?"
+    must_contain:
+      - "was one experiment that I remember reading"
+    word_range: [7940, 12130]
+    paywalled: false
+    tags: [science, long-form, podcast]
+    notes: "Podcast transcript (~10,000 words). og:title adds ' | Quanta Magazine'."
+
+  - id: quanta-2026-10-14-triplet-of-ghostly-galaxies-hints-at
+    url: https://www.quantamagazine.org/triplet-of-ghostly-galaxies-hints-at-what-dark-matter-is-and-isnt-20261014/
+    source_id: quanta
+    expected_title: "Triplet of ‘Ghostly’ Galaxies Hints at What Dark Matter Is — and Isn’t"
+    must_contain:
+      - "know which dark matter candidate is the"
+    word_range: [1380, 2180]
+    paywalled: false
+    tags: [science, long-form]
+    notes: "og:title adds ' | Quanta Magazine'."
+
+  - id: quanta-2026-10-12-is-attention-the-essence-of-intelligence
+    url: https://www.quantamagazine.org/is-attention-the-essence-of-intelligence-20261012/
+    source_id: quanta
+    expected_title: "Is ‘Attention’ the Essence of Intelligence?"
+    must_contain:
+      - "pronouns such as “it” in them illustrate"
+    word_range: [1880, 2880]
+    paywalled: false
+    tags: [science, long-form]
+    notes: "og:title adds ' | Quanta Magazine'."
+
+  - id: physorg-2026-10-17-australian-scavengers-dont-approach-carcass
+    url: https://phys.org/news/2026-10-australian-scavengers-dont-approach-carcass.html
+    source_id: phys-org
+    expected_title: "Australian scavengers don't just eat everything and slink away. They approach a carcass like a buffet"
+    must_contain:
+      - "the choices our apex scavengers made, it"
+    word_range: [650, 1120]
+    paywalled: false
+    tags: [science]
+    notes: "Page has heavy related-content furniture around the article."
+
+  - id: physorg-2026-10-17-lone-starless-cloud-dark-galaxy
+    url: https://phys.org/news/2026-10-lone-starless-cloud-dark-galaxy.html
+    source_id: phys-org
+    expected_title: "Lone, starless cloud may be a 'dark' galaxy"
+    must_contain:
+      - "J1351+0039 shows weak rotation, unlike rotationally supported"
+    word_range: [570, 1010]
+    paywalled: false
+    tags: [science]
+    notes: ""
+
+  - id: physorg-2026-10-17-red-sensitive-pigments-mantis-shrimp
+    url: https://phys.org/news/2026-10-red-sensitive-pigments-mantis-shrimp.html
+    source_id: phys-org
+    expected_title: "Red-sensitive pigments in mantis shrimp eyes act as reversible light switches"
+    must_contain:
+      - "team led by Camille Brouillon, Alina Pushkarev"
+    word_range: [760, 1290]
+    paywalled: false
+    tags: [science]
+    notes: ""
+
+  - id: physorg-2026-10-17-popular-song-lyrics-emotion-analysis
+    url: https://phys.org/news/2026-10-popular-song-lyrics-emotion-analysis.html
+    source_id: phys-org
+    expected_title: "Popular song lyrics express less emotion over time, analysis of 38K+ songs finds"
+    must_contain:
+      - "were surprised to find that song lyrics"
+    word_range: [440, 740]
+    paywalled: false
+    tags: [science]
+    notes: ""
+
+  - id: carbonbrief-2026-10-12-interactive-tracking-negotiating-texts-at-the
+    url: https://www.carbonbrief.org/interactive-tracking-negotiating-texts-at-the-cop17-biodiversity-summit
+    source_id: carbon-brief
+    expected_title: "Interactive: Tracking negotiating texts at the COP17 biodiversity summit"
+    must_contain:
+      - "two columns of the interactive tracker list"
+    word_range: [500, 780]
+    paywalled: false
+    tags: [science, climate, interactive]
+    notes: "Article wrapping an embedded interactive tracker; the tracker itself is not text. og:title adds ' - Carbon Brief'."
+
+  - id: carbonbrief-2026-10-15-nature-targets-2030-progress
+    url: https://interactive.carbonbrief.org/nature-targets-2030-progress/
+    source_id: carbon-brief
+    expected_title: "COP17: Tracking progress towards the UN’s 2030 nature targets"
+    must_contain:
+      - "by data gaps, limited means and poor"
+    word_range: [3580, 5530]
+    paywalled: false
+    tags: [science, climate, interactive, js-heavy, long-form]
+    notes: "Standalone interactive (interactive.carbonbrief.org) with scroll-driven charts; long text."
+
+  - id: carbonbrief-2026-10-09-factcheck-uk-conservatives-double-the-cost
+    url: https://www.carbonbrief.org/factcheck-uk-conservatives-double-the-cost-of-net-zero-after-spreadsheet-blunder
+    source_id: carbon-brief
+    expected_title: "Factcheck: UK Conservatives double the ‘cost of net-zero’ after spreadsheet blunder"
+    must_contain:
+      - "spreadsheet contains a table listing the additional"
+    word_range: [600, 940]
+    paywalled: false
+    tags: [science, climate, factcheck]
+    notes: "og:title adds ' - Carbon Brief'."
+
+  - id: carbonbrief-2026-09-28-analysis-lula-presidency-saved-at-least
+    url: https://www.carbonbrief.org/analysis-lula-presidency-saved-at-least-20000km2-of-brazilian-amazon-since-2022
+    source_id: carbon-brief
+    expected_title: "Analysis: Lula presidency saved at least 20,000km2 of Brazilian Amazon since 2022"
+    must_contain:
+      - "experts say Flávio Bolsonaro, a climate sceptic"
+    word_range: [1490, 2260]
+    paywalled: false
+    tags: [science, climate, analysis]
+    notes: "Charts embedded. og:title adds ' - Carbon Brief'."
+
+  - id: aeon-2026-10-15-hohle-fels-cave-illuminates-the-rich
+    url: https://aeon.co/videos/hohle-fels-cave-illuminates-the-rich-symbolic-world-of-ice-age-humans
+    source_id: aeon
+    expected_title: "Hohle Fels cave illuminates the rich symbolic world of Ice Age humans"
+    must_contain:
+      - "cave in southern Germany has been a"
+    word_range: [130, 330]
+    paywalled: false
+    tags: [long-form, essay, video]
+    notes: "Video page: the text is a description under the player. Trafilatura ~290 words, Readability ~130. og:title adds ' | Aeon Videos'; the feed title differs ('The secrets of Hohle Fels cave')."
+
+  - id: aeon-2026-10-16-the-politics-of-masculinity-at-the
+    url: https://aeon.co/essays/the-politics-of-masculinity-at-the-end-of-the-roman-republic
+    source_id: aeon
+    expected_title: "How to be a (Roman) man"
+    must_contain:
+      - "century after Cicero, Quintilian was a huge"
+    word_range: [2710, 4090]
+    paywalled: false
+    tags: [long-form, essay]
+    notes: "Visible headline is the h1; og:title is 'The politics of masculinity at the end of the Roman republic | Aeon Essays' and extractors return it."
+
+  - id: aeon-2026-10-13-the-more-we-rely-on-tech
+    url: https://aeon.co/essays/the-more-we-rely-on-tech-the-more-we-deskill-our-bodies
+    source_id: aeon
+    expected_title: "Deskilling the body"
+    must_contain:
+      - "we walk, optic flow – the shifting"
+    word_range: [2740, 4130]
+    paywalled: false
+    tags: [long-form, essay]
+    notes: "Visible headline is the h1; og:title is 'The more we rely on tech, the more we deskill our bodies | Aeon Essays'."
+
+  - id: aeon-2026-10-12-does-the-principle-of-sufficient-reason
+    url: https://aeon.co/essays/does-the-principle-of-sufficient-reason-make-panpsychism-true
+    source_id: aeon
+    expected_title: "Is everything conscious?"
+    must_contain:
+      - "There is another route to panpsychism via"
+    word_range: [3670, 5520]
+    paywalled: false
+    tags: [long-form, essay]
+    notes: "Visible headline is the h1; og:title is 'Does the principle of sufficient reason make panpsychism true? | Aeon Essays'."
+
+  - id: newyorker-2026-10-17-elon-musk-is-trying-to-buy
+    url: https://www.newyorker.com/podcast/political-scene/elon-musk-is-trying-to-buy-the-midterms-and-he-doesnt-care-who-knows-it
+    source_id: new-yorker
+    expected_title: "Elon Musk Is Trying to Buy the Midterms, and He Doesn’t Care Who Knows It"
+    must_contain:
+      - "Roundtable is joined by Alex Gibney, the"
+    word_range: [120, 320]
+    paywalled: false
+    tags: [long-form, magazine, podcast, audio]
+    notes: "Podcast page: short description under the player."
+
+  - id: newyorker-2026-10-17-we-can-never-understand-elizabeth-holmes
+    url: https://www.newyorker.com/culture/critics-notebook/we-can-never-understand-elizabeth-holmes-or-nathan-fielder
+    source_id: new-yorker
+    expected_title: "We Can Never Understand Elizabeth Holmes, or Nathan Fielder"
+    must_contain:
+      - "starts in medias res, with a man’s"
+    word_range: [1260, 1900]
+    paywalled: false
+    tags: [long-form, magazine, review]
+    notes: "Metered paywall (Condé Nast); full text served at prep time."
+
+  - id: newyorker-2026-10-17-my-year-of-ocd
+    url: https://www.newyorker.com/culture/the-weekend-essay/my-year-of-ocd
+    source_id: new-yorker
+    expected_title: "My Year of O.C.D."
+    must_contain:
+      - "overwhelming these messages were, I knew that"
+    word_range: [3990, 6000]
+    paywalled: false
+    tags: [long-form, magazine, essay]
+    notes: "Metered paywall (Condé Nast); full text served at prep time."
+
+  - id: newyorker-2026-10-17-your-next-vacay-is-the-strait
+    url: https://www.newyorker.com/magazine/2026/10/26/your-next-vacay-is-the-strait-of-hormuz
+    source_id: new-yorker
+    expected_title: "Your Next Vacay Is . . . the Strait of Hormuz?"
+    must_contain:
+      - "M+C Saatchi document—this one internal—was a request"
+    word_range: [550, 840]
+    paywalled: false
+    tags: [long-form, magazine]
+    notes: "Metered paywall (Condé Nast); full text served at prep time."
+
+  - id: willison-2026-10-16-code-review
+    url: https://simonwillison.net/2026/Oct/16/code-review/
+    source_id: simon-willison
+    expected_title: "A quote from Addy Osmani, Morgan Westlee Lunt, and Qing Wang"
+    must_contain:
+      - "Asking that question also changed when review"
+    word_range: [70, 190]
+    paywalled: false
+    tags: [blog, tech, quote, short]
+    notes: "Quotation post. The page h1 is the blog name; title taken from og:title (feed says 'Quoting ...'). Trafilatura picked up sidebar text at prep time; estimate uses Readability."
+
+  - id: willison-2026-10-15-anthropic-tells-investors
+    url: https://simonwillison.net/2026/Oct/15/anthropic-tells-investors/
+    source_id: simon-willison
+    expected_title: "Anthropic tells investors quarterly revenue up nearly 50% to $16.8bn ahead of IPO"
+    must_contain:
+      - "says that if distillation was 5% of"
+    word_range: [140, 370]
+    paywalled: false
+    tags: [blog, tech, link, short]
+    notes: "Link-blog post with commentary. Page h1 is the blog name; title from og:title. Trafilatura picked up sidebar text; estimate uses Readability."
+
+  - id: willison-2026-10-15-latex
+    url: https://simonwillison.net/2026/Oct/15/latex/
+    source_id: simon-willison
+    expected_title: "Tool: LaTeX renderer"
+    must_contain:
+      - "the URL, so every document created using"
+    word_range: [270, 410]
+    paywalled: false
+    tags: [blog, tech, short]
+    notes: "Page h1 is the blog name; og:title is 'Tool: LaTeX renderer', the feed says 'LaTeX renderer'. Title guessed."
+
+  - id: willison-2026-10-13-redesigning-source-control-at-anthropic
+    url: https://simonwillison.net/2026/Oct/13/redesigning-source-control-at-anthropic/
+    source_id: simon-willison
+    expected_title: "Redesigning source control at Anthropic"
+    must_contain:
+      - "makes extensive use of adversarial review, and"
+    word_range: [320, 480]
+    paywalled: false
+    tags: [blog, tech, link]
+    notes: "Link-blog post with long commentary. Page h1 is the blog name; title from og:title."
+
+  - id: jvns-2026-09-27-replacing-the-old-battery-on-rechargeable
+    url: https://jvns.ca/blog/2026/09/27/replacing-the-old-battery-on-rechargeable-bike-lights/
+    source_id: julia-evans
+    expected_title: "Replacing the old battery on rechargeable bike lights"
+    must_contain:
+      - "tried to remove as few screws as"
+    word_range: [850, 1340]
+    paywalled: false
+    tags: [blog, tech]
+    notes: "Page h1 is the blog name; title from og:title."
+
+  - id: jvns-2026-07-17-learning-about-running-sqlite
+    url: https://jvns.ca/blog/2026/07/17/learning-about-running-sqlite/
+    source_id: julia-evans
+    expected_title: "Learning a few things about running SQLite"
+    must_contain:
+      - "I’ve been using Django’s ORM to make"
+    word_range: [760, 1190]
+    paywalled: false
+    tags: [blog, tech]
+    notes: "Page h1 is the blog name; title from og:title."
+
+  - id: jvns-2026-05-15-moving-away-from-tailwind-and-learning
+    url: https://jvns.ca/blog/2026/05/15/moving-away-from-tailwind--and-learning-to-structure-my-css-/
+    source_id: julia-evans
+    expected_title: "Moving away from Tailwind, and learning to structure my CSS"
+    must_contain:
+      - "I was doing responsive design in Tailwind"
+    word_range: [1530, 2450]
+    paywalled: false
+    tags: [blog, tech, long-form]
+    notes: "Page h1 is the blog name; title from og:title. Many code blocks."
+
+  - id: jvns-2026-05-04-css-colour-palettes
+    url: https://jvns.ca/blog/2026/05/04/css-colour-palettes/
+    source_id: julia-evans
+    expected_title: "Links to CSS colour palettes"
+    must_contain:
+      - "thing I missed about Tailwind was the"
+    word_range: [130, 390]
+    paywalled: false
+    tags: [blog, tech, short, links]
+    notes: "Short list of links. Page h1 is the blog name; title from og:title."
+
+  - id: fowler-2026-10-15-software-meets-hardware
+    url: https://martinfowler.com/articles/software-meets-hardware.html
+    source_id: martin-fowler
+    expected_title: "When Software Meets Hardware"
+    must_contain:
+      - "local interfaces such as NFC and BLE"
+    word_range: [2120, 3530]
+    paywalled: false
+    tags: [blog, tech, long-form]
+    notes: ""
+
+  - id: fowler-2026-10-05-fragments
+    url: https://martinfowler.com/fragments/2026-10-04.html
+    source_id: martin-fowler
+    expected_title: "Fragments: October 4"
+    must_contain:
+      - "a good prompt compilation target for the"
+    word_range: [1280, 1940]
+    paywalled: false
+    tags: [blog, tech, link-roundup]
+    notes: "Dated collection of short items."
+
+  - id: fowler-2026-09-29-sensibledefault
+    url: https://martinfowler.com/bliki/SensibleDefault.html
+    source_id: martin-fowler
+    expected_title: "Sensible Default"
+    must_contain:
+      - "“sensible default” is a deliberate contrast to"
+    word_range: [280, 430]
+    paywalled: false
+    tags: [blog, tech, short]
+    notes: "og:title is 'bliki: Sensible Default', the feed says 'Bliki: Sensible Default'."
+
+  - id: fowler-2026-10-13-are-harnesses-worth-the-cost
+    url: https://martinfowler.com/articles/are-harnesses-worth-the-cost.html
+    source_id: martin-fowler
+    expected_title: "Are Harnesses Worth the Cost?"
+    must_contain:
+      - "unharnessed Java applications did not contain invalid"
+    word_range: [2920, 4730]
+    paywalled: false
+    tags: [blog, tech, long-form]
+    notes: ""
+
+  - id: cloudflare-2026-10-16-verified-bots-accountability
+    url: https://blog.cloudflare.com/verified-bots-accountability/
+    source_id: cloudflare-blog
+    expected_title: "Continuous accountability for Verified bots"
+    must_contain:
+      - "we de-listed Perplexity’s bot from our Verified"
+    word_range: [830, 1250]
+    paywalled: false
+    tags: [blog, tech]
+    notes: ""
+
+  - id: cloudflare-2026-10-15-deploy-with-void
+    url: https://blog.cloudflare.com/deploy-with-void/
+    source_id: cloudflare-blog
+    expected_title: "Deploy with Void"
+    must_contain:
+      - "The Void CLI is the main interface"
+    word_range: [1060, 1660]
+    paywalled: false
+    tags: [blog, tech]
+    notes: ""
+
+  - id: cloudflare-2026-10-14-yandex-outage
+    url: https://blog.cloudflare.com/yandex-outage/
+    source_id: cloudflare-blog
+    expected_title: "Yandex outage: Data shows that instead of going dark, malicious bots went on the move"
+    must_contain:
+      - "we analyzed social media traffic, we found"
+    word_range: [1300, 1970]
+    paywalled: false
+    tags: [blog, tech]
+    notes: "Charts embedded."
+
+  - id: cloudflare-2026-10-13-d1-control-plane
+    url: https://blog.cloudflare.com/d1-control-plane/
+    source_id: cloudflare-blog
+    expected_title: "Under the hood, off the hot path: How D1 scales to millions of databases"
+    must_contain:
+      - "API Worker is responsible for doing standard"
+    word_range: [3830, 5770]
+    paywalled: false
+    tags: [blog, tech, long-form]
+    notes: "Diagrams and code embedded."
+
+  - id: inews-2026-10-17-areas-risk-missile-attacks-not-ready
+    url: https://inews.co.uk/news/areas-risk-missile-attacks-not-ready-iron-dome-4828524
+    source_id: inews
+    expected_title: "The areas at risk of missile attacks as UK is ‘nowhere near ready’ for Iron Dome"
+    must_contain:
+      - "of integrated missile system envisaged by a"
+    word_range: [1040, 1630]
+    paywalled: false
+    tags: [news, uk]
+    notes: ""
+
+  - id: inews-2026-10-17-tourists-flocking-see-ukraines-darkest-sites
+    url: https://inews.co.uk/news/world/tourists-flocking-see-ukraines-darkest-sites-4829474
+    source_id: inews
+    expected_title: "The tourists flocking to see Ukraine’s darkest sites"
+    must_contain:
+      - "What remains is a darker, more controversial"
+    word_range: [900, 1450]
+    paywalled: false
+    tags: [news, uk, feature]
+    notes: ""
+
+  - id: inews-2026-10-17-poll-shows-badenoch-bounce-punishing-reform
+    url: https://inews.co.uk/news/poll-shows-badenoch-bounce-punishing-reform-4836026
+    source_id: inews
+    expected_title: "The poll that shows how the Badenoch bounce is punishing Reform"
+    must_contain:
+      - "Conservatives are back as the main opposition"
+    word_range: [700, 1110]
+    paywalled: false
+    tags: [news, uk]
+    notes: ""
+
+  - id: inews-2026-10-17-wrong-midlife-women-not-just-menopause
+    url: https://inews.co.uk/opinion/wrong-midlife-women-not-just-menopause-4830722
+    source_id: inews
+    expected_title: "What’s really wrong with midlife women – and it’s not just the menopause"
+    must_contain:
+      - "many women have spent decades building their"
+    word_range: [640, 970]
+    paywalled: false
+    tags: [news, uk, opinion]
+    notes: ""
+
+  - id: dw-2026-10-17-india-news-cjp-founder-released-a
+    url: https://www.dw.com/en/india-news-cjp-founder-released-a-day-after-detention/live-79685143?maca=en-rss-en-all-1573-rdf
+    source_id: dw-news
+    expected_title: "India news: CJP founder released a day after detention"
+    must_contain:
+      - "the media after her release, Bora called"
+    word_range: [1710, 2660]
+    paywalled: false
+    tags: [news, world, live-blog]
+    notes: "Live blog ('India news' rolling page): content changes as entries are added; the snapshot freezes one version."
+
+  - id: dw-2026-10-15-germany-news-train-station-alcohol-ban
+    url: https://www.dw.com/en/germany-news-train-station-alcohol-ban-comes-into-force/live-79666807?maca=en-rss-en-all-1573-rdf
+    source_id: dw-news
+    expected_title: "Germany news: Train station alcohol ban comes into force"
+    must_contain:
+      - "and other such hospitality businesses at train"
+    word_range: [2000, 3080]
+    paywalled: false
+    tags: [news, world, live-blog]
+    notes: "Live blog ('Germany news' rolling page): content changes as entries are added; the snapshot freezes one version."
+
+  - id: dw-2026-10-17-china-s-influence-in-the-gaming
+    url: https://www.dw.com/en/china-s-influence-in-the-gaming-industry-is-growing/a-79484755?maca=en-rss-en-all-1573-rdf
+    source_id: dw-news
+    expected_title: "What's the impact of China's influence on the gaming industry?"
+    must_contain:
+      - "for all games in China is simple"
+    word_range: [970, 1560]
+    paywalled: false
+    tags: [news, world, feature]
+    notes: "Three different titles: h1 (used), og:title 'How China became a gaming leader and what that means for gamers', feed 'China's influence in the gaming industry is growing'."
+
+  - id: dw-2026-10-17-pope-leo-leaves-hospital-after-cancer
+    url: https://www.dw.com/en/pope-leo-leaves-hospital-after-cancer-surgery/a-79688162?maca=en-rss-en-all-1573-rdf
+    source_id: dw-news
+    expected_title: "Pope Leo leaves hospital after cancer surgery"
+    must_contain:
+      - "Leo XIV had the lower lobe of"
+    word_range: [240, 390]
+    paywalled: false
+    tags: [news, world, short]
+    notes: ""
+
+  - id: 404media-2026-10-16-podcast-cops-can-use-ai-to
+    url: https://www.404media.co/podcast-cops-can-use-ai-to-pinpoint-your-home-with-just-one-photo/
+    source_id: 404media
+    expected_title: "Podcast: Cops Can Use AI to Pinpoint Your Home with Just One Photo"
+    must_contain:
+      - "this week with Joseph’s article about Raven"
+    word_range: [100, 310]
+    paywalled: false
+    tags: [tech, podcast, audio]
+    notes: "Podcast page: short description under the player."
+
+  - id: 404media-2026-10-17-this-might-be-the-earliest-known
+    url: https://www.404media.co/this-might-be-the-earliest-known-spear-murder-in-earths-history/
+    source_id: 404media
+    expected_title: "This Might Be the Earliest Known Spear Murder In Earth’s History"
+    must_contain:
+      - "hard to distinguish whether the death blow"
+    word_range: [1060, 1710]
+    paywalled: false
+    tags: [tech]
+    notes: ""
+
+  - id: 404media-2026-10-16-heres-what-telegram-giving-data-to
+    url: https://www.404media.co/heres-what-telegram-giving-data-to-the-u-s-government-looks-like/
+    source_id: 404media
+    expected_title: "Here’s What Telegram Giving Data to the U.S. Government Looks Like"
+    must_contain:
+      - "court records show exactly what happens when"
+    word_range: [60, 170]
+    paywalled: true
+    tags: [tech, short, paywalled]
+    notes: "Paid-members post: the page shows a ~110-word preview, then a members gate. Range is for the visible preview."
+
+  - id: 404media-2026-10-16-undercover-cops-using-ai-generated-child
+    url: https://www.404media.co/undercover-cops-using-ai-generated-child-arrest/
+    source_id: 404media
+    expected_title: "Cops Used AI Generated Photos of a Child to Lure Out a Suspected Predator"
+    must_contain:
+      - "a 45-year-old man was arrested after investigators"
+    word_range: [510, 830]
+    paywalled: false
+    tags: [tech]
+    notes: ""
+
+  - id: mittr-2026-10-16-prima-implant-restores-sight-macular-degeneration
+    url: https://www.technologyreview.com/2026/10/16/1145840/prima-implant-restores-sight-macular-degeneration-patients/
+    source_id: mit-tech-review
+    expected_title: "This implant can restore sight for patients with macular degeneration"
+    must_contain:
+      - "the California-based Science Corporation, the system takes"
+    word_range: [400, 710]
+    paywalled: false
+    tags: [tech, science]
+    notes: "JSON-LD says isAccessibleForFree=false (metered paywall) but the served HTML had the full text at prep time; paywall flag guessed."
+
+  - id: mittr-2026-10-16-love-is-infrastructure-fiction-charlie-jane
+    url: https://www.technologyreview.com/2026/10/16/1145845/love-is-infrastructure-fiction-charlie-jane-anders/
+    source_id: mit-tech-review
+    expected_title: "Love is infrastructure"
+    must_contain:
+      - "Everything the Mainspring City Core did was"
+    word_range: [4540, 6930]
+    paywalled: false
+    tags: [tech, science, fiction, long-form]
+    notes: "Short story. JSON-LD says isAccessibleForFree=false but the served HTML had the full text at prep time; paywall flag guessed."
+
+  - id: mittr-2026-10-16-kids-are-outsmarting-social-media-bans
+    url: https://www.technologyreview.com/2026/10/16/1146834/kids-are-outsmarting-social-media-bans-thats-not-a-problem-we-need-to-solve/
+    source_id: mit-tech-review
+    expected_title: "Kids are outsmarting social media bans. That’s not a problem we need to solve."
+    must_contain:
+      - "people circumvent restrictions, they are often doing"
+    word_range: [1150, 1830]
+    paywalled: false
+    tags: [tech, science, opinion]
+    notes: ""
+
+  - id: mittr-2026-10-16-the-download-failed-social-media-bans
+    url: https://www.technologyreview.com/2026/10/16/1146864/the-download-failed-social-media-bans-and-extending-pets-lives/
+    source_id: mit-tech-review
+    expected_title: "The Download: failed social media bans, and extending pets’ lives"
+    must_contain:
+      - "selling you stuff the actual celebrity has"
+    word_range: [840, 1260]
+    paywalled: false
+    tags: [tech, science, newsletter]
+    notes: "Daily newsletter round-up of several stories with 'Read the full story' links. Trafilatura ~1,190 words, Readability ~900."
+
+  - id: bbcfuture-2026-10-16-sharks-washed-up-one-after-another
+    url: https://www.bbc.com/future/article/20261015-sharks-washed-up-one-after-another-after-another-why-orcas-are-hunting-great-whites?ocid=global_future_rss
+    source_id: bbc-future
+    expected_title: "'What the hell did this?': The orca brothers preying on great white sharks"
+    must_contain:
+      - "are members of the \"Moctezuma pod\", named"
+    word_range: [1840, 2760]
+    paywalled: false
+    tags: [science, js-heavy, video]
+    notes: "Readability got only ~180 words at prep time (Trafilatura ~2,300); estimate uses Trafilatura. Snippet checked against Trafilatura only. Embedded video. og:title equals the h1; feed title is shorter."
+
+  - id: bbcfuture-2026-10-15-the-strange-new-battle-over-ais
+    url: https://www.bbc.com/future/article/20261014-the-strange-new-battle-over-ais-feelings?ocid=global_future_rss
+    source_id: bbc-future
+    expected_title: "Anthropic thinks its AI might be conscious. It has profound consequences for your life"
+    must_contain:
+      - "AI models may become even harder to"
+    word_range: [1200, 1800]
+    paywalled: false
+    tags: [science, js-heavy]
+    notes: "Readability got only ~480 words at prep time (Trafilatura ~1,500); estimate uses Trafilatura. Snippet checked against Trafilatura only. Feed title differs ('The war over AI consciousness may change your life')."
+
+  - id: bbcfuture-2026-10-14-how-metagenomics-can-identify-almost-every
+    url: https://www.bbc.com/future/article/20261013-how-metagenomics-can-identify-almost-every-infection?ocid=global_future_rss
+    source_id: bbc-future
+    expected_title: "The genetic technique that finds (almost) every infection"
+    must_contain:
+      - "machines can sequence DNA within as little"
+    word_range: [1000, 1500]
+    paywalled: false
+    tags: [science, js-heavy]
+    notes: "Readability got only ~160 words at prep time (Trafilatura ~1,250); estimate uses Trafilatura. Snippet checked against Trafilatura only. Feed title differs ('The test that finds (almost) every infection')."
+
+  - id: bbcfuture-2026-10-12-how-can-i-eat-30-plants
+    url: https://www.bbc.com/future/article/20261008-how-can-i-eat-30-plants-a-week?ocid=global_future_rss
+    source_id: bbc-future
+    expected_title: "I tried eating 30 plants a week. It was surprisingly easy"
+    must_contain:
+      - "simple curry is another staple in my"
+    word_range: [1170, 1770]
+    paywalled: false
+    tags: [science, js-heavy]
+    notes: "Readability got only ~190 words at prep time (Trafilatura ~1,470); estimate uses Trafilatura. Snippet checked against Trafilatura only. Feed title differs ('Why it's easy to eat 30 plants a week')."
+
+  - id: noahpinion-2026-10-15-ai-vs-the-railroads
+    url: https://www.noahpinion.blog/p/ai-vs-the-railroads
+    source_id: noahpinion
+    expected_title: "AI vs. the railroads"
+    must_contain:
+      - "of money being thrown around here are"
+    word_range: [680, 1120]
+    paywalled: true
+    tags: [blog, economics, paywalled]
+    notes: "Paid-subscriber post: Substack shows a preview (~860 words here) and then a paywall; range is for the visible preview. Page h1 is the newsletter name; title from og:title."
+
+  - id: noahpinion-2026-10-13-a-nobel-for-new-keynesian-macro
+    url: https://www.noahpinion.blog/p/a-nobel-for-new-keynesian-macro-at
+    source_id: noahpinion
+    expected_title: "A Nobel for New Keynesian macro, at last!"
+    must_contain:
+      - "paper with the late Julio Rotemberg, Woodford"
+    word_range: [2210, 3600]
+    paywalled: false
+    tags: [blog, economics, long-form]
+    notes: "Page h1 is the newsletter name; title from og:title."
+
+  - id: noahpinion-2026-10-09-maybe-the-rapture-is-already-here
+    url: https://www.noahpinion.blog/p/maybe-the-rapture-is-already-here
+    source_id: noahpinion
+    expected_title: "Maybe the Rapture is already here"
+    must_contain:
+      - "Have you ever heard of “heavenbanning”?"
+    word_range: [1250, 1890]
+    paywalled: false
+    tags: [blog, economics]
+    notes: "Page h1 is the newsletter name; title from og:title."
+
+  - id: noahpinion-2026-10-05-what-the-ai-boom-is-doing
+    url: https://www.noahpinion.blog/p/what-the-ai-boom-is-doing-for-americans
+    source_id: noahpinion
+    expected_title: "What the AI boom is doing for Americans"
+    must_contain:
+      - "should include reduced electric and water rates"
+    word_range: [1890, 2910]
+    paywalled: false
+    tags: [blog, economics, long-form]
+    notes: "Page h1 is the newsletter name; title from og:title."
+
+  - id: bi-2026-10-17-anthropic-ai-robots-gardening-jobs-automation
+    url: https://www.businessinsider.com/anthropic-ai-robots-gardening-jobs-automation-2026-10
+    source_id: business-insider
+    expected_title: "When AI and robots work together, Anthropic says these jobs are at risk. Should gardeners worry?"
+    must_contain:
+      - "anyone who's spent time working in a"
+    word_range: [100, 270]
+    paywalled: true
+    tags: [news, business, short, paywalled]
+    notes: "JSON-LD says isAccessibleForFree=false and only ~170 words were served: subscriber preview. og:title differs ('AI was supposed to spare gardeners. ...'); extractors return it."
+
+  - id: bi-2026-10-17-building-house-with-husband-money-differences
+    url: https://www.businessinsider.com/building-house-with-husband-money-differences-compromise-2026-10
+    source_id: business-insider
+    expected_title: "My husband and I have different definitions of 'financially responsible.' Building a house is forcing us to compromise."
+    must_contain:
+      - "We could have bought an existing house"
+    word_range: [640, 1020]
+    paywalled: true
+    tags: [news, business, personal-essay, paywalled]
+    notes: "Paywall flag guessed: JSON-LD says isAccessibleForFree=false but ~800 words were served, which may be the whole essay."
+
+  - id: bi-2026-10-17-greenland-cruise-ship-iceberg-arctic-titanic
+    url: https://www.businessinsider.com/greenland-cruise-ship-iceberg-arctic-titanic-ship-travel-safety-2026-10
+    source_id: business-insider
+    expected_title: "How cruise ships sail through Greenland's extreme Arctic waters"
+    must_contain:
+      - "aboard a cruise ship navigating some of"
+    word_range: [60, 150]
+    paywalled: false
+    tags: [news, business, video, short]
+    notes: "Video page: short description under the player. og:title and feed title differ ('How a cruise ship navigates Greenland's icebergs and extreme Arctic conditions')."
+
+  - id: bi-2026-10-17-couple-wont-share-bank-account-finances
+    url: https://www.businessinsider.com/couple-wont-share-bank-account-finances-marriage-2026-10
+    source_id: business-insider
+    expected_title: "My partner and I don't share a bank account, and we still won't after our wedding"
+    must_contain:
+      - "up trust over the years, and we'll"
+    word_range: [600, 930]
+    paywalled: true
+    tags: [news, business, personal-essay, paywalled]
+    notes: "Paywall flag guessed: JSON-LD says isAccessibleForFree=false but ~770 words were served, which may be the whole essay."
