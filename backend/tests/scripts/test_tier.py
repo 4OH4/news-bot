@@ -71,6 +71,7 @@ def test_docs_tests_and_results_only_are_tier_a(title: str) -> None:
     [
         "backend/src/newsfeed/models.py",
         "backend/src/newsfeed/ports.py",
+        "backend/src/newsfeed/fetching/http.py",
         "docs/adr/0003-ranking.md",
         "eval/urls.yaml",
         "config/sources.yaml",
@@ -109,7 +110,11 @@ def test_feat_is_tier_b() -> None:
     [
         "backend/src/newsfeed/cli.py",
         "backend/src/newsfeed/adapters/firestore.py",
-        "backend/src/newsfeed/fetching/http.py",
+        "backend/src/newsfeed/eval/scorer.py",
+        "backend/tests/conftest.py",
+        "backend/tests/fakes.py",
+        "backend/tests/test_network_guard.py",
+        "backend/tests/contract/test_repository_contract.py",
         "backend/pyproject.toml",
         "backend/uv.lock",
         "backend/Dockerfile",
@@ -145,6 +150,13 @@ def test_size_limits() -> None:
     assert at_limit.tier == "A"
 
 
+def test_breaking_change_title_is_tier_b() -> None:
+    result = classify(
+        "fix(extract)!: drop the old field", F("backend/src/newsfeed/extract/a.py", 3)
+    )
+    assert result.reasons == ["title marks a breaking change ('!')"]
+
+
 def test_untyped_title_is_tier_b() -> None:
     assert classify("Update docs", F("docs/x.md", 1)).tier == "B"
 
@@ -160,7 +172,7 @@ def pr(**overrides: Any) -> dict[str, Any]:
         "merged": False,
         "draft": False,
         "base": {"ref": "main"},
-        "head": {"sha": HEAD},
+        "head": {"sha": HEAD, "repo": {"full_name": tier.REPO}},
         "labels": [],
         "mergeable_state": "clean",
         "body": CLEAN_BODY,
@@ -170,7 +182,16 @@ def pr(**overrides: Any) -> dict[str, Any]:
 
 
 GREEN = {"lint": "success", "test": "success", "docker": "success"}
-REVIEWED = ["## Independent review\nNo defects.", f"**Lead review**\nTier A, checked {HEAD[:7]}."]
+
+
+def owned(*bodies: str, association: str = "OWNER") -> list[dict[str, Any]]:
+    return [{"body": b, "author_association": association} for b in bodies]
+
+
+REVIEWED = owned(
+    "## Independent review\nNo defects.",
+    f"**Lead review**\n**Verdict:** merge (Tier A). Checked at {HEAD[:7]}.",
+)
 TIER_A = tier.Classification("A")
 
 
@@ -231,24 +252,78 @@ def test_reviewer_can_send_a_tier_a_pr_to_the_human() -> None:
     ]
 
 
-def test_lead_review_must_name_the_current_head() -> None:
-    stale = ["Independent review: fine", "Lead review: checked 9999999"]
-    assert tier.gate_failures(pr(), TIER_A, GREEN, stale) == [
-        f"no 'Lead review' comment naming the head SHA {HEAD[:7]}"
-    ]
+LEAD_MISSING = f"no 'Lead review' with 'Verdict: merge' naming the head SHA {HEAD[:7]}"
+
+
+@pytest.mark.parametrize(
+    "lead",
+    [
+        "Lead review: Verdict: merge. Checked at 9999999",  # an older head
+        f"Lead review: Verdict: not ready. Checked at {HEAD[:7]}",
+        f"Lead review: checked {HEAD[:7]}",  # no verdict
+    ],
+)
+def test_lead_review_must_say_merge_at_the_current_head(lead: str) -> None:
+    comments = owned("Independent review: fine", lead)
+    assert tier.gate_failures(pr(), TIER_A, GREEN, comments) == [LEAD_MISSING]
 
 
 def test_independent_review_comment_is_required() -> None:
     assert tier.gate_failures(pr(), TIER_A, GREEN, REVIEWED[1:]) == [
-        "no 'Independent review' comment"
+        "no 'Independent review' comment from the owner account"
     ]
+
+
+def test_review_comments_from_other_accounts_do_not_count() -> None:
+    comments = [{**c, "author_association": "NONE"} for c in REVIEWED]
+    assert tier.gate_failures(pr(), TIER_A, GREEN, comments) == [
+        "no 'Independent review' comment from the owner account",
+        LEAD_MISSING,
+    ]
+
+
+def test_fork_prs_are_refused() -> None:
+    head = {"sha": HEAD, "repo": {"full_name": "someone/news-bot"}}
+    assert tier.gate_failures(pr(head=head), TIER_A, GREEN, REVIEWED) == [
+        "head branch is not in this repository"
+    ]
+
+
+@pytest.mark.parametrize(
+    "item",
+    [
+        "- **Defect**: colon outside the bold",
+        "- **defect:** lower case",
+        "- **Defect:** the cap is not **Resolved** by this change",  # no "in <sha>"
+    ],
+)
+def test_defect_marker_variants_block(item: str) -> None:
+    body = CLEAN_BODY.replace("- Judgement call", f"{item}\n- Judgement call")
+    assert tier.gate_failures(pr(body=body), TIER_A, GREEN, REVIEWED) == [
+        "1 unresolved **Defect:** item(s)"
+    ]
+
+
+@pytest.mark.parametrize("item", ["- **Needs human**: wording", "- **needs  human:** x"])
+def test_needs_human_marker_variants_block(item: str) -> None:
+    body = CLEAN_BODY.replace("- Judgement call", f"{item}\n- Judgement call")
+    assert tier.gate_failures(pr(body=body), TIER_A, GREEN, REVIEWED) == [
+        "reviewer marked an item **Needs human:**"
+    ]
+
+
+def test_a_second_human_review_section_is_refused() -> None:
+    body = CLEAN_BODY + "\n## For human review\n- **Defect:** hidden down here\n"
+    assert "body has more than one 'For human review' section" in tier.gate_failures(
+        pr(body=body), TIER_A, GREEN, REVIEWED
+    )
 
 
 # --- merge command ---------------------------------------------------------------
 
 
 def fake_github(
-    monkeypatch: pytest.MonkeyPatch, pr_data: dict[str, Any], comments: list[str]
+    monkeypatch: pytest.MonkeyPatch, pr_data: dict[str, Any], comments: list[dict[str, Any]]
 ) -> list[tuple[str, tuple[str, ...]]]:
     calls: list[tuple[str, tuple[str, ...]]] = []
 
@@ -268,7 +343,7 @@ def fake_github(
                 ]
             }
         if path.startswith("issues/70/comments"):
-            return [{"body": c} for c in comments]
+            return comments
         return {}
 
     monkeypatch.setattr(tier, "gh_api", gh_api)
