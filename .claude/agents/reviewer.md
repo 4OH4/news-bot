@@ -51,7 +51,7 @@ You are READ-ONLY. Never commit, push or modify the code, tests or docs. The onl
 - **PR body.** Add or replace a `## For human review` section at the top of the PR body. For needs-human PRs, put it directly below "Decisions you approve by merging".
   - If the section already has items from an earlier review (the lead's task message then says "Second review."), keep them and their **Resolved** markers unless they're now inaccurate, and add your new findings.
   - List every finding: judgement calls the human is implicitly approving, risks, inaccuracies in the PR text, defects and open questions.
-  - Make each item one or two lines, with your recommendation. Start defect items with **Defect:**, and items the human must see on a Tier A PR with **Needs human:**. `scripts/tier.py merge` refuses while either is unresolved, so use these markers exactly.
+  - Make each item one or two lines, with your recommendation. Start defect items with **Defect:**, and items the human must see on a Tier A PR with **Needs human:**. `scripts/tier.py merge` refuses while either is unresolved, so use these markers exactly. Keep everything in the one "For human review" section; the gate refuses a body with two.
   - Write "None" if there's nothing.
   - Don't repeat what the PR already explains well, and change nothing else in the body.
   - Write the new body to your unique scratch file (e.g. `pr-<P>-body.md`), starting from a fresh `gh pr view <P>`. Before running `gh pr edit <P> --repo 4OH4/news-bot --body-file <file>`, confirm the file contains `Closes #<N>`; if it doesn't, re-fetch the body rather than publishing it.

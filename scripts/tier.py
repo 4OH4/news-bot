@@ -18,7 +18,9 @@ Tiers (see CLAUDE.md, "Risk tiers"):
 The tier comes from the diff, not from anyone's judgement, and this script is in
 Tier C itself, so agents can't relax the rules without the human merging that.
 
-`merge` is the only way an agent merges a PR. It refuses unless every condition in
+`merge` is the only way an agent may merge a PR. That is a rule in CLAUDE.md, not a
+technical barrier: `gh pr merge` is denied in .claude/settings.json, but the REST merge
+endpoint is reachable through the allowed `gh api` prefix. It refuses unless every condition in
 `gate_failures` holds, and pins the merge to the head SHA it checked.
 
 Uses the REST API only (separate allowance from GraphQL; see CLAUDE.md).
@@ -51,6 +53,7 @@ NEEDS_HUMAN_LABEL = "needs-human"
 TIER_C_PATHS = (
     "backend/src/newsfeed/models.py",
     "backend/src/newsfeed/ports.py",
+    "backend/src/newsfeed/fetching/*",  # polite fetching, CLAUDE.md architecture rule 6
     "docs/adr/*",
     "eval/urls.yaml",
     "config/sources.yaml",
@@ -61,15 +64,36 @@ TIER_C_PATHS = (
     "scripts/*",
 )
 TIER_A_PATHS = ("docs/*", "README*", "backend/tests/*", "eval/results/*")
+# Test infrastructure that keeps every other test honest (the network guard, the
+# fakes, the contract suites): changing it is Tier B, not a routine test change.
+TEST_GUARD_PATHS = (
+    "backend/tests/conftest.py",
+    "backend/tests/fakes.py",
+    "backend/tests/test_network_guard.py",
+    "backend/tests/contract/*",
+)
 SRC_PREFIX = "backend/src/newsfeed/"
-TIER_A_PACKAGES = ("ingest", "extract", "rank", "publish", "preview", "eval", "api")
+# Not `eval`: the scorer decides the evaluation results, which the human judges.
+TIER_A_PACKAGES = ("ingest", "extract", "rank", "publish", "preview", "api")
 TIER_A_TYPES = ("fix", "test", "docs", "refactor", "perf", "chore")
 MAX_SRC_LINES = 150
 MAX_TOTAL_LINES = 600
 
 CLOSES_RE = re.compile(r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)", re.IGNORECASE)
-TYPE_RE = re.compile(r"^(\w+)(?:\([^)]*\))?!?:")
-SECTION_RE = re.compile(r"^## For human review\s*$(.*?)(?=^## |\Z)", re.MULTILINE | re.DOTALL)
+TYPE_RE = re.compile(r"^(\w+)(?:\([^)]*\))?(!?):")
+SECTION_RE = re.compile(r"^##\s+For human review\s*$(.*?)(?=^##\s|\Z)", re.MULTILINE | re.DOTALL)
+SECTION_HEADING_RE = re.compile(r"^#+\s+For human review", re.MULTILINE | re.IGNORECASE)
+
+
+def _marker(word: str) -> re.Pattern[str]:
+    """`**Word:**` or `**Word**:`, any case, as reviewers may type either."""
+    return re.compile(rf"\*\*\s*{word}\s*(?::\s*\*\*|\*\*\s*:)", re.IGNORECASE)
+
+
+DEFECT_RE = _marker("defect")
+NEEDS_HUMAN_RE = _marker("needs\\s+human")
+RESOLVED_RE = re.compile(r"\*\*\s*Resolved\s*\*\*\s+in\s+[0-9a-f]{7,40}\b", re.IGNORECASE)
+VERDICT_RE = re.compile(r"^\W*verdict\W*\s*merge\b", re.IGNORECASE | re.MULTILINE)
 
 
 @dataclass
@@ -111,12 +135,19 @@ def classify(title: str, files: list[ChangedFile], needs_human: bool) -> Classif
     kind = found.group(1).lower() if found else ""
     if kind not in TIER_A_TYPES:
         b_reasons.append(f"title type '{kind or '?'}' is not one of {', '.join(TIER_A_TYPES)}")
+    if found and found.group(2):
+        b_reasons.append("title marks a breaking change ('!')")
 
     packages: set[str] = set()
     src_lines = 0
     for f in files:
         for p in (f.path, f.previous_path):
-            if not p or matches(p, TIER_A_PATHS):
+            if not p:
+                continue
+            if matches(p, TEST_GUARD_PATHS):
+                b_reasons.append(f"{p} is test infrastructure")
+                continue
+            if matches(p, TIER_A_PATHS):
                 continue
             pkg = src_package(p) if p.startswith(SRC_PREFIX) else None
             if pkg in TIER_A_PACKAGES:
@@ -145,6 +176,13 @@ def human_review_section(body: str) -> str | None:
     return found.group(1) if found else None
 
 
+def unresolved_defects(section: str) -> list[str]:
+    """Defect items without a `**Resolved** in <sha>` marker."""
+    return [
+        ln for ln in section.splitlines() if DEFECT_RE.search(ln) and not RESOLVED_RE.search(ln)
+    ]
+
+
 def heading(comment: str) -> str:
     """A comment's first line without Markdown heading or bold markers."""
     first = comment.strip().split("\n", 1)[0]
@@ -155,9 +193,13 @@ def gate_failures(
     pr: dict[str, Any],
     classification: Classification,
     checks: dict[str, str],
-    comments: list[str],
+    comments: list[dict[str, Any]],
 ) -> list[str]:
-    """Every reason the lead may not merge this PR. Empty means it may."""
+    """Every reason the lead may not merge this PR. Empty means it may.
+
+    `comments` are REST issue comments. Only the owner's count: agents post as the
+    owner, and anyone can comment on a public repo.
+    """
     failures: list[str] = []
     head = pr["head"]["sha"]
     labels = {label["name"] for label in pr["labels"]}
@@ -168,6 +210,8 @@ def gate_failures(
         failures.append("PR is not open")
     if pr.get("draft"):
         failures.append("PR is a draft")
+    if (pr["head"].get("repo") or {}).get("full_name") != REPO:
+        failures.append("head branch is not in this repository")
     if pr["base"]["ref"] != "main":
         failures.append(f"base is {pr['base']['ref']}, not main")
     if HOLD_LABEL in labels:
@@ -183,23 +227,25 @@ def gate_failures(
     if not CLOSES_RE.search(body):
         failures.append("body has no 'Closes #N'")
     section = human_review_section(body)
+    if len(SECTION_HEADING_RE.findall(body)) > 1:
+        failures.append("body has more than one 'For human review' section")
     if section is None:
         failures.append("body has no '## For human review' section")
     else:
-        if "Pending independent review" in section:
+        if "pending independent review" in section.lower():
             failures.append("'For human review' is still pending")
-        lines = section.splitlines()
-        if any("**Needs human:**" in line for line in lines):
+        if NEEDS_HUMAN_RE.search(section):
             failures.append("reviewer marked an item **Needs human:**")
-        open_defects = [ln for ln in lines if "**Defect:**" in ln and "**Resolved**" not in ln]
+        open_defects = unresolved_defects(section)
         if open_defects:
             failures.append(f"{len(open_defects)} unresolved **Defect:** item(s)")
 
-    if not any(heading(c).startswith("Independent review") for c in comments):
-        failures.append("no 'Independent review' comment")
-    lead = [c for c in comments if heading(c).startswith("Lead review")]
-    if not any(head[:7] in c for c in lead):
-        failures.append(f"no 'Lead review' comment naming the head SHA {head[:7]}")
+    owned = [c.get("body") or "" for c in comments if c.get("author_association") == "OWNER"]
+    if not any(heading(c).lower().startswith("independent review") for c in owned):
+        failures.append("no 'Independent review' comment from the owner account")
+    lead = [c for c in owned if heading(c).lower().startswith("lead review")]
+    if not any(head[:7] in c and VERDICT_RE.search(c) for c in lead):
+        failures.append(f"no 'Lead review' with 'Verdict: merge' naming the head SHA {head[:7]}")
     return failures
 
 
@@ -286,8 +332,7 @@ def cmd_classify(number: int, label: bool) -> None:
 def cmd_merge(number: int, dry_run: bool) -> None:
     pr = fetch_pr(number)
     result = classify_pr(pr)
-    comments = [c["body"] or "" for c in
-                gh_api(f"issues/{number}/comments?per_page=100", paginate=True)]
+    comments = gh_api(f"issues/{number}/comments?per_page=100", paginate=True)
     failures = gate_failures(pr, result, fetch_checks(pr["head"]["sha"]), comments)
     if failures:
         print(f"PR #{number}: not merging")
