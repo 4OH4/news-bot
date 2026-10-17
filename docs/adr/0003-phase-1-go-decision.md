@@ -11,7 +11,7 @@ Phase 1 exists to test the project's riskiest assumption: that a polite, self-ho
 The evidence (details and per-domain tables in `docs/phase1-review.md`):
 
 - **Evaluation:** the extractor chain is clean on **98.9%** (92/93) of the non-paywalled entries that could be snapshotted, after one per-domain override (`arstechnica.com` tries readability first). It was 97.8% before the override. 2 LWN entries are paywalled and couldn't be snapshotted (HTTP 403). The one remaining failure is a Simon Willison post where trafilatura adds the blog's "Recent articles" sidebar.
-- **Live run** (25 sources, 720 articles, 2026-10-17): 91.7% `ok`, 7.1% `partial`, 1.1% `failed`. Six of the 8 failures are LWN subscriber-only pages (HTTP 403), which we respect. No Cloudflare challenges. Half of the `partial` results are audio, video and cartoon pages that really are short.
+- **Live run** (25 sources, 719 articles stored, 2026-10-17): 91.8% `ok`, 7.1% `partial`, 1.1% `failed`. Six of the 8 failures are LWN subscriber-only pages (HTTP 403), which we respect. No Cloudflare challenges. Half of the `partial` results are audio, video and cartoon pages that really are short.
 - **Coverage limits:** 13 publishers refuse our fetcher (robots.txt, 403 or 402) and were left out of the sources; they are listed in `docs/blocked-publishers.md`. That limits which publishers the feed can include, but not extraction quality.
 - **My reading** of about 20 articles in the local preview (`newsfeed preview`), as the subjective check the issue asks for. Merging this ADR records that I did it and found the quality acceptable.
 

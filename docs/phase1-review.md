@@ -18,8 +18,8 @@ This file describes structure and counts only. It contains no article text.
 |---|---|---|
 | Evaluation, clean on non-paywalled entries (`chain`) | **98.9%** (92/93), up from 97.8% (91/93) | 85–90% |
 | Evaluation, paywalled entries clean (`chain`) | 5/5 (none *detected* as paywalled, see below) | — |
-| Live run, status `ok` | 660 of 720 attempted (91.7%) | — |
-| Live run, `ok` or `partial` (some content stored) | 711 of 720 (98.8%) | — |
+| Live run, status `ok` | 660 of 719 stored (91.8%; 720 attempted, 1 merged as a duplicate) | — |
+| Live run, `ok` or `partial` (some content stored) | 711 of 719 (98.9%) | — |
 | Live run, `failed` | 8, of which 6 are LWN subscriber-only pages (HTTP 403) | — |
 | Live run, Cloudflare challenges | 0 | — |
 
