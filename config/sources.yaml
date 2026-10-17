@@ -169,8 +169,9 @@ sources:
     url: https://www.noahpinion.blog/feed
     tags: [blog, economics, paywall]
 
-  # EXAMPLES of the discovery sources (#11), disabled until the curated list (#16)
-  # decides on queries. The query is a placeholder.
+  # EXAMPLES of the discovery sources (#11). The Google News query is a
+  # placeholder until #50 decides on queries; the Hacker News example stays
+  # disabled until the human decides whether to enable it.
   - id: example-google-news
     type: google_news
     query: "example placeholder topic"
