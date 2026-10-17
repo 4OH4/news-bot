@@ -1,4 +1,4 @@
-"""Command-line entry point: ``newsfeed run|ingest|extract|eval``."""
+"""Command-line entry point: ``newsfeed run|ingest|extract|preview|eval``."""
 
 from __future__ import annotations
 
@@ -47,6 +47,7 @@ from newsfeed.pipeline import (
     run_pipeline,
 )
 from newsfeed.ports import Fetcher
+from newsfeed.preview import generate_preview
 from newsfeed.settings import Settings, load_settings
 from newsfeed.wiring import build_extractor, open_fetcher, open_services
 
@@ -209,6 +210,33 @@ def _extract_url(url: str, *, save: bool) -> None:
             typer.echo(f"{label}: {value}")
     typer.echo("")
     typer.echo((result.text or "")[:500])
+
+
+@app.command()
+def preview(
+    out: Annotated[
+        Path | None,
+        typer.Option("--out", help="Output folder. Default: <data dir>/preview."),
+    ] = None,
+    no_images: Annotated[
+        bool, typer.Option("--no-images", help="Leave images out instead of hotlinking them.")
+    ] = False,
+) -> None:
+    """Write a static HTML preview of the extracted articles (open index.html)."""
+    settings = load_settings()
+    target = out if out is not None else settings.data_dir / "preview"
+    try:
+        with open_services(settings) as services:
+            summary = generate_preview(
+                services.repository, services.blobs, target, images=not no_images
+            )
+    except ConfigError as exc:
+        _fail(str(exc))
+    typer.echo(
+        f"wrote {summary.articles} article(s) and {summary.failures} failure(s) "
+        f"({summary.pending} pending, not shown)"
+    )
+    typer.echo(f"open {(target / 'index.html').resolve().as_uri()}")
 
 
 # --- eval ----------------------------------------------------------------------

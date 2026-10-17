@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Failures{% endblock %}
+{% block body %}
+<h1>Failures</h1>
+<p class="meta">{{ articles|length }} article(s) that could not be turned into readable content.</p>
+<ul class="list">
+{% for a in articles %}
+  <li>
+    <a class="t" href="{{ a.url }}">{{ a.title }}</a>
+    <div class="meta">
+      <span class="badge badge-{{ a.extraction.status.value }}">{{ a.extraction.status.value }}</span>
+      {{ a.source_id }} &middot; {{ a.extraction.method or "no method" }}
+    </div>
+    <div class="error">{{ a.extraction.error or "No error recorded." }}</div>
+  </li>
+{% else %}
+  <li>No failures.</li>
+{% endfor %}
+</ul>
+{% endblock %}
