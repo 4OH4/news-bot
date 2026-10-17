@@ -145,7 +145,12 @@ def test_entry_record_holds_metrics_and_check_outcomes(fixtures_dir: Path) -> No
     assert good["seconds"] == 0.25
     assert good["clean"] is False
     assert good["failures"] == ["missing_snippet"]
-    assert good["checks"]["title"] == {"expected": True, "ratio": 1.0, "min_ratio": 0.9}
+    assert good["checks"]["title"] == {
+        "expected": True,
+        "ratio": 1.0,
+        "via": "extracted",
+        "min_ratio": 0.9,
+    }
     assert good["checks"]["must_contain"] == [
         {"n": 1, "snippet": "first invented sentence", "found": True},
         {"n": 2, "snippet": "a sentence that is absent", "found": False},

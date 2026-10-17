@@ -12,6 +12,7 @@ from newsfeed.eval.scoring import (
     _boilerplate_hits,
     load_boilerplate,
     normalise,
+    page_titles,
     score_result,
 )
 from newsfeed.eval.urls import EvalEntry
@@ -150,3 +151,63 @@ def test_repo_boilerplate_file_loads() -> None:
     path = Path(__file__).resolve().parents[3] / "eval" / "boilerplate.txt"
 
     assert "accept cookies" in load_boilerplate(path)
+
+
+# Title check against the page's two titles (#62): a visible h1 and a metadata title.
+TITLE_PAGE = """<html><head>
+<title>Invented Headline | Example Daily</title>
+<meta property="og:title" content="Invented Headline | Example Daily">
+</head><body><nav><h1>Example Daily</h1></nav><article><h1>Invented Headline</h1></article>
+</body></html>"""
+H1_ONLY_PAGE = TITLE_PAGE.replace("<h1>Example Daily</h1>", "")
+
+
+def test_title_matches_h1_when_extracted_title_is_the_metadata_title() -> None:
+    extracted = result(title="Invented Headline | Example Daily")
+
+    score = score_result(ENTRY, extracted, html=TITLE_PAGE)
+
+    assert score.clean
+    assert score.checks is not None
+    assert score.checks.title_via == "h1"
+    assert score.checks.title_ratio == 1.0
+
+
+def test_title_matches_extracted_title_directly_without_h1() -> None:
+    score = score_result(ENTRY, result(), html=TITLE_PAGE)
+
+    assert score.clean
+    assert score.checks is not None
+    assert score.checks.title_via == "extracted"
+
+
+def test_title_mismatch_without_html_still_fails() -> None:
+    extracted = result(title="Invented Headline | Example Daily")
+
+    assert score_result(ENTRY, extracted).failures == (Failure.TITLE_MISMATCH,)
+
+
+def test_title_fails_when_neither_title_matches() -> None:
+    other = EvalEntry(id="s", url=ENTRY.url, expected_title="Something Else Entirely")
+    extracted = result(title="Invented Headline | Example Daily")
+
+    score = score_result(other, extracted, html=H1_ONLY_PAGE)
+
+    assert score.failures == (Failure.TITLE_MISMATCH,)
+
+
+def test_h1_ignored_when_extracted_title_is_not_the_metadata_title() -> None:
+    # A wrong extraction must not pass just because the page has a matching h1.
+    extracted = result(title="A completely different title")
+
+    score = score_result(ENTRY, extracted, html=TITLE_PAGE)
+
+    assert score.failures == (Failure.TITLE_MISMATCH,)
+
+
+def test_page_titles_reads_meta_and_headings_and_survives_bad_html() -> None:
+    meta, headings = page_titles(TITLE_PAGE)
+
+    assert "Invented Headline | Example Daily" in meta
+    assert headings == ("Example Daily", "Invented Headline")
+    assert page_titles("") == ((), ())
