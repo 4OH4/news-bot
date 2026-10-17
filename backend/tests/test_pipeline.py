@@ -332,6 +332,92 @@ def test_extractor_reported_failure_is_logged_and_counted(
     assert (record.stage, record.url) == ("extract", article.url)  # type: ignore[attr-defined]
 
 
+# --- Logging and metrics --------------------------------------------------------
+
+
+def _finished(log_records: list[logging.LogRecord]) -> list[logging.LogRecord]:
+    return [r for r in log_records if r.getMessage() == "extraction finished"]
+
+
+def test_every_processed_article_logs_one_extraction_finished_entry(
+    tmp_path: Path, repository: SqliteRepository, log_records: list[logging.LogRecord]
+) -> None:
+    services = _services(tmp_path, repository, _fetcher())
+
+    run_pipeline(services, [SOURCE])
+
+    entries = _finished(log_records)
+    assert len(entries) == 4
+    by_url = {r.url: r for r in entries}  # type: ignore[attr-defined]
+    assert len(by_url) == 4
+    ok = by_url[BRIDGE_URL]
+    assert (ok.stage, ok.source_id, ok.domain, ok.status) == (  # type: ignore[attr-defined]
+        "extract",
+        "gazette",
+        "news.example.com",
+        "ok",
+    )
+    assert ok.word_count > 0  # type: ignore[attr-defined]
+    assert ok.method == "trafilatura"  # type: ignore[attr-defined]
+    assert isinstance(ok.elapsed_ms, int)  # type: ignore[attr-defined]
+    assert ok.chain[0]["method"] == "trafilatura"  # type: ignore[attr-defined]
+    failed = by_url["https://news.example.com/2026/10/missing"]
+    assert failed.status == "failed"  # type: ignore[attr-defined]
+    assert "404" in failed.error  # type: ignore[attr-defined]
+    statuses = sorted(r.status for r in entries)  # type: ignore[attr-defined]
+    assert statuses == ["failed", "ok", "ok", "skipped"]
+
+
+def test_run_finished_carries_metrics_and_failure_reasons_are_counted(
+    tmp_path: Path, repository: SqliteRepository, log_records: list[logging.LogRecord]
+) -> None:
+    services = _services(tmp_path, repository, _fetcher())
+
+    stats = run_pipeline(services, [SOURCE])
+
+    assert stats.stage_counts[PipelineStage.EXTRACT]["failed:http_4xx"] == 1
+    (record,) = [r for r in log_records if r.getMessage() == "run finished"]
+    metrics = record.metrics  # type: ignore[attr-defined]
+    assert metrics["run_id"] == stats.run_id
+    assert set(metrics["duration_s"]) == {"ingest", "extract"}
+    assert metrics["failures_by_reason"] == {"http_4xx": 1}
+    assert metrics["feeds"]["gazette"]["outcome"] == "ok"
+    assert metrics["feeds"]["gazette"]["new"] == 4
+    assert metrics["articles_by_domain"]["news.example.com"]["failed"] == 1
+    news = metrics["words_by_domain"]["news.example.com"]
+    assert news["n"] == 1 and news["median"] == news["min"] > 0
+
+
+def test_failed_feed_is_a_feed_outcome(
+    tmp_path: Path, repository: SqliteRepository, log_records: list[logging.LogRecord]
+) -> None:
+    services = _services(tmp_path, repository, FakeFetcher())
+
+    run_pipeline(services, [SOURCE])
+
+    (record,) = [r for r in log_records if r.getMessage() == "run finished"]
+    assert record.metrics["feeds"]["gazette"]["outcome"] == "failed"  # type: ignore[attr-defined]
+
+
+def test_merged_article_also_logs_one_entry(
+    tmp_path: Path, repository: SqliteRepository, log_records: list[logging.LogRecord]
+) -> None:
+    first = _article_for("https://x.example.com/1")
+    second = _article_for("https://x.example.com/2")
+    page = b'<html><head><link rel="canonical" href="https://x.example.com/same"></head></html>'
+    fetcher = FakeFetcher(
+        {first.url: FakeResponse(page, headers=HTML), second.url: FakeResponse(page, headers=HTML)}
+    )
+    services = _services(tmp_path, repository, fetcher, FakeExtractor(default=_ok()), concurrency=1)
+    repository.upsert_article(first)
+    repository.upsert_article(second)
+
+    run_pipeline(services, [], ingest=False)
+
+    statuses = sorted(r.status for r in _finished(log_records))  # type: ignore[attr-defined]
+    assert statuses == ["merged", "ok"]
+
+
 # --- Skipping --------------------------------------------------------------------
 
 
