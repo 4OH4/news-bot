@@ -11,8 +11,10 @@ Tiers (see CLAUDE.md, "Risk tiers"):
 * Tier C: full human review. Any change to a contract, an ADR, the evaluation
   expectations, curated sources or interests, infrastructure or the automation
   itself (.github/, .claude/, scripts/), or a needs-human PR/issue.
-* Tier A: the lead merges. A non-`feat` change confined to docs, tests, eval
-  results and at most one stage package, below the size limits.
+* Tier A: the lead merges. A change confined to docs, tests, eval results and at
+  most one stage package, below the size limits. A `feat` qualifies only for small
+  agent-ready issues, and the gate then also needs the worker's "Deviations: none",
+  the reviewer's "Tier A feature: confirmed" and a review that found nothing.
 * Tier B: everything else. The human merges.
 
 The tier comes from the diff, not from anyone's judgement, and this script is in
@@ -78,6 +80,17 @@ TIER_A_PACKAGES = ("ingest", "extract", "rank", "publish", "preview", "api")
 TIER_A_TYPES = ("fix", "test", "docs", "refactor", "perf", "chore")
 MAX_SRC_LINES = 150
 MAX_TOTAL_LINES = 600
+# Generated metrics, often thousands of lines: they don't count towards the limits.
+GENERATED_PATHS = ("eval/results/*",)
+
+# Small features (#70): only for agent-ready S/M issues, and a new subcommand may
+# also touch cli.py. The gate adds attestations that the work went as planned.
+FEATURE_TYPE = "feat"
+FEATURE_SIZES = ("size:S", "size:M")
+FEATURE_EXTRA_FILES = ("backend/src/newsfeed/cli.py",)
+MAX_FEATURE_SRC_LINES = 400
+MAX_FEATURE_TOTAL_LINES = 1500
+AGENT_READY_LABEL = "agent-ready"
 
 CLOSES_RE = re.compile(r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)", re.IGNORECASE)
 TYPE_RE = re.compile(r"^(\w+)(?:\([^)]*\))?(!?):")
@@ -92,6 +105,10 @@ def _marker(word: str) -> re.Pattern[str]:
 
 DEFECT_RE = _marker("defect")
 NEEDS_HUMAN_RE = _marker("needs\\s+human")
+DEVIATIONS_NONE_RE = re.compile(
+    r"\*\*\s*Deviations\s*(?::\s*\*\*|\*\*\s*:)\s*none\b", re.IGNORECASE
+)
+FEATURE_CONFIRMED_RE = re.compile(r"\bTier A feature:\s*confirmed\b", re.IGNORECASE)
 RESOLVED_RE = re.compile(r"\*\*\s*Resolved\s*\*\*\s+in\s+[0-9a-f]{7,40}\b", re.IGNORECASE)
 VERDICT_RE = re.compile(r"^\W*verdict\W*\s*merge\b", re.IGNORECASE | re.MULTILINE)
 
@@ -107,6 +124,7 @@ class ChangedFile:
 class Classification:
     tier: str
     reasons: list[str] = field(default_factory=list)
+    feature: bool = False  # a Tier A `feat`: the gate needs the feature attestations
 
 
 def matches(path: str, patterns: tuple[str, ...]) -> bool:
@@ -119,8 +137,14 @@ def src_package(path: str) -> str | None:
     return rest.split("/", 1)[0] if "/" in rest else None
 
 
-def classify(title: str, files: list[ChangedFile], needs_human: bool) -> Classification:
-    """Work out a PR's tier from its title, changed files and needs-human status."""
+def classify(
+    title: str, files: list[ChangedFile], needs_human: bool, feature_ready: bool = False
+) -> Classification:
+    """Work out a PR's tier from its title, changed files and linked issues.
+
+    `feature_ready` means the PR closes at least one issue, and every issue it
+    closes is agent-ready and sized S or M.
+    """
     # A rename touches both paths, so check the old one too.
     paths = [p for f in files for p in (f.path, f.previous_path) if p]
     c_hits = sorted({p for p in paths if matches(p, TIER_C_PATHS)})
@@ -133,8 +157,12 @@ def classify(title: str, files: list[ChangedFile], needs_human: bool) -> Classif
     b_reasons: list[str] = []
     found = TYPE_RE.match(title)
     kind = found.group(1).lower() if found else ""
-    if kind not in TIER_A_TYPES:
-        b_reasons.append(f"title type '{kind or '?'}' is not one of {', '.join(TIER_A_TYPES)}")
+    feature = kind == FEATURE_TYPE
+    if feature and not feature_ready:
+        b_reasons.append("feat, but not every closed issue is agent-ready and size:S or size:M")
+    elif not feature and kind not in TIER_A_TYPES:
+        types = ", ".join((*TIER_A_TYPES, FEATURE_TYPE))
+        b_reasons.append(f"title type '{kind or '?'}' is not one of {types}")
     if found and found.group(2):
         b_reasons.append("title marks a breaking change ('!')")
 
@@ -147,7 +175,7 @@ def classify(title: str, files: list[ChangedFile], needs_human: bool) -> Classif
             if matches(p, TEST_GUARD_PATHS):
                 b_reasons.append(f"{p} is test infrastructure")
                 continue
-            if matches(p, TIER_A_PATHS):
+            if matches(p, TIER_A_PATHS) or (feature and p in FEATURE_EXTRA_FILES):
                 continue
             pkg = src_package(p) if p.startswith(SRC_PREFIX) else None
             if pkg in TIER_A_PACKAGES:
@@ -158,17 +186,25 @@ def classify(title: str, files: list[ChangedFile], needs_human: bool) -> Classif
             src_lines += f.changes
     if len(packages) > 1:
         b_reasons.append(f"source spans {len(packages)} packages: {', '.join(sorted(packages))}")
-    if src_lines > MAX_SRC_LINES:
-        b_reasons.append(f"{src_lines} source lines changed (limit {MAX_SRC_LINES})")
-    total = sum(f.changes for f in files)
-    if total > MAX_TOTAL_LINES:
-        b_reasons.append(f"{total} lines changed in total (limit {MAX_TOTAL_LINES})")
+    max_src = MAX_FEATURE_SRC_LINES if feature else MAX_SRC_LINES
+    max_total = MAX_FEATURE_TOTAL_LINES if feature else MAX_TOTAL_LINES
+    if src_lines > max_src:
+        b_reasons.append(f"{src_lines} source lines changed (limit {max_src})")
+    total = sum(f.changes for f in files if not matches(f.path, GENERATED_PATHS))
+    if total > max_total:
+        b_reasons.append(f"{total} lines changed in total (limit {max_total})")
     if not files:
         b_reasons.append("no changed files")
 
     if b_reasons:
         return Classification("B", b_reasons)
-    return Classification("A", [f"{kind} change, {total} lines, within Tier A paths"])
+    reasons = [f"{kind} change, {total} lines, within Tier A paths"]
+    if feature:
+        reasons.append(
+            "feature: the merge also needs Deviations: none, the reviewer's "
+            "confirmation and a review that found nothing"
+        )
+    return Classification("A", reasons, feature)
 
 
 def human_review_section(body: str) -> str | None:
@@ -246,6 +282,30 @@ def gate_failures(
     lead = [c for c in owned if heading(c).lower().startswith("lead review")]
     if not any(head[:7] in c and VERDICT_RE.search(c) for c in lead):
         failures.append(f"no 'Lead review' with 'Verdict: merge' naming the head SHA {head[:7]}")
+    if classification.feature:
+        failures += feature_failures(body, section, owned)
+    return failures
+
+
+def feature_failures(body: str, section: str | None, owned: list[str]) -> list[str]:
+    """The extra conditions for a Tier A `feat`: built as planned, with nothing found.
+
+    Each fails closed: a missing attestation sends the PR to the human.
+    """
+    failures: list[str] = []
+    if not DEVIATIONS_NONE_RE.search(body):
+        failures.append("feature: the header doesn't say **Deviations:** none")
+    reviews = [c for c in owned if heading(c).lower().startswith("independent review")]
+    if len(reviews) > 1:
+        failures.append("feature: reviewed more than once")
+    if not any(FEATURE_CONFIRMED_RE.search(c) for c in reviews):
+        failures.append("feature: no 'Tier A feature: confirmed' in the Independent review")
+    if section is not None:
+        items = [ln for ln in section.splitlines() if ln.lstrip().startswith(("-", "*"))]
+        if any(DEFECT_RE.search(ln) for ln in items):
+            failures.append("feature: the review found a defect")
+        elif any(not RESOLVED_RE.search(ln) for ln in items):
+            failures.append("feature: 'For human review' has items for the human")
     return failures
 
 
@@ -277,18 +337,22 @@ def fetch_files(number: int) -> list[ChangedFile]:
     ]
 
 
-def linked_issues_need_human(body: str) -> bool:
-    for number in {int(n) for n in CLOSES_RE.findall(body)}:
-        issue = gh_api(f"issues/{number}")
-        if NEEDS_HUMAN_LABEL in {label["name"] for label in issue["labels"]}:
-            return True
-    return False
+def linked_issue_labels(body: str) -> list[set[str]]:
+    """The label names of each issue the PR body closes."""
+    return [
+        {label["name"] for label in gh_api(f"issues/{number}")["labels"]}
+        for number in sorted({int(n) for n in CLOSES_RE.findall(body)})
+    ]
 
 
 def classify_pr(pr: dict[str, Any]) -> Classification:
     labels = {label["name"] for label in pr["labels"]}
-    needs_human = NEEDS_HUMAN_LABEL in labels or linked_issues_need_human(pr.get("body") or "")
-    return classify(pr["title"], fetch_files(pr["number"]), needs_human)
+    issues = linked_issue_labels(pr.get("body") or "")
+    needs_human = NEEDS_HUMAN_LABEL in labels or any(NEEDS_HUMAN_LABEL in i for i in issues)
+    feature_ready = bool(issues) and all(
+        AGENT_READY_LABEL in i and i & set(FEATURE_SIZES) for i in issues
+    )
+    return classify(pr["title"], fetch_files(pr["number"]), needs_human, feature_ready)
 
 
 def fetch_checks(sha: str) -> dict[str, str]:
