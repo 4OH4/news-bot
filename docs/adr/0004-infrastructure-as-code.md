@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-18
-- **Related:** #72 (this decision); blocks #74 (GCP setup) and #75 (deploy workflow); ADR-0003 (Phase 1 go); ADR-0005 (#73, content retention, which sets the bucket lifecycle rule). See `PROJECT_PLAN.md` §5.2 (Infra row), §6 Phase 2, §11; NFR-2 (low cost, budget alerts), NFR-6 (secrets in Secret Manager); `CLAUDE.md`, "Things agents must not do".
+- **Related:** #72 (this decision); blocks #74 (GCP setup) and #75 (deploy workflow); ADR-0003 (Phase 1 go); ADR-0005 (#73, content retention, which decides whether the bucket gets a lifecycle rule). See `PROJECT_PLAN.md` §5.2 (Infra row), §6 Phase 2, §11; NFR-2 (low cost, budget alerts), NFR-6 (secrets in Secret Manager); `CLAUDE.md`, "Things agents must not do".
 
 ## Context
 
@@ -11,7 +11,7 @@ Phase 2 runs the pipeline on GCP. It needs a project linked to billing, a budget
 The forces:
 
 - **Small and single-user.** About a dozen resources, one environment (production), one person. Whatever we pick must not cost more to maintain than the infrastructure itself.
-- **Only the human applies changes.** Agents write infrastructure code but never apply it, and CI never holds credentials that can change infrastructure (`CLAUDE.md`). So the human must be able to see exactly what a merged change will do before it happens, without reading the code line by line.
+- **Only the human applies changes.** Agents write infrastructure code but never apply it, and never run `terraform apply` or `gcloud` commands that change resources (`CLAUDE.md`). CI can only deploy a new image to the one Cloud Run Job and never runs Terraform. So the human must be able to see exactly what a merged change will do before it happens, without reading the code line by line.
 - **Low cost (NFR-2).** Any supporting resource, such as state storage, must stay within the free tier or close to it.
 - **Secrets (NFR-6).** Secret values must stay out of the public repo, and ideally out of anything the tool stores.
 - **Some resources can't be created by the tool that manages them.** Terraform keeps its state in a bucket, and that bucket needs a project, so the project and state bucket come first.
@@ -28,11 +28,11 @@ The forces:
 
 The script takes the project id, billing account and region as arguments, checks whether each thing already exists before creating it, and prints what it did. It is not re-run for later changes.
 
-**2. Everything else in Terraform.** One root module in `infra/terraform/`, no child modules and no workspaces, because there is one environment. It covers the remaining APIs, the budget and its alert thresholds, Artifact Registry, the Cloud Run Job, the Scheduler job, Firestore (Native mode), the content bucket and its lifecycle rule (ADR-0005), Secret Manager secrets, service accounts and their IAM bindings, and (from #75) the WIF pool, provider and deploy service account.
+**2. Everything else in Terraform.** One root module in `infra/terraform/`, no child modules and no workspaces, because there is one environment. It covers the remaining APIs, the budget and its alert thresholds, Artifact Registry, the Cloud Run Job, the Scheduler job, Firestore (Native mode), the content bucket and any lifecycle rule ADR-0005 asks for, Secret Manager secrets, service accounts and their IAM bindings, and (from #75) the WIF pool, provider and deploy service account.
 
 **3. State.** State lives in the bootstrap bucket through Terraform's `gcs` backend, which locks state natively with a lock object in the same bucket, so no separate lock table is needed. The bucket name is supplied at `terraform init` time with `-backend-config` (partial backend configuration), so no project-specific value is committed. The state bucket is not managed by Terraform itself, so `terraform destroy` can't delete it.
 
-**4. Versions.** `versions.tf` sets a minimum Terraform version and pins the Google provider to one major version. The provider lock file (`.terraform.lock.hcl`) is committed so every `init` uses the same provider build. OpenTofu reads the same files and may be used instead; the code avoids features unique to either.
+**4. Versions.** `versions.tf` sets a minimum Terraform version and pins the Google provider to one major version. The provider lock file (`.terraform.lock.hcl`) is committed so every `init` uses the same provider build. Terraform is the one tool: OpenTofu records different provider addresses in the lock file, so switching would rewrite it, and that would be its own decision.
 
 **5. Who applies changes.** Only the human, from their machine, using Application Default Credentials (`gcloud auth application-default login`). Every infrastructure PR lists the exact commands, normally:
 
@@ -43,7 +43,7 @@ terraform plan -out=tfplan
 terraform apply tfplan
 ```
 
-Agents write and format the code (`terraform fmt`) but never run `init` against the real backend, `plan`, `apply` or `destroy`, and never hold GCP credentials. CI may run `terraform fmt -check` and `terraform validate` (with `init -backend=false`, which needs no credentials); it never runs `plan` or `apply`. The deploy workflow (#75) updates only the Cloud Run Job's image, through WIF, and does not run Terraform.
+Agents write and format the code (`terraform fmt`) but never run `init` against the real backend, `plan`, `apply` or `destroy`, and never hold GCP credentials. CI may run `terraform fmt -check` and `terraform validate` (with `init -backend=false`, which needs no credentials); it never runs `plan` or `apply`. The deploy workflow (#75) updates the Cloud Run Job's image, through WIF, and does not run Terraform. IAM can't limit its role to the image field, so "image only" is a convention of the workflow; any other change it made would show up in the next `terraform plan`.
 
 **6. Directory layout.**
 
@@ -71,7 +71,7 @@ infra/
 
 Files are split by resource area so #74 and #75 can be reviewed separately. #74 may adjust the file names and split; what this ADR decides is the split between bootstrap and Terraform, and the state, apply and secrets rules.
 
-**7. Secrets and personal values stay out of the repo and out of state.** Terraform creates Secret Manager *secrets* (the named containers and who can read them) but never their values, because anything Terraform sets is stored in plain text in the state file. The human adds values with `gcloud secrets versions add` and the Cloud Run Job reads them at run time. The project id, billing account id, region, budget amount and alert email are Terraform variables with no defaults; the human keeps them in a git-ignored `terraform.tfvars`. `.gitignore` gains `infra/**/.terraform/`, `*.tfstate*`, `*.tfvars` (but not `*.tfvars.example`), `tfplan` and `crash.log` in #74, before any of these files can exist.
+**7. Secrets and personal values stay out of the repo and out of state.** Terraform creates Secret Manager *secrets* (the named containers and who can read them) but never their values, because anything Terraform sets is stored in plain text in the state file. The human adds values with `gcloud secrets versions add` and the Cloud Run Job reads them at run time. The project id, billing account id, region, budget amount and alert email are Terraform variables with no defaults; the human keeps them in a git-ignored `terraform.tfvars`. `.gitignore` gains `infra/**/.terraform/`, `*.tfstate*`, `*.tfvars` (but not `*.tfvars.example`) and `tfplan` in #74 (`crash.log` is already covered by `*.log`), before any of these files can exist.
 
 ### Alternatives considered
 
@@ -86,12 +86,12 @@ Files are split by resource area so #74 and #75 can be reviewed separately. #74 
 
 - `terraform plan` shows the human exactly what a merged change will create, change or destroy before anything happens, which is what makes "agents write, the human applies" safe.
 - Drift is visible: a setting changed in the console shows up in the next plan.
-- Teardown is `terraform destroy` followed by deleting the project, rather than a hand-written script.
+- Teardown is deleting the project, which also removes the state bucket. `terraform destroy` alone fails on the deletion-protected Firestore database and content bucket (below) unless that protection is removed first, which is deliberate.
 - Agents can write infrastructure code against well-documented Google provider resources, and reviewers can check it statically.
 
 **Negative**
 
-- One more tool to install (Terraform or OpenTofu), and a state bucket to keep. The bucket is versioned, so state mistakes can be rolled back, but it must not be deleted while the infrastructure exists.
+- One more tool to install (Terraform), and a state bucket to keep. The bucket is versioned, so state mistakes can be rolled back, but it must not be deleted while the infrastructure exists.
 - More files than a single script for about a dozen resources.
 - **The Cloud Run Job's image is changed outside Terraform** by the deploy workflow (#75). The job resource must ignore changes to its container image (a `lifecycle { ignore_changes = [...] }` on the image field), or every plan would try to roll the job back to the image it was created with. Its first apply needs an image that already exists: #74 either uses a public placeholder image or has the human push one first, and says which.
 - **The budget resource needs a quota project.** With user credentials, the Cloud Billing Budgets API needs `billing_project` and `user_project_override` set on the provider; #74 must set these or the budget fails to apply.
