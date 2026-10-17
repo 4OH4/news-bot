@@ -1,7 +1,11 @@
 # News sources for the ingest stage, loaded by newsfeed.config.load_sources.
 #
-# PLACEHOLDERS: the feeds below are well-known public feeds used as examples
-# only. The real list of sources is curated in issue #16.
+# The curated list from issue #16. Every feed below was fetched through the
+# project's polite HttpFetcher (robots.txt respected) when it was added, and its
+# article pages were reachable with our User-Agent (except LWN's subscriber-only
+# articles, which return 403). Grouped by kind. Tags: "metered" = the publisher
+# meters a paywall but served full text to us; "paywall" = some articles show
+# only a preview; "js-heavy" = client-hydrated pages that stress extractors.
 #
 # Schema (validated by models.Source; unknown keys are rejected):
 #
@@ -35,6 +39,7 @@
 #   reddit: no ingester yet.
 
 sources:
+  # --- UK and world news ---
   - id: bbc-news
     type: rss
     url: https://feeds.bbci.co.uk/news/rss.xml
@@ -45,17 +50,124 @@ sources:
     url: https://www.theguardian.com/world/rss
     tags: [news, world]
 
+  - id: independent-uk
+    type: rss
+    url: https://www.independent.co.uk/news/uk/rss
+    tags: [news, uk]
+
+  - id: inews
+    type: rss
+    url: https://inews.co.uk/feed
+    tags: [news, uk]
+
+  - id: dw-news
+    type: rss
+    url: https://rss.dw.com/rdf/rss-en-all
+    tags: [news, world, live-blogs]
+
+  - id: business-insider
+    type: rss
+    url: https://feeds.businessinsider.com/custom/all
+    tags: [news, business, paywall]
+
+  # --- Technology ---
   - id: ars-technica
     type: rss
     url: https://feeds.arstechnica.com/arstechnica/index
     tags: [tech]
 
-  - id: nasa-news
+  - id: the-verge
     type: rss
-    url: https://www.nasa.gov/news-release/feed/
-    weight: 0.5
-    enabled: false
+    url: https://www.theverge.com/rss/index.xml
+    tags: [tech, js-heavy, metered]
+
+  - id: wired
+    type: rss
+    url: https://www.wired.com/feed/rss
+    tags: [tech, metered]
+
+  - id: lwn
+    type: rss
+    url: https://lwn.net/headlines/rss
+    tags: [tech, linux, paywall]
+
+  - id: 404media
+    type: rss
+    url: https://www.404media.co/rss/
+    tags: [tech, paywall]
+
+  - id: mit-tech-review
+    type: rss
+    url: https://www.technologyreview.com/feed/
+    tags: [tech, science, metered]
+
+  # --- Science and climate ---
+  - id: nature-news
+    type: rss
+    url: https://www.nature.com/nature.rss
     tags: [science]
+
+  - id: quanta
+    type: rss
+    url: https://www.quantamagazine.org/feed/
+    tags: [science, long-form]
+
+  - id: phys-org
+    type: rss
+    url: https://phys.org/rss-feed/
+    tags: [science]
+
+  - id: carbon-brief
+    type: rss
+    url: https://www.carbonbrief.org/feed/
+    tags: [science, climate]
+
+  - id: bbc-future
+    type: rss
+    url: https://www.bbc.com/future/feed.rss
+    tags: [science, js-heavy]
+
+  # --- Long-form and magazines ---
+  - id: guardian-longread
+    type: rss
+    url: https://www.theguardian.com/news/series/the-long-read/rss
+    tags: [long-form]
+
+  - id: aeon
+    type: rss
+    url: https://aeon.co/feed.rss
+    tags: [long-form, essay]
+
+  - id: new-yorker
+    type: rss
+    url: https://www.newyorker.com/feed/everything
+    tags: [long-form, magazine, metered]
+
+  # --- Blogs and newsletters ---
+  - id: simon-willison
+    type: rss
+    url: https://simonwillison.net/atom/everything/
+    tags: [blog, tech]
+
+  - id: julia-evans
+    type: rss
+    url: https://jvns.ca/atom.xml
+    tags: [blog, tech]
+
+  - id: martin-fowler
+    type: rss
+    url: https://martinfowler.com/feed.atom
+    tags: [blog, tech]
+
+  - id: cloudflare-blog
+    type: rss
+    url: https://blog.cloudflare.com/rss/
+    tags: [blog, tech]
+
+  - id: noahpinion
+    type: rss
+    url: https://www.noahpinion.blog/feed
+    tags: [blog, economics, paywall]
 
   # EXAMPLES of the discovery sources (#11), disabled until the curated list (#16)
   # decides on queries. The query is a placeholder.
