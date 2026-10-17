@@ -387,8 +387,13 @@ FEATURE_BODY = FEATURE_BODY.replace(
     "- Judgement call: kept the old name as an alias. Recommend merging as is.", "None"
 )
 CONFIRMED = owned(
-    "## Independent review\nNo findings. Tier A feature: confirmed.",
+    f"## Independent review\nNo findings.\n\nTier A feature: confirmed at {HEAD[:7]}",
     f"Lead review\nVerdict: merge. Checked at {HEAD[:7]}",
+)
+
+
+NO_CONFIRMATION = (
+    f"feature: no 'Tier A feature: confirmed at {HEAD[:7]}' line in the Independent review"
 )
 
 
@@ -404,13 +409,11 @@ def test_feature_needs_deviations_none() -> None:
 
 
 def test_feature_needs_the_reviewers_confirmation() -> None:
-    assert tier.gate_failures(pr(body=FEATURE_BODY), FEATURE, GREEN, REVIEWED) == [
-        "feature: no 'Tier A feature: confirmed' in the Independent review"
-    ]
+    assert tier.gate_failures(pr(body=FEATURE_BODY), FEATURE, GREEN, REVIEWED) == [NO_CONFIRMATION]
 
 
 def test_feature_reviewed_twice_goes_to_the_human() -> None:
-    comments = [*CONFIRMED, *owned("## Independent review (second)\nTier A feature: confirmed")]
+    comments = [*CONFIRMED, *owned("## Second review\nTier A feature: confirmed at abc1234")]
     assert tier.gate_failures(pr(body=FEATURE_BODY), FEATURE, GREEN, comments) == [
         "feature: reviewed more than once"
     ]
@@ -439,6 +442,64 @@ def test_feature_with_only_resolved_non_defect_items_passes() -> None:
         "## For human review\nNone", "## For human review\n- **Resolved** in 1a2b3c4: stale text"
     )
     assert tier.gate_failures(pr(body=body), FEATURE, GREEN, CONFIRMED) == []
+
+
+@pytest.mark.parametrize(
+    "header",
+    [
+        "Closes #70 · **Deviations:** none of substance; renamed the --since flag",
+        "Closes #70 · **Deviations:** renamed the flag",
+    ],
+)
+def test_deviations_none_must_be_the_whole_field_in_the_header(header: str) -> None:
+    # The second case also has "**Deviations:** none" further down the body.
+    body = FEATURE_BODY.replace("Closes #70 · Tier A · **Deviations:** none", header)
+    body += "\nAn example header: `**Deviations:** none`\n"
+    assert tier.gate_failures(pr(body=body), FEATURE, GREEN, CONFIRMED) == [
+        "feature: the header doesn't say **Deviations:** none"
+    ]
+
+
+def test_deviations_none_may_be_followed_by_another_field() -> None:
+    body = FEATURE_BODY.replace("**Deviations:** none", "**Deviations:** none · **Merge after:** x")
+    assert tier.gate_failures(pr(body=body), FEATURE, GREEN, CONFIRMED) == []
+
+
+@pytest.mark.parametrize(
+    "review",
+    [
+        "One judgement call, so I did not write Tier A feature: confirmed.",
+        "Tier A feature: confirmed? No: it renames a flag.",
+        f"Not ready.\n`Tier A feature: confirmed at {HEAD[:7]}` would need a clean review.",
+        "Tier A feature: confirmed at 9999999",  # an older head
+    ],
+)
+def test_confirmation_must_be_its_own_line_at_the_head(review: str) -> None:
+    comments = owned(f"## Independent review\n{review}", CONFIRMED[1]["body"])
+    assert tier.gate_failures(pr(body=FEATURE_BODY), FEATURE, GREEN, comments) == [NO_CONFIRMATION]
+
+
+@pytest.mark.parametrize(
+    "section",
+    [
+        "1. Judgement call: renamed the flag. Recommend the human decide.",
+        "The flag name is a judgement call.",
+        "None\n- Risk: slow on big feeds.",
+    ],
+)
+def test_feature_section_must_say_only_none(section: str) -> None:
+    body = FEATURE_BODY.replace("## For human review\nNone", f"## For human review\n{section}")
+    assert tier.gate_failures(pr(body=body), FEATURE, GREEN, CONFIRMED) == [
+        "feature: 'For human review' has items for the human"
+    ]
+
+
+@pytest.mark.parametrize("title", ["## Second independent review", "**Re-review**", "Review 2"])
+def test_any_second_review_comment_counts(title: str) -> None:
+    comments = [*CONFIRMED, *owned(f"{title}\nLooks fine.")]
+    assert tier.gate_failures(pr(body=FEATURE_BODY), FEATURE, GREEN, comments) == [
+        "feature: reviewed more than once"
+    ]
 
 
 def test_non_features_do_not_need_the_feature_attestations() -> None:
@@ -518,6 +579,7 @@ def test_latest_check_run_wins(monkeypatch: pytest.MonkeyPatch) -> None:
         ({71: ["agent-ready", "size:M"], 72: ["agent-ready"]}, "B"),  # one unsized
         ({71: ["size:S"]}, "B"),  # not agent-ready
         ({}, "B"),  # closes no issue
+        ({71: ["agent-ready", "size:S", "size:L"]}, "B"),  # conflicting sizes
     ],
 )
 def test_feature_readiness_comes_from_every_closed_issue(
