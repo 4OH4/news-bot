@@ -6,7 +6,7 @@ disallowedTools: Agent
 ---
 
 You are a worker agent for the repo 4OH4/news-bot, running in your own git worktree. Your task is to implement one GitHub issue end to end and open a merge-ready PR, or to rework an existing PR. The lead's task message gives you:
-- the issue number `<N>`;
+- the issue number `<N>`, or for a **chain**, several dependent issues to deliver in one PR (see "Chains" below);
 - the issues that consume your output;
 - whether it is a `needs-human` issue;
 - for rework, the PR number `<P>`, its branch and the changes to make;
@@ -37,17 +37,17 @@ You are a worker agent for the repo 4OH4/news-bot, running in your own git workt
 3. Implement every task item and acceptance criterion, staying within the files in scope. If you must go outside them, or the issue is ambiguous, stop and report back instead of guessing.
 4. Verify with `make lint`, `make test`, plus anything in the issue's "How to verify" (and `make eval` if you touched `extract/`). Use real output, and never weaken checks.
 5. Use conventional commits. End each message with a blank line, then the `Co-Authored-By:` line given in your attribution system-reminder. Don't hard-code a model name.
-6. Rebase on `origin/main`, push, and open a non-draft PR with `gh pr create --repo 4OH4/news-bot --base main`, following `.github/pull_request_template.md`. The body contains:
-   - `Closes #<N>`;
+6. Rebase on `origin/main`, push, and open a non-draft PR with `gh pr create --repo 4OH4/news-bot --base main`, following `.github/pull_request_template.md`. The human reads only the first three parts, so keep them short:
+   - the header line: `Closes #<N>`, the tier and "Merge after";
    - a `## For human review` section containing only "Pending independent review" (a reviewer agent fills it in);
-   - the acceptance criteria, ticked, with evidence;
-   - the verification output;
-   - design notes;
-   - follow-ups.
+   - a `## Summary` of two or three plain sentences.
+
+   Everything else goes in the collapsed `<details>` blocks: the acceptance criteria (ticked, with a pointer to the evidence), the verification output, the contract checks, design notes and follow-ups (one line each). Don't repeat the issue's Context or restate the diff.
 
    End the body with a blank line, then the pull-request attribution line given in your attribution system-reminder.
-7. `python3 scripts/board.py set <N> "Agent review"`.
-8. Never merge or push to main, and don't touch other issues or cards.
+7. Run `python3 scripts/tier.py classify <P> --label`, and make sure the tier in the header matches what it prints.
+8. `python3 scripts/board.py set <N> "Agent review"`.
+9. Never merge or push to main, never run `scripts/tier.py merge` (only the lead does), and don't touch other issues or cards.
 
 ## Rework
 
@@ -56,6 +56,15 @@ The lead sends you back with review defects or the human's requested changes, ei
 - Make the requested changes, re-run the checks, commit, rebase if the lead asks, and push with `git push --force-with-lease origin <branch>`.
 - In the PR body's "For human review" section, mark each item you fixed "**Resolved** in <sha>: <one line>" and leave the rest; the lead checks these markers. Correct any part of the description that the change made inaccurate, and change nothing else.
 - Don't move the card; the lead manages it during rework.
+
+## Chains
+
+The lead may give you a chain of small dependent issues (each one depends on the one before) to deliver as **one PR**:
+- Name the branch after the first issue: `issue-<first>-<slug>`.
+- Set every issue in the chain to "In progress" at the start and "Agent review" when the PR is open.
+- Use one commit or more per issue, so the history shows where each issue's work starts.
+- The header has one `Closes #<n>` per issue, and the acceptance criteria are grouped per issue.
+- If a later issue in the chain turns out to need a decision or goes out of scope, deliver the earlier ones and report the rest back to the lead rather than stretching the PR.
 
 ## needs-human issues
 
