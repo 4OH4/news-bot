@@ -13,8 +13,9 @@ from newsfeed import cli
 from newsfeed.adapters.localfs_blobstore import LocalBlobStore
 from newsfeed.adapters.sqlite_repository import SqliteRepository
 from newsfeed.models import Article, ArticleExtraction, ExtractionStatus
-from newsfeed.preview import generate_preview
+from newsfeed.preview import PreviewDirError, generate_preview
 from newsfeed.preview.sanitize import prepare_content
+from newsfeed.preview.site import MARKER
 
 DIRTY = (
     "<p>Body text one.</p>"
@@ -200,4 +201,76 @@ def test_cli_preview_writes_to_out(
 
     assert result.exit_code == 0, result.output
     assert "wrote 3 article(s) and 2 failure(s)" in result.output
+    assert (out / "index.html").is_file()
+
+
+def test_refuses_unmarked_non_empty_dir_and_deletes_nothing(
+    stores: tuple[SqliteRepository, LocalBlobStore, list[Article]], tmp_path: Path
+) -> None:
+    repo, blobs, _ = stores
+    out = tmp_path / "Documents"
+    (out / "articles").mkdir(parents=True)
+    keep = out / "articles" / "mine.html"
+    keep.write_text("precious")
+    index = out / "index.html"
+    index.write_text("my index")
+
+    with pytest.raises(PreviewDirError):
+        generate_preview(repo, blobs, out)
+
+    assert keep.read_text() == "precious"
+    assert index.read_text() == "my index"
+    assert not (out / MARKER).exists()
+    assert not (out / "failures.html").exists()
+
+
+def test_cli_refuses_unmarked_non_empty_dir(
+    stores: tuple[SqliteRepository, LocalBlobStore, list[Article]],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = tmp_path / "config"
+    config.mkdir()
+    for name in ("url_params.yaml", "extraction.yaml"):
+        (config / name).write_text("domains: {}\n")
+    monkeypatch.setenv("NEWSFEED_CONFIG_DIR", str(config))
+    monkeypatch.setenv("NEWSFEED_DATA_DIR", str(tmp_path))
+    out = tmp_path / "docs"
+    out.mkdir()
+    (out / "notes.txt").write_text("keep me")
+
+    result = CliRunner().invoke(cli.app, ["preview", "--out", str(out)])
+
+    assert result.exit_code != 0
+    assert "not empty" in result.output
+    assert (out / "notes.txt").read_text() == "keep me"
+    assert not (out / "index.html").exists()
+
+
+def test_rerun_into_marked_dir_keeps_other_files_and_removes_stale_pages(
+    stores: tuple[SqliteRepository, LocalBlobStore, list[Article]], tmp_path: Path
+) -> None:
+    repo, blobs, articles = stores
+    out = tmp_path / "p"
+    generate_preview(repo, blobs, out)
+    assert (out / MARKER).is_file()
+    (out / "articles" / "stale.html").write_text("old")
+    (out / "articles" / "notes.txt").write_text("not ours")
+
+    generate_preview(repo, blobs, out)
+
+    assert not (out / "articles" / "stale.html").exists()
+    assert (out / "articles" / "notes.txt").read_text() == "not ours"
+    assert (out / "articles" / f"{articles[0].id}.html").is_file()
+
+
+def test_empty_existing_dir_is_accepted(
+    stores: tuple[SqliteRepository, LocalBlobStore, list[Article]], tmp_path: Path
+) -> None:
+    repo, blobs, _ = stores
+    out = tmp_path / "empty"
+    out.mkdir()
+
+    generate_preview(repo, blobs, out)
+
     assert (out / "index.html").is_file()
