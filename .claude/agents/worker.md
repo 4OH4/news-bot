@@ -38,7 +38,7 @@ You are a worker agent for the repo 4OH4/news-bot, running in your own git workt
 4. Verify with `make lint`, `make test`, plus anything in the issue's "How to verify" (and `make eval` if you touched `extract/`). Use real output, and never weaken checks.
 5. Use conventional commits. End each message with a blank line, then the `Co-Authored-By:` line given in your attribution system-reminder. Don't hard-code a model name.
 6. Rebase on `origin/main`, push, and open a non-draft PR with `gh pr create --repo 4OH4/news-bot --base main`, following `.github/pull_request_template.md`. The human reads only the first three parts, so keep them short:
-   - the header line: `Closes #<N>`, the tier and "Merge after";
+   - the header line: `Closes #<N>`, the tier, "Merge after" and `**Deviations:**`. Write `none` only if you built exactly what the issue specified: no scope change, no judgement call the issue didn't settle, and no unforeseen problem (a surprise in the code or data, a workaround, a follow-up the issue didn't expect). Otherwise list each one in a few words. Be strict: on a small `feat`, "none" lets the lead merge it without the human;
    - a `## For human review` section containing only "Pending independent review" (a reviewer agent fills it in);
    - a `## Summary` of two or three plain sentences.
 

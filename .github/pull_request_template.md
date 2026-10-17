@@ -1,4 +1,4 @@
-Closes #<!-- N; one line per issue for a chain --> · **Tier** <!-- A/B/C, from `python3 scripts/tier.py classify <PR>` --> · **Merge after:** <!-- "any order", or the PRs that must merge first -->
+Closes #<!-- N; one line per issue for a chain --> · **Tier** <!-- A/B/C, from `python3 scripts/tier.py classify <PR>` --> · **Merge after:** <!-- "any order", or the PRs that must merge first --> · **Deviations:** <!-- "none", or each departure from the issue: scope change, judgement call the issue didn't settle, unforeseen problem -->
 
 ## For human review
 <!-- Filled in by the independent reviewer: judgement calls you approve by merging, risks and open questions, one or two lines each. "None" if there are none. -->
