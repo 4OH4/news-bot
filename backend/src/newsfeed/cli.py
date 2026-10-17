@@ -47,7 +47,7 @@ from newsfeed.pipeline import (
     run_pipeline,
 )
 from newsfeed.ports import Fetcher
-from newsfeed.preview import generate_preview
+from newsfeed.preview import PreviewDirError, generate_preview
 from newsfeed.settings import Settings, load_settings
 from newsfeed.wiring import build_extractor, open_fetcher, open_services
 
@@ -230,7 +230,7 @@ def preview(
             summary = generate_preview(
                 services.repository, services.blobs, target, images=not no_images
             )
-    except ConfigError as exc:
+    except (ConfigError, PreviewDirError) as exc:
         _fail(str(exc))
     typer.echo(
         f"wrote {summary.articles} article(s) and {summary.failures} failure(s) "
