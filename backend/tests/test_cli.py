@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -11,7 +12,7 @@ from typer.testing import CliRunner
 
 from newsfeed import cli, wiring
 from newsfeed.adapters.sqlite_repository import SqliteRepository
-from newsfeed.models import ExtractionStatus
+from newsfeed.models import Article, ExtractionStatus
 from tests.fakes import FakeFetcher
 
 runner = CliRunner()
@@ -86,6 +87,58 @@ def test_ingest_then_extract_are_separate_stages(env: Path) -> None:
     assert "extract: attempted=1" in extracted.output
 
 
+def _store_pending(env: Path, fetcher: FakeFetcher) -> dict[str, Article]:
+    """Pending articles from a disabled source, a removed one and an ad hoc save."""
+    articles = {
+        source_id: Article(
+            canonical_url=f"https://{source_id}.example.com/a",
+            url=f"https://{source_id}.example.com/a",
+            source_id=source_id,
+            title="Pending",
+            fetched_at=datetime(2026, 10, 1, tzinfo=UTC),
+        )
+        for source_id in ("disabled-feed", "removed-feed", "adhoc")
+    }
+    for article in articles.values():
+        fetcher.add_file(article.url, "extract/blog_post.html")
+    env.mkdir(parents=True, exist_ok=True)
+    with SqliteRepository(env / "newsfeed.db") as repo:
+        for article in articles.values():
+            repo.upsert_article(article)
+    return articles
+
+
+def test_plain_extract_drains_pending_articles_of_any_source(
+    env: Path, fetcher: FakeFetcher
+) -> None:
+    """Regression: a plain extract must not filter by the enabled sources."""
+    articles = _store_pending(env, fetcher)
+
+    result = runner.invoke(cli.app, ["extract"])
+
+    assert result.exit_code == 0, result.output
+    with SqliteRepository(env / "newsfeed.db") as repo:
+        for article in articles.values():
+            stored = repo.get_article(article.id)
+            assert stored is not None
+            assert stored.extraction.status is not ExtractionStatus.PENDING, article.source_id
+
+
+def test_extract_with_source_narrows_to_that_source(env: Path, fetcher: FakeFetcher) -> None:
+    articles = _store_pending(env, fetcher)
+
+    result = runner.invoke(cli.app, ["extract", "--source", "disabled-feed"])
+
+    assert result.exit_code == 0, result.output
+    assert "extract: attempted=1" in result.output
+    with SqliteRepository(env / "newsfeed.db") as repo:
+        stored = {a.source_id: a.extraction.status for a in repo.list_articles()}
+    statuses = {source_id: stored[source_id] for source_id in articles}
+    assert statuses["disabled-feed"] is not ExtractionStatus.PENDING
+    assert statuses["removed-feed"] is ExtractionStatus.PENDING
+    assert statuses["adhoc"] is ExtractionStatus.PENDING
+
+
 def test_unknown_source_is_rejected(env: Path) -> None:
     result = runner.invoke(cli.app, ["ingest", "--source", "nope"])
 
@@ -129,6 +182,23 @@ def test_extract_url_save_stores_the_article(env: Path) -> None:
         (article,) = repo.list_articles()
         assert article.source_id == "adhoc"
         assert article.extraction.status is ExtractionStatus.OK
+
+
+def test_extract_url_save_reports_the_id_of_a_rekeyed_article(env: Path) -> None:
+    """Regression: the bridge page declares another canonical URL, so the run
+    re-keys its article; --save on the feed URL must name the id that exists."""
+    url = "https://news.example.com/2026/10/bridge?utm_source=rss"
+    assert runner.invoke(cli.app, ["run"]).exit_code == 0
+
+    result = runner.invoke(cli.app, ["extract", "--url", url, "--save"])
+
+    assert result.exit_code == 0, result.output
+    with SqliteRepository(env / "newsfeed.db") as repo:
+        articles = repo.list_articles()
+        (bridge,) = [a for a in articles if a.url == url]
+    assert len(articles) == 4
+    assert bridge.source_id == "gazette"
+    assert f"saved article {bridge.id} (ok)" in result.output
 
 
 def test_extract_url_reports_an_unreachable_page(env: Path) -> None:

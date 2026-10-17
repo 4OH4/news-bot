@@ -13,7 +13,7 @@ import codecs
 import re
 import threading
 from collections import Counter, defaultdict
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Collection, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -372,6 +372,9 @@ class _ExtractRun:
     tally: RunTally
     # Serialises the check-then-store in _refine_canonical across worker threads.
     refine_lock: threading.Lock = field(default_factory=threading.Lock)
+    # Old id -> the id it now lives under, for articles re-keyed or merged by
+    # canonical refinement in this run. Written under ``refine_lock``.
+    rekeyed: dict[str, str] = field(default_factory=dict)
 
 
 def _finish_skipped(run: _ExtractRun, article: Article, reason: str, domain: str) -> None:
@@ -514,6 +517,7 @@ def _refine_canonical(run: _ExtractRun, article: Article, page: FetchedPage) -> 
         },
     )
     with run.refine_lock:
+        run.rekeyed[article.id] = new.id
         if services.repository.get_article(new.id) is not None:
             services.repository.delete_article(article.id)
             run.tally.count(PipelineStage.EXTRACT, "merged")
@@ -538,18 +542,20 @@ def extract_pending(
     services: Services,
     tally: RunTally,
     *,
-    sources: Sequence[Source] = (),
+    source_ids: Collection[str] | None = None,
     since: datetime | None = None,
     limit: int | None = None,
 ) -> None:
     """Fetch and extract pending articles in a bounded thread pool.
 
-    ``sources``, when given, restricts this to those sources' articles.
-    ``since`` only considers articles ingested at or after it, ``limit`` at most
-    that many. Failed articles are not retried automatically.
+    ``source_ids``, when given, restricts this to those sources' articles;
+    ``None`` extracts every pending article, including those of sources since
+    disabled or removed and ad hoc ones. ``since`` only considers articles
+    ingested at or after it, ``limit`` at most that many. Failed articles are
+    not retried automatically.
     """
-    if sources:
-        wanted = {s.id for s in sources}
+    if source_ids is not None:
+        wanted = set(source_ids)
         # The limit applies after the source filter, so it can't be pushed down.
         pending = [
             a
@@ -591,10 +597,15 @@ def extract_saved_url(
     Goes through the same path as feed articles, including canonical
     refinement, so the result is what a run would have stored. If the URL is
     already stored (say from a feed), that article is re-extracted with its
-    feed metadata intact rather than replaced by an ad hoc one.
+    feed metadata intact rather than replaced by an ad hoc one; this includes
+    an article stored under a refined canonical URL whose first-seen URL is
+    ``url``. If the page's canonical URL belongs to another stored article, the
+    ad hoc row merges into it and that article is returned.
     """
     canonical = normalise_url(url, rules=services.url_rules)
-    existing = services.repository.get_article(article_id(canonical))
+    existing = services.repository.get_article(article_id(canonical)) or _find_by_first_url(
+        services, canonical
+    )
     article = existing or Article(
         canonical_url=canonical,
         url=url,
@@ -604,15 +615,27 @@ def extract_saved_url(
     )
     if existing is None:
         services.repository.upsert_article(article)
-    _extract_safely(_ExtractRun(services, RunTally()), article)
-    stored = services.repository.get_article(article.id)
-    if stored is not None:
-        return stored
-    # The page declared another canonical URL, so the article was re-keyed.
-    for candidate in services.repository.list_articles(limit=50):
-        if candidate.url == article.url and candidate.source_id == article.source_id:
-            return candidate
-    return article
+    run = _ExtractRun(services, RunTally())
+    _extract_safely(run, article)
+    # The page may have declared another canonical URL, re-keying the article
+    # or merging it into one already stored; report where it lives now.
+    final_id = run.rekeyed.get(article.id, article.id)
+    return services.repository.get_article(final_id) or article
+
+
+def _find_by_first_url(services: Services, canonical: str) -> Article | None:
+    """The stored article first seen at ``canonical`` but since re-keyed, if any.
+
+    Scans every stored article, like ingest's known-id set; fine for a debug
+    command at personal scale.
+    """
+    for article in services.repository.list_articles():
+        try:
+            if normalise_url(article.url, rules=services.url_rules) == canonical:
+                return article
+        except ValueError:
+            continue
+    return None
 
 
 # --- Whole runs --------------------------------------------------------------------
@@ -624,12 +647,19 @@ def run_pipeline(
     *,
     ingest: bool = True,
     extract: bool = True,
+    extract_source_ids: Collection[str] | None = None,
     since: datetime | None = None,
     limit: int | None = None,
     run_id: str | None = None,
     clock: Callable[[], datetime] = _utc_now,
 ) -> RunStats:
-    """Run the chosen stages, saving ``RunStats`` when the run starts and when it ends."""
+    """Run the chosen stages, saving ``RunStats`` when the run starts and when it ends.
+
+    ``sources`` are ingested. Extract takes every pending article unless
+    ``extract_source_ids`` narrows it (the CLI passes ``--source`` here), so
+    articles left pending by a source since disabled or removed, and ad hoc
+    ones, are still extracted by a plain run.
+    """
     started = clock()
     run_id = run_id or started.strftime("%Y%m%dT%H%M%S") + f"-{started.microsecond:06d}"
     tally = RunTally()
@@ -637,7 +667,7 @@ def run_pipeline(
     if ingest:
         ingest_sources(services, sources, tally, since=since, limit=limit)
     if extract:
-        extract_pending(services, tally, sources=sources, since=since, limit=limit)
+        extract_pending(services, tally, source_ids=extract_source_ids, since=since, limit=limit)
     stats = tally.stats(run_id, started, clock())
     services.repository.save_run_stats(stats)
     log.info(
