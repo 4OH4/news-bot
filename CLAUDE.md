@@ -30,6 +30,7 @@ The CLI entry point is `newsfeed` (`backend/src/newsfeed/cli.py`). The uv projec
 uv run newsfeed run            # ingest → extract → rank → publish
 uv run newsfeed ingest         # single stage
 uv run newsfeed extract --url <url>   # debug extraction for one page
+uv run newsfeed preview        # static HTML preview of extracted articles
 uv run newsfeed eval
 ```
 
