@@ -68,6 +68,7 @@ def _result_record(entry: EvalEntry, outcome: Outcome) -> Record:
             "title": {
                 "expected": entry.expected_title is not None,
                 "ratio": checks.title_ratio,
+                "via": checks.title_via,
                 "min_ratio": TITLE_MIN_RATIO,
             },
             "must_contain": [
