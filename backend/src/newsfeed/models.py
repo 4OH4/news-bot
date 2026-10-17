@@ -36,6 +36,7 @@ from pydantic import AfterValidator, BaseModel, BeforeValidator, ConfigDict, Fie
 __all__ = [
     "Article",
     "ArticleExtraction",
+    "ErrorType",
     "ExtractionAttempt",
     "ExtractionResult",
     "ExtractionStatus",
@@ -126,6 +127,7 @@ unparseable values become None instead of failing validation.
 """
 
 NonNegativeInt = Annotated[int, Field(ge=0)]
+NonNegativeFloat = Annotated[float, Field(ge=0)]
 
 
 class _Model(BaseModel):
@@ -175,7 +177,13 @@ class Source(_Model):
 
 
 class SourceState(_Model):
-    """Per-source fetch state kept in the ``Repository`` for conditional GETs."""
+    """Per-source fetch state kept in the ``Repository``.
+
+    ``etag`` and ``last_modified`` drive conditional GETs. The health fields
+    (``consecutive_failures``, ``last_error``, ``last_success_at``) let a report
+    spot feeds that keep failing across runs (NFR-5). They default to "no
+    failures yet", so state saved before they existed still loads.
+    """
 
     source_id: str
     etag: str | None = None
@@ -186,6 +194,16 @@ class SourceState(_Model):
     last_fetched_at: UtcDatetime | None = None
     last_status: int | None = Field(
         default=None, description="HTTP status of the last fetch; None if no response."
+    )
+    consecutive_failures: NonNegativeInt = Field(
+        default=0,
+        description="Fetches in a row that failed; reset to 0 by a successful fetch (or a 304).",
+    )
+    last_error: str | None = Field(
+        default=None, description="Error of the most recent failed fetch; None after a success."
+    )
+    last_success_at: UtcDatetime | None = Field(
+        default=None, description="When a fetch last succeeded (including a 304)."
     )
 
 
@@ -264,13 +282,41 @@ class ExtractionResult(_Model):
     attempts: list[ExtractionAttempt] = Field(default_factory=list)
 
 
+ErrorType = Annotated[str, Field(pattern=r"^[a-z0-9][a-z0-9_]*$")]
+"""A failure reason category, a lowercase slug such as ``http_403`` or ``timeout``.
+
+The vocabulary belongs to the code that classifies errors (the extract stage's
+metrics), not to this contract, so a new category needs no contract change.
+"""
+
+
 class ArticleExtraction(_Model):
-    """Extraction summary stored on an ``Article`` (the content itself is a blob)."""
+    """Extraction summary stored on an ``Article`` (the content itself is a blob).
+
+    ``attempts`` and ``last_attempt_at`` record how often and when extraction
+    was tried, so failed articles can be retried with a backoff and a cap
+    (FR-6). ``error_type`` is the machine-readable category of ``error``. All
+    three default to "never tried", so articles stored before they existed
+    still load.
+    """
 
     status: ExtractionStatus = ExtractionStatus.PENDING
     method: str | None = None
     error: str | None = None
     word_count: NonNegativeInt = 0
+    attempts: NonNegativeInt = Field(
+        default=0, description="Extraction attempts made so far, including the latest."
+    )
+    last_attempt_at: UtcDatetime | None = Field(
+        default=None, description="When extraction was last attempted; None if never."
+    )
+    error_type: ErrorType | None = Field(
+        default=None,
+        description=(
+            "Category of the failure, e.g. 'http_403', 'robots', 'timeout', 'too_short', "
+            "'no_content', 'paywall'; None when there is no error."
+        ),
+    )
 
 
 # --- Articles ----------------------------------------------------------------
@@ -374,7 +420,12 @@ class PipelineStage(StrEnum):
 
 
 class RunStats(_Model):
-    """Summary of one pipeline run, saved by the ``Repository``."""
+    """Summary of one pipeline run, saved by the ``Repository``.
+
+    The duration, failure-reason and word-count fields support per-run metrics
+    and trend reports (NFR-5); they default to empty, so runs saved before they
+    existed still load.
+    """
 
     run_id: str
     started_at: UtcDatetime
@@ -388,3 +439,18 @@ class RunStats(_Model):
         description="Per domain, count of articles by extraction status.",
     )
     error_count: NonNegativeInt = 0
+    stage_durations_ms: dict[PipelineStage, NonNegativeInt] = Field(
+        default_factory=dict,
+        description="Per stage, wall-clock milliseconds taken; stages that didn't run are absent.",
+    )
+    failures_by_reason: dict[ErrorType, NonNegativeInt] = Field(
+        default_factory=dict,
+        description="Count of failed extractions by error category, e.g. {'timeout': 2}.",
+    )
+    median_word_count_by_domain: dict[str, NonNegativeFloat] = Field(
+        default_factory=dict,
+        description=(
+            "Per domain, median word_count of this run's 'ok' extractions; domains "
+            "with no 'ok' result are absent."
+        ),
+    )

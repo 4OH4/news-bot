@@ -146,6 +146,24 @@ class InMemoryRepository:
             stats = self._run_stats.get(run_id)
             return stats.model_copy(deep=True) if stats else None
 
+    def list_run_stats(
+        self, *, since: datetime | None = None, limit: int | None = None
+    ) -> list[RunStats]:
+        """Return matching run statistics, newest ``started_at`` first."""
+        _require_aware(since, "since")
+        if limit is not None and limit < 0:
+            raise ValueError("limit must be non-negative")
+        with self._lock:
+            matches = [
+                s for s in self._run_stats.values() if since is None or s.started_at >= since
+            ]
+            # Two stable sorts: newest first, ties broken by ascending run_id.
+            matches.sort(key=lambda s: s.run_id)
+            matches.sort(key=lambda s: s.started_at, reverse=True)
+            if limit is not None:
+                matches = matches[:limit]
+            return [s.model_copy(deep=True) for s in matches]
+
 
 # --- BlobStore ---------------------------------------------------------------
 

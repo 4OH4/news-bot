@@ -108,6 +108,19 @@ _MIGRATIONS: tuple[tuple[str, ...], ...] = (
         )
         """,
     ),
+    # 1 -> 2 (#85): feed health on source_state, richer run stats, and an index
+    # for list_run_stats. The new ArticleExtraction fields live in the
+    # extraction JSON column and need no migration. Defaults match the models,
+    # so existing rows load as "no failures yet" and empty metrics.
+    (
+        "ALTER TABLE source_state ADD COLUMN consecutive_failures INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE source_state ADD COLUMN last_error TEXT",
+        "ALTER TABLE source_state ADD COLUMN last_success_at TEXT",
+        "ALTER TABLE run_stats ADD COLUMN stage_durations_ms TEXT NOT NULL DEFAULT '{}'",
+        "ALTER TABLE run_stats ADD COLUMN failures_by_reason TEXT NOT NULL DEFAULT '{}'",
+        "ALTER TABLE run_stats ADD COLUMN median_word_count_by_domain TEXT NOT NULL DEFAULT '{}'",
+        "CREATE INDEX run_stats_started_at ON run_stats (started_at DESC, run_id)",
+    ),
 )
 
 SCHEMA_VERSION = len(_MIGRATIONS)
@@ -132,7 +145,16 @@ _ARTICLE_COLUMNS = (
 )
 _ARTICLE_JSON = frozenset({"extraction", "score_breakdown"})
 
-_SOURCE_STATE_COLUMNS = ("source_id", "etag", "last_modified", "last_fetched_at", "last_status")
+_SOURCE_STATE_COLUMNS = (
+    "source_id",
+    "etag",
+    "last_modified",
+    "last_fetched_at",
+    "last_status",
+    "consecutive_failures",
+    "last_error",
+    "last_success_at",
+)
 _FEEDBACK_COLUMNS = ("id", "article_id", "event", "value", "created_at")
 _RUN_STATS_COLUMNS = (
     "run_id",
@@ -141,8 +163,19 @@ _RUN_STATS_COLUMNS = (
     "stage_counts",
     "extraction_by_domain",
     "error_count",
+    "stage_durations_ms",
+    "failures_by_reason",
+    "median_word_count_by_domain",
 )
-_RUN_STATS_JSON = frozenset({"stage_counts", "extraction_by_domain"})
+_RUN_STATS_JSON = frozenset(
+    {
+        "stage_counts",
+        "extraction_by_domain",
+        "stage_durations_ms",
+        "failures_by_reason",
+        "median_word_count_by_domain",
+    }
+)
 
 
 def _format_time(value: datetime | None) -> str | None:
@@ -385,6 +418,7 @@ class SqliteRepository:
         """Insert or replace the state for ``state.source_id``."""
         row = state.model_dump(mode="json")
         row["last_fetched_at"] = _format_time(state.last_fetched_at)
+        row["last_success_at"] = _format_time(state.last_success_at)
         self._connection().execute(_upsert_sql("source_state", _SOURCE_STATE_COLUMNS), row)
 
     # --- Feedback ------------------------------------------------------------
@@ -424,8 +458,28 @@ class SqliteRepository:
             .execute("SELECT * FROM run_stats WHERE run_id = ?", (run_id,))
             .fetchone()
         )
-        if row is None:
-            return None
+        return None if row is None else self._run_stats(row)
+
+    def list_run_stats(
+        self, *, since: datetime | None = None, limit: int | None = None
+    ) -> list[RunStats]:
+        """Return matching run statistics, newest ``started_at`` first, ties by run id."""
+        since_text = _format_time(since)
+        _require_limit(limit)
+        sql = "SELECT * FROM run_stats"
+        params: list[Any] = []
+        if since_text is not None:
+            sql += " WHERE started_at >= ?"
+            params.append(since_text)
+        sql += " ORDER BY started_at DESC, run_id ASC"
+        if limit is not None:
+            sql += " LIMIT ?"
+            params.append(limit)
+        rows = self._connection().execute(sql, params).fetchall()
+        return [self._run_stats(row) for row in rows]
+
+    @staticmethod
+    def _run_stats(row: sqlite3.Row) -> RunStats:
         return RunStats.model_validate(_from_row(row, json_fields=_RUN_STATS_JSON))
 
 
