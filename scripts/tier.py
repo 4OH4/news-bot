@@ -105,10 +105,18 @@ def _marker(word: str) -> re.Pattern[str]:
 
 DEFECT_RE = _marker("defect")
 NEEDS_HUMAN_RE = _marker("needs\\s+human")
+# Checked on the header (the body's first line) only, and "none" must end the field.
 DEVIATIONS_NONE_RE = re.compile(
-    r"\*\*\s*Deviations\s*(?::\s*\*\*|\*\*\s*:)\s*none\b", re.IGNORECASE
+    r"\*\*\s*Deviations\s*(?::\s*\*\*|\*\*\s*:)\s*none\s*\.?\s*(?:·|$)", re.IGNORECASE
 )
-FEATURE_CONFIRMED_RE = re.compile(r"\bTier A feature:\s*confirmed\b", re.IGNORECASE)
+# A line of its own, naming the commit the reviewer confirmed.
+FEATURE_CONFIRMED_RE = re.compile(
+    r"^\s*Tier A feature:\s*confirmed at ([0-9a-f]{7,40})\s*\.?\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+# Any reviewer comment, first or later, however the heading is worded: every owner
+# comment with "review" in its heading that isn't the lead's.
+REVIEW_HEADING_RE = re.compile(r"review", re.IGNORECASE)
 RESOLVED_RE = re.compile(r"\*\*\s*Resolved\s*\*\*\s+in\s+[0-9a-f]{7,40}\b", re.IGNORECASE)
 VERDICT_RE = re.compile(r"^\W*verdict\W*\s*merge\b", re.IGNORECASE | re.MULTILINE)
 
@@ -283,28 +291,45 @@ def gate_failures(
     if not any(head[:7] in c and VERDICT_RE.search(c) for c in lead):
         failures.append(f"no 'Lead review' with 'Verdict: merge' naming the head SHA {head[:7]}")
     if classification.feature:
-        failures += feature_failures(body, section, owned)
+        failures += feature_failures(body, section, owned, head)
     return failures
 
 
-def feature_failures(body: str, section: str | None, owned: list[str]) -> list[str]:
+def section_is_empty(section: str) -> bool:
+    """True if "For human review" says only "None", apart from **Resolved** items."""
+    rest = [
+        ln.strip()
+        for ln in section.splitlines()
+        if ln.strip() and not (ln.lstrip().startswith(("-", "*")) and RESOLVED_RE.search(ln))
+    ]
+    return rest in ([], ["None"], ["None."])
+
+
+def feature_failures(body: str, section: str | None, owned: list[str], head: str) -> list[str]:
     """The extra conditions for a Tier A `feat`: built as planned, with nothing found.
 
-    Each fails closed: a missing attestation sends the PR to the human.
+    Each fails closed: a missing or unclear attestation sends the PR to the human.
     """
     failures: list[str] = []
-    if not DEVIATIONS_NONE_RE.search(body):
+    header = body.strip().split("\n", 1)[0]
+    if not DEVIATIONS_NONE_RE.search(header):
         failures.append("feature: the header doesn't say **Deviations:** none")
-    reviews = [c for c in owned if heading(c).lower().startswith("independent review")]
+    reviews = [
+        c
+        for c in owned
+        if REVIEW_HEADING_RE.search(heading(c)) and not heading(c).lower().startswith("lead")
+    ]
     if len(reviews) > 1:
         failures.append("feature: reviewed more than once")
-    if not any(FEATURE_CONFIRMED_RE.search(c) for c in reviews):
-        failures.append("feature: no 'Tier A feature: confirmed' in the Independent review")
+    confirmed = [m.group(1).lower() for c in reviews for m in FEATURE_CONFIRMED_RE.finditer(c)]
+    if not any(head.lower().startswith(sha) for sha in confirmed):
+        failures.append(
+            f"feature: no 'Tier A feature: confirmed at {head[:7]}' line in the Independent review"
+        )
     if section is not None:
-        items = [ln for ln in section.splitlines() if ln.lstrip().startswith(("-", "*"))]
-        if any(DEFECT_RE.search(ln) for ln in items):
+        if DEFECT_RE.search(section):
             failures.append("feature: the review found a defect")
-        elif any(not RESOLVED_RE.search(ln) for ln in items):
+        elif not section_is_empty(section):
             failures.append("feature: 'For human review' has items for the human")
     return failures
 
@@ -349,8 +374,12 @@ def classify_pr(pr: dict[str, Any]) -> Classification:
     labels = {label["name"] for label in pr["labels"]}
     issues = linked_issue_labels(pr.get("body") or "")
     needs_human = NEEDS_HUMAN_LABEL in labels or any(NEEDS_HUMAN_LABEL in i for i in issues)
+    # Exactly one size label, and a small one: `size:S` plus `size:L` doesn't count.
     feature_ready = bool(issues) and all(
-        AGENT_READY_LABEL in i and i & set(FEATURE_SIZES) for i in issues
+        AGENT_READY_LABEL in i
+        and len({lb for lb in i if lb.startswith("size:")}) == 1
+        and i & set(FEATURE_SIZES)
+        for i in issues
     )
     return classify(pr["title"], fetch_files(pr["number"]), needs_human, feature_ready)
 
