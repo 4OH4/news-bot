@@ -59,7 +59,13 @@ def full_article() -> Article:
         summary="An invented summary.",
         lead_image="https://example.com/lead.jpg",
         extraction=ArticleExtraction(
-            status=ExtractionStatus.OK, method="trafilatura", error=None, word_count=812
+            status=ExtractionStatus.PARTIAL,
+            method="trafilatura",
+            error="text shorter than 150 words",
+            word_count=812,
+            attempts=3,
+            last_attempt_at=datetime(2026, 10, 11, 13, 0, 0, 0, tzinfo=UTC),
+            error_type="too_short",
         ),
         content_ref="articles/full.html",
         score=0.734,
@@ -229,13 +235,21 @@ class TestSourceState:
             etag='W/"abc"',
             last_modified="Sat, 11 Oct 2026 12:00:00 GMT",
             last_fetched_at=T0,
-            last_status=200,
+            last_status=503,
+            consecutive_failures=4,
+            last_error="HTTP 503",
+            last_success_at=T0 - timedelta(days=1, microseconds=1),
         )
         repo.save_source_state(state)
         assert repo.get_source_state("example") == state
         cleared = SourceState(source_id="example", last_status=None)
         repo.save_source_state(cleared)
-        assert repo.get_source_state("example") == cleared
+        stored = repo.get_source_state("example")
+        assert stored == cleared
+        assert stored is not None
+        assert stored.consecutive_failures == 0
+        assert stored.last_error is None
+        assert stored.last_success_at is None
 
     def test_returned_state_is_a_copy(self, repo: Repository) -> None:
         state = SourceState(source_id="example", etag="1")
@@ -316,10 +330,80 @@ class TestRunStats:
                 "example.org": {ExtractionStatus.PAYWALLED: 1},
             },
             error_count=3,
+            stage_durations_ms={
+                PipelineStage.INGEST: 4_200,
+                PipelineStage.EXTRACT: 171_003,
+                PipelineStage.PUBLISH: 0,
+            },
+            failures_by_reason={"timeout": 1, "http_403": 1},
+            median_word_count_by_domain={"example.com": 812.5, "example.org": 90.0},
         )
         repo.save_run_stats(finished)
         assert repo.get_run_stats("run-1") == finished
         assert repo.get_run_stats("run-2") is None
+
+    def test_returned_stats_are_copies(self, repo: Repository) -> None:
+        stats = RunStats(run_id="run-1", started_at=T0, failures_by_reason={"timeout": 1})
+        repo.save_run_stats(stats)
+        fetched = repo.get_run_stats("run-1")
+        assert fetched is not None
+        fetched.failures_by_reason["timeout"] = 9
+        listed = repo.list_run_stats()[0]
+        listed.stage_durations_ms[PipelineStage.INGEST] = 1
+        assert repo.get_run_stats("run-1") == stats
+
+    def test_list_empty(self, repo: Repository) -> None:
+        assert repo.list_run_stats() == []
+
+    def test_list_orders_newest_first_with_ascending_run_id_tiebreak(
+        self, repo: Repository
+    ) -> None:
+        old = RunStats(run_id="z-old", started_at=T0 - timedelta(hours=1))
+        new = RunStats(run_id="a-new", started_at=T0 + timedelta(microseconds=500000))
+        tied = [RunStats(run_id=rid, started_at=T0) for rid in ("m", "c", "x", "b")]
+        elsewhere = RunStats(
+            run_id="offset",
+            started_at=datetime(2026, 10, 11, 13, 59, 59, tzinfo=timezone(timedelta(hours=2))),
+        )
+        for stats in [*tied, old, new, elsewhere]:
+            repo.save_run_stats(stats)
+        assert [s.run_id for s in repo.list_run_stats()] == [
+            "a-new",
+            "b",
+            "c",
+            "m",
+            "x",
+            "offset",
+            "z-old",
+        ]
+
+    def test_list_since_is_inclusive_and_limit_applies(self, repo: Repository) -> None:
+        for n in range(5):
+            repo.save_run_stats(RunStats(run_id=f"run-{n}", started_at=T0 + timedelta(hours=n)))
+        repo.save_run_stats(RunStats(run_id="before", started_at=T0 - timedelta(microseconds=1)))
+        assert [s.run_id for s in repo.list_run_stats(since=T0 + timedelta(hours=3))] == [
+            "run-4",
+            "run-3",
+        ]
+        plus_two = timezone(timedelta(hours=2))
+        since = datetime(2026, 10, 11, 14, 0, tzinfo=plus_two)
+        assert len(repo.list_run_stats(since=since)) == 5
+        assert [s.run_id for s in repo.list_run_stats(limit=2)] == ["run-4", "run-3"]
+        assert [s.run_id for s in repo.list_run_stats(since=since, limit=1)] == ["run-4"]
+        assert repo.list_run_stats(limit=0) == []
+        assert len(repo.list_run_stats(limit=None)) == 6
+
+    def test_list_follows_replacement(self, repo: Repository) -> None:
+        repo.save_run_stats(RunStats(run_id="run-1", started_at=T0))
+        finished = RunStats(run_id="run-1", started_at=T0, finished_at=T0, error_count=2)
+        repo.save_run_stats(finished)
+        assert repo.list_run_stats() == [finished]
+
+    def test_list_rejects_naive_since_and_negative_limit(self, repo: Repository) -> None:
+        with pytest.raises(ValueError):
+            repo.list_run_stats(since=datetime(2026, 10, 11, 12, 0))
+        with pytest.raises(ValueError):
+            repo.list_run_stats(limit=-1)
 
 
 # --- Persistence and concurrency ---------------------------------------------
@@ -328,9 +412,23 @@ class TestRunStats:
 def test_data_persists_across_reopening(open_repository: RepositoryOpener) -> None:
     first = open_repository()
     article = full_article()
-    state = SourceState(source_id="example", etag="1", last_fetched_at=T0)
+    state = SourceState(
+        source_id="example",
+        etag="1",
+        last_fetched_at=T0,
+        consecutive_failures=2,
+        last_error="timed out",
+        last_success_at=T0 - timedelta(hours=2),
+    )
     feedback = make_feedback("f1", T0)
-    stats = RunStats(run_id="run-1", started_at=T0, error_count=1)
+    stats = RunStats(
+        run_id="run-1",
+        started_at=T0,
+        error_count=1,
+        stage_durations_ms={PipelineStage.EXTRACT: 12},
+        failures_by_reason={"robots": 1},
+        median_word_count_by_domain={"example.com": 640.0},
+    )
     first.upsert_article(article)
     first.save_source_state(state)
     first.save_feedback(feedback)
@@ -342,6 +440,7 @@ def test_data_persists_across_reopening(open_repository: RepositoryOpener) -> No
     assert second.get_source_state("example") == state
     assert second.list_feedback() == [feedback]
     assert second.get_run_stats("run-1") == stats
+    assert second.list_run_stats() == [stats]
 
 
 def test_concurrent_writes_from_eight_threads(repo: Repository) -> None:
@@ -357,6 +456,7 @@ def test_concurrent_writes_from_eight_threads(repo: Repository) -> None:
             repo.save_source_state(SourceState(source_id=f"source-{i}", last_status=200 + n))
             repo.save_run_stats(RunStats(run_id="shared-run", started_at=T0, error_count=n))
             repo.list_articles(limit=5)
+            repo.list_run_stats(limit=5)
 
     run_threads(worker)
     assert len(repo.list_articles()) == 8 * per_thread + 1
@@ -366,3 +466,4 @@ def test_concurrent_writes_from_eight_threads(repo: Repository) -> None:
         assert state is not None
         assert state.last_status == 200 + per_thread - 1
     assert repo.get_run_stats("shared-run") is not None
+    assert [s.run_id for s in repo.list_run_stats()] == ["shared-run"]

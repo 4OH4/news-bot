@@ -151,6 +151,21 @@ class Repository(Protocol):
         """Return the statistics saved for ``run_id``, or None if none."""
         ...
 
+    def list_run_stats(
+        self, *, since: datetime | None = None, limit: int | None = None
+    ) -> list[RunStats]:
+        """Return run statistics, newest ``started_at`` first (ties broken by ``run_id``).
+
+        Used to find the latest run and to report trends across recent runs.
+
+        Args:
+            since: only runs with ``started_at >= since``. Must be
+                timezone-aware; a naive value raises ``ValueError``.
+            limit: at most this many runs; None means no limit. Must be
+                non-negative, otherwise ``ValueError`` is raised.
+        """
+        ...
+
 
 # --- BlobStore ---------------------------------------------------------------
 
