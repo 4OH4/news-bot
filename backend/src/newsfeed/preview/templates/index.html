@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Articles{% endblock %}
+{% block body %}
+<h1>Articles</h1>
+<p class="meta">{{ articles|length }} readable, <a href="failures.html">{{ failures }} failed or blocked</a>{% if pending %}, {{ pending }} not yet extracted{% endif %}.</p>
+<ul class="list">
+{% for a in articles %}
+  <li>
+    <a class="t" href="articles/{{ a.id }}.html">{{ a.title }}</a>
+    <div class="meta">
+      <span class="badge badge-{{ a.extraction.status.value }}">{{ a.extraction.status.value }}</span>
+      {{ a.source_id }} &middot; {{ (a.published_at or a.fetched_at).strftime("%Y-%m-%d %H:%M") }} UTC
+      &middot; {{ a.extraction.method or "no method" }} &middot; {{ a.extraction.word_count }} words
+      &middot; <a href="{{ a.url }}">original</a>
+    </div>
+  </li>
+{% else %}
+  <li>No extracted articles yet. Run <code>newsfeed run</code> first.</li>
+{% endfor %}
+</ul>
+{% endblock %}

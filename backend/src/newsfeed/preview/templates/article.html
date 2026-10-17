@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% set root = "../" %}
+{% block title %}{{ article.title }}{% endblock %}
+{% block body %}
+<h1>{{ article.title }}</h1>
+<p class="meta">
+  <span class="badge badge-{{ article.extraction.status.value }}">{{ article.extraction.status.value }}</span>
+  {{ article.source_id }}
+  {% if article.author %}&middot; {{ article.author }}{% endif %}
+  &middot; {{ (article.published_at or article.fetched_at).strftime("%Y-%m-%d %H:%M") }} UTC
+  &middot; {{ article.extraction.method or "no method" }} &middot; {{ article.extraction.word_count }} words
+  &middot; <a href="{{ article.url }}">original</a>
+</p>
+{% if article.extraction.status.value == "partial" %}
+<p class="meta">Extraction was partial: the text may be truncated.</p>
+{% endif %}
+{% if show_lead and article.lead_image %}
+<img class="lead" src="{{ article.lead_image }}" alt="">
+{% endif %}
+<article>
+{% if content %}{{ content|safe }}{% else %}<p class="error">Stored content is missing.</p>{% endif %}
+</article>
+{% endblock %}
