@@ -70,6 +70,11 @@ class Settings(BaseSettings):
         """``extraction.yaml`` in the config directory."""
         return self.config_dir / "extraction.yaml"
 
+    @property
+    def interests_path(self) -> Path:
+        """``interests.yaml`` in the config directory."""
+        return self.config_dir / "interests.yaml"
+
 
 def load_settings() -> Settings:
     """Read the settings from the environment."""

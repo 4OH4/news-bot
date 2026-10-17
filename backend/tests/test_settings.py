@@ -39,6 +39,7 @@ def test_environment_overrides_and_derived_paths(
     assert settings.sources_path == tmp_path / "c" / "sources.yaml"
     assert settings.url_params_path == tmp_path / "c" / "url_params.yaml"
     assert settings.extraction_path == tmp_path / "c" / "extraction.yaml"
+    assert settings.interests_path == tmp_path / "c" / "interests.yaml"
     assert (settings.concurrency, settings.host_interval) == (3, 0.5)
 
 
