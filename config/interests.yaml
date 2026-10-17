@@ -1,0 +1,44 @@
+# Interest rules, loaded by newsfeed.rank.interests.load_interests and used by
+# the rank stage to order the feed. A missing or empty file means no rules:
+# articles then score on recency and source weight alone.
+#
+# This is a placeholder with no personal topics yet (#80 adds the real ones).
+# Unknown keys are rejected.
+#
+# Schema (everything is optional):
+#
+#   topics:                       # each match adds `weight` points
+#     - name: example-topic       # unique label, shown in the score breakdown
+#       keywords: [foo, "bar baz"]  # case-insensitive words or phrases,
+#                                 # matched on word boundaries ("ai" does not
+#                                 # match "maintain")
+#       weight: 2.0               # may be negative to demote a topic
+#
+#   mute_keywords: [foo]          # an article matching one is muted: scored
+#                                 # and stored, but left out of the feed
+#
+#   sources:                      # keyed by source id from sources.yaml
+#     some-source-id:
+#       weight: 1.5               # multiplier, replaces Source.weight
+#     other-source-id:
+#       mute: true                # leave this source out of the feed
+#                                 # (give weight or mute, not both)
+#
+#   recency:
+#     half_life_hours: 24         # an article's recency score halves every
+#                                 # this many hours (default 24)
+#
+#   fields:                       # how much a keyword match counts by where
+#     title: 3.0                  # it was found (defaults shown)
+#     summary: 2.0
+#     body: 1.0
+
+topics: []
+mute_keywords: []
+sources: {}
+recency:
+  half_life_hours: 24
+fields:
+  title: 3.0
+  summary: 2.0
+  body: 1.0
