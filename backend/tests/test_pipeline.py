@@ -100,6 +100,13 @@ def _services(
     return Services(**values)  # type: ignore[arg-type]
 
 
+def _unranked(repository: SqliteRepository) -> dict[str, dict[str, object]]:
+    """Stored articles without the scores, which drift with the clock between runs."""
+    return {
+        a.id: a.model_dump(exclude={"score", "score_breakdown"}) for a in repository.list_articles()
+    }
+
+
 def _by_url(repository: SqliteRepository) -> dict[str, Article]:
     return {a.url: a for a in repository.list_articles()}
 
@@ -161,12 +168,12 @@ def test_second_run_is_idempotent_and_sends_conditional_headers(
     fetcher = _fetcher(etag='"v1"')
     services = _services(tmp_path, repository, fetcher)
     run_pipeline(services, [SOURCE])
-    before = {a.id: a for a in repository.list_articles()}
+    before = _unranked(repository)
     page_fetches = len(fetcher.fetched_urls()) - 1
 
     stats = run_pipeline(services, [SOURCE])
 
-    assert {a.id: a for a in repository.list_articles()} == before
+    assert _unranked(repository) == before
     assert fetcher.calls[-1].url == FEED_URL
     assert fetcher.calls[-1].etag == '"v1"'
     assert stats.stage_counts[PipelineStage.INGEST]["new"] == 0
@@ -382,7 +389,7 @@ def test_run_finished_carries_metrics_and_failure_reasons_are_counted(
     (record,) = [r for r in log_records if r.getMessage() == "run finished"]
     metrics = record.metrics  # type: ignore[attr-defined]
     assert metrics["run_id"] == stats.run_id
-    assert set(metrics["duration_s"]) == {"ingest", "extract"}
+    assert set(metrics["duration_s"]) == {"ingest", "extract", "rank"}
     assert metrics["failures_by_reason"] == {"http_4xx": 1}
     assert metrics["feeds"]["gazette"]["outcome"] == "ok"
     assert metrics["feeds"]["gazette"]["new"] == 4
@@ -1047,3 +1054,30 @@ def test_fetch_page_reports_the_http_status_of_an_error() -> None:
 
     assert paid.value.status_code == 402
     assert refused.value.status_code is None
+
+
+# --- Rank --------------------------------------------------------------------------
+
+
+def test_run_ranks_recent_articles_and_counts_them(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    services = _services(tmp_path, repository, _fetcher())
+
+    stats = run_pipeline(services, [SOURCE])
+
+    articles = repository.list_articles()
+    assert articles
+    for article in articles:
+        assert article.score is not None
+        assert {"source", "recency"} <= article.score_breakdown.keys()
+    assert stats.stage_counts[PipelineStage.RANK]["scored"] == len(articles)
+
+
+def test_rank_can_be_skipped(tmp_path: Path, repository: SqliteRepository) -> None:
+    services = _services(tmp_path, repository, _fetcher())
+
+    stats = run_pipeline(services, [SOURCE], rank=False)
+
+    assert all(a.score is None for a in repository.list_articles())
+    assert PipelineStage.RANK not in stats.stage_counts
