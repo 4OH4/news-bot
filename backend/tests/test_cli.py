@@ -224,3 +224,22 @@ def test_help_lists_commands() -> None:
     assert result.exit_code == 0, result.output
     for command in ("run", "ingest", "extract"):
         assert command in result.output
+
+
+def test_rank_scores_recent_articles_from_interests_yaml(env: Path) -> None:
+    (env.parent / "config" / "interests.yaml").write_text(
+        "topics:\n  - {name: bridges, keywords: [bridge], weight: 2}\n"
+    )
+    assert runner.invoke(cli.app, ["run"]).exit_code == 0
+    with SqliteRepository(env / "newsfeed.db") as repo:
+        for article in repo.list_articles():
+            repo.upsert_article(Article.model_validate({**article.model_dump(), "score": None}))
+
+    result = runner.invoke(cli.app, ["rank"])
+
+    assert result.exit_code == 0, result.output
+    assert "rank: " in result.output
+    with SqliteRepository(env / "newsfeed.db") as repo:
+        articles = repo.list_articles()
+        assert all(a.score is not None for a in articles)
+        assert any("topic:bridges" in a.score_breakdown for a in articles)
