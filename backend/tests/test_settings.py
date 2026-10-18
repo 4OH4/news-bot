@@ -51,3 +51,13 @@ def test_invalid_values_are_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("NEWSFEED_STORAGE", "gcs")
     with pytest.raises(ValidationError):
         load_settings()
+
+
+def test_dedupe_window_days(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("NEWSFEED_DEDUPE_WINDOW_DAYS", raising=False)
+    assert Settings(_env_file=None).dedupe_window_days == 14  # type: ignore[call-arg]
+    monkeypatch.setenv("NEWSFEED_DEDUPE_WINDOW_DAYS", "30")
+    assert load_settings().dedupe_window_days == 30
+    monkeypatch.setenv("NEWSFEED_DEDUPE_WINDOW_DAYS", "0")
+    with pytest.raises(ValidationError):
+        load_settings()
