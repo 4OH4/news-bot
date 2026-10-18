@@ -61,7 +61,7 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _gcp_needs_bucket(self) -> Settings:
-        if self.storage == "gcp" and not self.gcs_bucket:
+        if self.storage == "gcp" and not (self.gcs_bucket or "").strip():
             raise ValueError("NEWSFEED_STORAGE=gcp requires NEWSFEED_GCS_BUCKET")
         return self
 
