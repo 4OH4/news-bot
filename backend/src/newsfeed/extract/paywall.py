@@ -21,8 +21,8 @@ It looks for three generic signals:
 
 The two visible signals are deliberately strict, because they override an
 ``ok`` extraction, and a free article flagged as paywalled would lose its
-content in the feed. A gate or notice must be shown (not hidden by markup or a
-``hidden`` class), must sit in the page's content rather than an aside,
+content in the feed. A gate or notice must be shown (not hidden by markup, a
+``hidden`` class or a closed ``<dialog>``), must sit in the page's content rather than an aside,
 navigation, header, footer or sidebar, must offer a subscribe or sign-in link,
 button or form, and must end the article: little paragraph text may follow it.
 Empty placeholders that many free pages carry for a metered paywall,
@@ -412,10 +412,14 @@ def _collapse(text: str) -> str:
 
 
 def _rendered(el: HtmlElement) -> bool:
-    """False if ``el`` or an ancestor is never shown: script-like, or hidden."""
+    """False if ``el`` or an ancestor is never shown: script-like, hidden or a closed dialog."""
     node: HtmlElement | None = el
     while node is not None:
         if node.tag in _NON_RENDERED:
+            return False
+        # A <dialog> stays hidden until script opens it; metered sites ship one
+        # ready-made and open it only when the reader runs out of free articles.
+        if node.tag == "dialog" and node.get("open") is None:
             return False
         if node.get("hidden") is not None or (node.get("aria-hidden") or "").lower() == "true":
             return False
