@@ -26,7 +26,7 @@ from google.api_core.exceptions import NotFound
 from newsfeed.ports import BlobNotFoundError, validate_blob_key
 
 if TYPE_CHECKING:
-    from google.cloud import storage
+    import google.cloud.storage as storage
 
     from newsfeed.ports import BlobStore
 
