@@ -1,4 +1,4 @@
-"""Command-line entry point: ``newsfeed run|ingest|extract|preview|eval``."""
+"""Command-line entry point: ``newsfeed run|ingest|extract|rank|preview|eval``."""
 
 from __future__ import annotations
 
@@ -48,6 +48,7 @@ from newsfeed.pipeline import (
 )
 from newsfeed.ports import Fetcher
 from newsfeed.preview import PreviewDirError, generate_preview
+from newsfeed.rank.stage import DEFAULT_WINDOW_HOURS, load_rank_config
 from newsfeed.settings import Settings, load_settings
 from newsfeed.wiring import build_extractor, open_fetcher, open_services
 
@@ -79,6 +80,16 @@ SinceOption = Annotated[
         formats=["%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S%z"],
         help="Ignore articles older than this (UTC if no offset is given). "
         "Ingest: by publication date; extract: by when they were ingested.",
+    ),
+]
+
+
+WindowOption = Annotated[
+    float,
+    typer.Option(
+        "--rank-window-hours",
+        min=0.0,
+        help="Rank: score articles fetched within this many hours.",
     ),
 ]
 
@@ -121,19 +132,28 @@ def _run_stages(
     *,
     ingest: bool,
     extract: bool,
+    rank: bool,
     source: list[str] | None,
     limit: int | None,
     since: datetime | None,
+    rank_window_hours: float = DEFAULT_WINDOW_HOURS,
 ) -> None:
     settings = load_settings()
     try:
         sources = _select_sources(settings, source)
+        # Ranking weighs every configured source, whatever --source narrows.
+        all_sources = _select_sources(settings, None)
+        interests = load_rank_config(settings.interests_path, all_sources) if rank else None
         with open_services(settings) as services:
             stats = run_pipeline(
                 services,
                 sources,
                 ingest=ingest,
                 extract=extract,
+                rank=rank,
+                interests=interests,
+                rank_sources=all_sources,
+                rank_window_hours=rank_window_hours,
                 # Only an explicit --source narrows extract; a plain run also
                 # drains pending articles of disabled/removed sources and ad hoc ones.
                 extract_source_ids=source or None,
@@ -146,9 +166,22 @@ def _run_stages(
 
 
 @app.command()
-def run(source: SourceOption = None, limit: LimitOption = None, since: SinceOption = None) -> None:
-    """Run the pipeline: ingest new articles, then extract them."""
-    _run_stages(ingest=True, extract=True, source=source, limit=limit, since=since)
+def run(
+    source: SourceOption = None,
+    limit: LimitOption = None,
+    since: SinceOption = None,
+    rank_window_hours: WindowOption = DEFAULT_WINDOW_HOURS,
+) -> None:
+    """Run the pipeline: ingest new articles, extract them, then rank recent ones."""
+    _run_stages(
+        ingest=True,
+        extract=True,
+        rank=True,
+        source=source,
+        limit=limit,
+        since=since,
+        rank_window_hours=rank_window_hours,
+    )
 
 
 @app.command()
@@ -156,7 +189,21 @@ def ingest(
     source: SourceOption = None, limit: LimitOption = None, since: SinceOption = None
 ) -> None:
     """Collect, canonicalise and dedupe new articles from the enabled sources."""
-    _run_stages(ingest=True, extract=False, source=source, limit=limit, since=since)
+    _run_stages(ingest=True, extract=False, rank=False, source=source, limit=limit, since=since)
+
+
+@app.command()
+def rank(rank_window_hours: WindowOption = DEFAULT_WINDOW_HOURS) -> None:
+    """Score recently fetched articles against config/interests.yaml."""
+    _run_stages(
+        ingest=False,
+        extract=False,
+        rank=True,
+        source=None,
+        limit=None,
+        since=None,
+        rank_window_hours=rank_window_hours,
+    )
 
 
 @app.command()
@@ -176,7 +223,7 @@ def extract(
     if url is None:
         if save:
             raise typer.BadParameter("--save only applies with --url", param_hint="--save")
-        _run_stages(ingest=False, extract=True, source=source, limit=limit, since=since)
+        _run_stages(ingest=False, extract=True, rank=False, source=source, limit=limit, since=since)
         return
     if source or limit is not None or since is not None:
         raise typer.BadParameter("--url can't be combined with --source, --limit or --since")
