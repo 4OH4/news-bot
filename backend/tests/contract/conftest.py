@@ -12,12 +12,15 @@ opener returns the same instance every time.
 
 from __future__ import annotations
 
+import os
 import threading
+import uuid
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
 
+from newsfeed.adapters.firestore_repository import FirestoreRepository
 from newsfeed.adapters.localfs_blobstore import LocalBlobStore
 from newsfeed.adapters.sqlite_repository import SqliteRepository
 from newsfeed.ports import BlobStore, Repository
@@ -27,12 +30,35 @@ RepositoryOpener = Callable[[], Repository]
 BlobStoreOpener = Callable[[], BlobStore]
 
 
-@pytest.fixture(params=["memory", "sqlite"])
+_NEEDS_FIRESTORE_EMULATOR = pytest.mark.skipif(
+    not os.environ.get("FIRESTORE_EMULATOR_HOST"),
+    reason="set FIRESTORE_EMULATOR_HOST to run against the Firestore emulator",
+)
+
+
+@pytest.fixture(
+    params=[
+        "memory",
+        "sqlite",
+        pytest.param("firestore", marks=[pytest.mark.emulator, _NEEDS_FIRESTORE_EMULATOR]),
+    ]
+)
 def open_repository(request: pytest.FixtureRequest, tmp_path: Path) -> Iterator[RepositoryOpener]:
     """Yield an opener for each ``Repository`` implementation."""
     if request.param == "memory":
         fake = InMemoryRepository()
         yield lambda: fake
+        return
+
+    if request.param == "firestore":
+        from google.auth.credentials import AnonymousCredentials
+        from google.cloud import firestore
+
+        # A unique prefix isolates each test; the emulator needs no credentials.
+        client = firestore.Client(project="newsfeed-test", credentials=AnonymousCredentials())
+        prefix = f"t{uuid.uuid4().hex[:12]}-"
+        yield lambda: FirestoreRepository(client, prefix=prefix)
+        client.close()
         return
 
     opened: list[SqliteRepository] = []
