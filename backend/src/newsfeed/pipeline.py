@@ -17,7 +17,7 @@ from collections import Counter, defaultdict
 from collections.abc import Callable, Collection, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from urllib.parse import urlsplit
 
 from newsfeed.extract.chain import ExtractorChain
@@ -234,21 +234,43 @@ class RunTally:
 # --- Ingest ----------------------------------------------------------------------
 
 
-def _known_ids(services: Services) -> set[str]:
-    """Ids already stored, plus the ids their first-seen URLs would normalise to.
+def _known_ids(services: Services, since: datetime) -> set[str]:
+    """Ids of articles fetched at or after ``since``, plus their first-seen URL ids.
+
+    Reads only that window rather than the whole history, so the read count per
+    run (billed on Firestore) stays flat as the store grows: about one read per
+    article fetched in the last ``dedupe_window_days`` days. An entry older than
+    the window is treated as new; ``_store_new`` keeps that from clobbering the
+    stored article.
 
     Extract may refine an article's canonical URL, which changes its id. The
     feed still lists the original URL, so without the second set the same
     entry would be ingested, fetched and merged again on every run.
     """
     known: set[str] = set()
-    for article in services.repository.list_articles():
+    for article in services.repository.list_articles(since=since):
         known.add(article.id)
         try:
             known.add(article_id(normalise_url(article.url, rules=services.url_rules)))
         except ValueError:
             continue
     return known
+
+
+def _store_new(services: Services, articles: Sequence[Article]) -> list[Article]:
+    """Upsert ``articles`` that aren't stored yet; return those actually stored.
+
+    The known-id set only covers the dedupe window, so an old entry that
+    reappears looks new. One ``get_article`` per candidate (a few per run)
+    stops its upsert replacing a stored article's content, score or extraction.
+    """
+    stored: list[Article] = []
+    for article in articles:
+        if services.repository.get_article(article.id) is not None:
+            continue
+        services.repository.upsert_article(article)
+        stored.append(article)
+    return stored
 
 
 def _canonicalise(
@@ -304,8 +326,7 @@ def _ingest_source(
         dropped = len(in_range) < len(entries) or (limit is not None and len(fresh) > limit)
         if limit is not None:
             fresh = fresh[:limit]
-        for article in fresh:
-            services.repository.upsert_article(article)
+        stored = _store_new(services, fresh)
         # The state goes last: if storing the articles failed, the next run must
         # not get a 304 for entries we never kept. The same goes for entries that
         # --since or --limit dropped: the old ETag lets a later run see them.
@@ -335,8 +356,8 @@ def _ingest_source(
     known.update(a.id for a in fresh)
     tally.count(stage, "sources")
     tally.count(stage, "entries", len(articles))
-    tally.count(stage, "duplicates", len(entries) - len(fresh))
-    tally.count(stage, "new", len(fresh))
+    tally.count(stage, "duplicates", len(entries) - len(stored))
+    tally.count(stage, "new", len(stored))
     # The ingesters hand back the old state unchanged on a 304, and a successful
     # fetch always sets last_fetched_at, so equality means "not modified".
     not_modified = new_state == state
@@ -345,12 +366,12 @@ def _ingest_source(
         FeedRecord(
             "not_modified" if not_modified else "ok",
             http_status=304 if not_modified else new_state.last_status,
-            new=len(fresh),
+            new=len(stored),
         ),
     )
     log.info(
         "source ingested",
-        extra={"stage": stage.value, "source_id": source.id, "new": len(fresh)},
+        extra={"stage": stage.value, "source_id": source.id, "new": len(stored)},
     )
 
 
@@ -365,9 +386,16 @@ def ingest_sources(
     """Ingest each source: canonicalise, dedupe against the repository, store pending articles.
 
     ``since`` drops entries published before it (entries without a date are
-    kept); ``limit`` keeps at most that many new articles per source.
+    kept); ``limit`` keeps at most that many new articles per source. The
+    dedupe lookup covers articles fetched within ``services.dedupe_window_days``,
+    widened to reach back to ``since`` if that is older.
     """
-    known = _known_ids(services)
+    window_start = _utc_now() - timedelta(days=services.dedupe_window_days)
+    known = _known_ids(services, min(window_start, since) if since else window_start)
+    log.info(
+        "known articles loaded",
+        extra={"stage": PipelineStage.INGEST.value, "known_ids": len(known)},
+    )
     for source in sources:
         _ingest_source(services, source, known, tally, since=since, limit=limit)
 
