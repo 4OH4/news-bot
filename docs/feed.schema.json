@@ -1,0 +1,157 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/4OH4/news-bot/blob/main/docs/feed.schema.json",
+  "title": "feed.json, schema version 1",
+  "description": "The ranked feed snapshot that the publish stage writes for the reader client (ADR-0006). The publisher must produce exactly this shape: unknown fields are rejected here so the contract can't drift silently. Clients must ignore fields they don't know, so additive changes don't break them.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "generated_at", "run_id", "items"],
+  "properties": {
+    "schema_version": {
+      "description": "Major version of this format. It changes only for a breaking change (ADR-0006, 'Versioning'). A client that doesn't support the value keeps its last good feed.",
+      "const": 1
+    },
+    "generated_at": {
+      "description": "When the publish stage built this feed. The time window is measured back from here.",
+      "$ref": "#/$defs/utcTimestamp"
+    },
+    "run_id": {
+      "description": "Id of the pipeline run that built the feed (RunStats.run_id), e.g. '20261017T173514-077243'. The timestamped copy is stored as feeds/<run_id>.json.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]+$"
+    },
+    "items": {
+      "description": "At most 200 articles, highest score first.",
+      "type": "array",
+      "maxItems": 200,
+      "items": { "$ref": "#/$defs/item" }
+    }
+  },
+  "$defs": {
+    "utcTimestamp": {
+      "description": "RFC 3339 timestamp in UTC.",
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?(Z|\\+00:00)$"
+    },
+    "httpUrl": {
+      "type": "string",
+      "pattern": "^https?://[^\\s]+$"
+    },
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "url",
+        "source_id",
+        "domain",
+        "author",
+        "published_at",
+        "summary",
+        "lead_image",
+        "score",
+        "score_breakdown",
+        "extraction_status",
+        "display",
+        "word_count",
+        "content_path"
+      ],
+      "properties": {
+        "id": {
+          "description": "Article.id: the first 16 hex characters of the SHA-256 of the canonical URL. Stable across runs, so the client can key read state and offline copies on it.",
+          "type": "string",
+          "pattern": "^[0-9a-f]{16}$"
+        },
+        "title": {
+          "description": "Article.title (the feed's title, falling back to the extracted one).",
+          "type": "string",
+          "minLength": 1
+        },
+        "url": {
+          "description": "Article.canonical_url: the link to the original page.",
+          "$ref": "#/$defs/httpUrl"
+        },
+        "source_id": {
+          "description": "Source.id from config/sources.yaml, e.g. 'bbc-news'.",
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9_-]*$"
+        },
+        "domain": {
+          "description": "Host of the canonical URL without a leading 'www.', e.g. 'theguardian.com'. Shown as the publisher until sources have display names.",
+          "type": "string",
+          "minLength": 1
+        },
+        "author": {
+          "description": "Article.author, or null.",
+          "type": ["string", "null"]
+        },
+        "published_at": {
+          "description": "Article.published_at, or null when the publisher gave no usable date.",
+          "anyOf": [{ "$ref": "#/$defs/utcTimestamp" }, { "type": "null" }]
+        },
+        "summary": {
+          "description": "Article.summary: plain text from the feed (no HTML), or null.",
+          "type": ["string", "null"]
+        },
+        "lead_image": {
+          "description": "Article.lead_image: absolute URL of the publisher's image, or null.",
+          "anyOf": [{ "$ref": "#/$defs/httpUrl" }, { "type": "null" }]
+        },
+        "score": {
+          "description": "Article.score from the rank stage. Items are sorted by it, highest first.",
+          "type": "number"
+        },
+        "score_breakdown": {
+          "description": "Article.score_breakdown: named score components, e.g. 'topic:<name>', 'source', 'recency'. For explanation only; the client must not recompute the score from it. Never contains 'muted' (muted articles are left out).",
+          "type": "object",
+          "propertyNames": { "not": { "const": "muted" } },
+          "additionalProperties": { "type": "number" }
+        },
+        "extraction_status": {
+          "description": "Article.extraction.status. Clients may show it as a label (e.g. 'Subscriber only' for paywalled) and must tolerate values they don't know.",
+          "type": "string",
+          "enum": ["ok", "partial", "failed", "paywalled", "skipped", "pending"]
+        },
+        "display": {
+          "description": "How the client shows the item. 'article': open the cleaned content in the reader. 'link': show headline, summary and image, and open the original URL. Decided by the publish stage (ADR-0006, 'Display rule').",
+          "type": "string",
+          "enum": ["article", "link"]
+        },
+        "word_count": {
+          "description": "Words in the cleaned content, for a reading-time estimate. Null for 'link' items.",
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "content_path": {
+          "description": "For 'article' items, the path of the cleaned article HTML (a sanitised UTF-8 fragment) relative to feed.json in the same store. Null for 'link' items.",
+          "anyOf": [
+            { "type": "string", "pattern": "^articles/[0-9a-f]{16}\\.html$" },
+            { "type": "null" }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "display": { "const": "article" } } },
+          "then": {
+            "properties": {
+              "extraction_status": { "enum": ["ok", "partial"] },
+              "word_count": { "type": "integer" },
+              "content_path": { "type": "string" }
+            },
+            "if": { "properties": { "extraction_status": { "const": "partial" } } },
+            "then": { "properties": { "word_count": { "minimum": 150 } } }
+          },
+          "else": {
+            "properties": {
+              "word_count": { "type": "null" },
+              "content_path": { "type": "null" }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

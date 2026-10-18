@@ -185,6 +185,7 @@ Architecture decisions are recorded in `docs/adr/`. Read the relevant ADRs befor
 
 - `PROJECT_PLAN.md`: aims, requirements, architecture, phases, backlog strategy
 - `docs/adr/`: decision records
+- `docs/feed.schema.json`, `docs/feed.example.json`: the `feed.json` contract between the publish stage and the client (ADR-0006)
 - `config/sources.yaml`, `config/interests.yaml`: sources and ranking rules
 - `config/extraction.yaml`: per-domain extractor overrides
 - `config/url_params.yaml`: per-domain tracking-parameter rules for canonical URLs (evidence-backed only)
