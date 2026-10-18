@@ -23,6 +23,12 @@ docker build -f backend/Dockerfile -t newsfeed .
 docker run --rm newsfeed run
 ```
 
+### Settings
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `NEWSFEED_DEDUPE_WINDOW_DAYS` | `14` (at least 1) | Ingest dedupes against articles fetched in this many days, which bounds the reads per run on Firestore. Keep it at least as long as any `--since` you use (a longer `--since` widens it for that run). An older entry that reappears is never allowed to overwrite a stored article. |
+
 ### JavaScript rendering (optional)
 
 Domains flagged `render: playwright` in `config/extraction.yaml` are rendered in headless

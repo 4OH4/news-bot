@@ -39,6 +39,11 @@ class Settings(BaseSettings):
     )
     user_agent: str = Field(default=DEFAULT_USER_AGENT, min_length=1)
     concurrency: int = Field(default=8, ge=1, description="Worker threads in the extract stage.")
+    dedupe_window_days: int = Field(
+        default=14,
+        ge=1,
+        description="Ingest dedupes against articles fetched this many days back (bounds reads).",
+    )
     host_interval: float = Field(
         default=DEFAULT_MIN_INTERVAL,
         ge=0,

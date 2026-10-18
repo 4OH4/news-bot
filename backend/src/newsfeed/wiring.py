@@ -40,6 +40,7 @@ class Services:
     extractor: Extractor
     url_rules: UrlParamsConfig
     concurrency: int = 8
+    dedupe_window_days: int = 14
 
 
 def build_ingesters() -> dict[SourceType, SourceIngester]:
@@ -82,6 +83,7 @@ def open_services(settings: Settings) -> Iterator[Services]:
                 extractor=build_extractor(settings),
                 url_rules=load_url_params(settings.url_params_path),
                 concurrency=settings.concurrency,
+                dedupe_window_days=settings.dedupe_window_days,
             )
     finally:
         repository.close()
