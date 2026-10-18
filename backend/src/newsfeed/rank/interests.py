@@ -55,7 +55,9 @@ Keyword = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
 
 class _Frozen(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    # allow_inf_nan=False: YAML's .nan/.inf would otherwise pass the ge/gt
+    # bounds (or any bound-free field) and poison scores.
+    model_config = ConfigDict(extra="forbid", frozen=True, allow_inf_nan=False)
 
 
 def keyword_pattern(keyword: str) -> re.Pattern[str]:
