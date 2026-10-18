@@ -30,7 +30,7 @@ No single word count separates them. Showing a teaser as an article is the failu
 ### Files and location
 
 - The publish stage writes **one `feed.json`** at the blob key `feed.json`, at the root of the same `BlobStore` that holds the content. Locally that is `data/blobs/feed.json`.
-- It **first** writes a copy at `feeds/<run_id>.json`, then the fixed key, so a failed write leaves the previous `feed.json` in place. The copies record what the feed showed at each run, for debugging and for the Phase 4 comparison of ranking methods. Retention in Cloud Storage (for example a 30-day lifecycle rule) belongs to the infrastructure work; locally the copies are kept.
+- It **first** writes a copy at `feeds/<run_id>.json`, then the fixed key, so a failed write leaves the previous `feed.json` in place. The copies record what the feed showed at each run, for debugging and for the Phase 4 comparison of ranking methods. In Cloud Storage they are kept for 7 days, by the lifecycle rule ADR-0005 (#73) sets for `feeds/`; locally the copies are kept.
 - **Article content is not inlined.** Each article item gives `content_path`, the path of its cleaned HTML relative to `feed.json`: `articles/<id>.html`, the key the extract stage already writes. The client fetches it when the article is opened (or prefetches it for offline reading). This keeps the feed at about 1 KB per item, about 200 KB for a full feed before compression.
 
 ### Format
@@ -59,7 +59,7 @@ The JSON Schema in `docs/feed.schema.json` (draft 2020-12) is the authoritative 
 | `partial` under 150 words | `link` |
 | `paywalled`, `failed`, `skipped`, `pending` | `link` |
 
-An item is also a `link` when it has no stored content (`content_ref` is empty). For `link` items `word_count` and `content_path` are `null`, and the client shows title, summary and image and opens `url`.
+An item is also a `link` when it has no stored content: `content_ref` is empty, or its blob is missing because it has expired under ADR-0005 (#73). For `link` items `word_count` and `content_path` are `null`, and the client shows title, summary and image and opens `url`.
 
 The **`partial` cut-off is a single number, 150 words**, held as a named constant in the publish code. It is the default `min_words`, so a `partial` item becomes an article only on a domain whose `config/extraction.yaml` override raises `min_words` above 150, and in the live run every `partial` item is a link. The table above is why: at 100 words, 11 standfirsts, members-only previews and subscriber notices would open as if they were the article, including both 404 Media previews and an LWN subscriber notice. Domains whose short items really are complete, such as Nature news, are better handled with the per-domain `min_words` override that already exists (`nature.com: min_words: 80` would make all 12 `ok`), a change to `config/extraction.yaml` with its own evaluation run, than with a feed-wide threshold. The schema enforces the cut-off, so changing it means editing this ADR, the constant and the schema together; that is not a breaking change for the client.
 
