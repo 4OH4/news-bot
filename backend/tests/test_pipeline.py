@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -26,9 +26,12 @@ from newsfeed.models import (
 from newsfeed.pipeline import (
     NotAnArticleError,
     PageUnavailableError,
+    RunTally,
+    _known_ids,
     decode_html,
     extract_saved_url,
     fetch_page,
+    ingest_sources,
     inspect_url,
     run_pipeline,
 )
@@ -815,3 +818,99 @@ def test_fetch_page_decodes_and_returns_final_url() -> None:
     page = fetch_page(fetcher, "https://x.example.com/a")
 
     assert (page.html, page.final_url) == ("<p>hi</p>", "https://y.example.com/b")
+
+
+# --- Bounded dedupe lookup ------------------------------------------------------------
+
+
+class _RecordingRepository:
+    """Wraps a repository and records the ``since`` of each ``list_articles`` call."""
+
+    def __init__(self, inner: SqliteRepository) -> None:
+        self._inner = inner
+        self.since_args: list[datetime | None] = []
+
+    def list_articles(self, **kwargs: object) -> list[Article]:
+        self.since_args.append(kwargs.get("since"))  # type: ignore[arg-type]
+        return self._inner.list_articles(**kwargs)  # type: ignore[arg-type]
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(self._inner, name)
+
+
+def _stored(
+    repository: SqliteRepository, url: str, fetched_at: datetime, **changes: object
+) -> Article:
+    article = Article.model_validate(
+        {
+            "canonical_url": url,
+            "url": url,
+            "source_id": "gazette",
+            "title": "Stored",
+            "fetched_at": fetched_at,
+            **changes,
+        }
+    )
+    repository.upsert_article(article)
+    return article
+
+
+def test_known_ids_reads_only_the_window_including_the_boundary(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    now = datetime(2026, 10, 18, tzinfo=UTC)
+    services = _services(tmp_path, repository, _fetcher())
+    edge = _stored(repository, "https://e.example.com/edge", now - timedelta(days=14))
+    old = _stored(repository, "https://e.example.com/old", now - timedelta(days=14, seconds=1))
+    recent = _stored(repository, "https://e.example.com/recent", now - timedelta(days=1))
+
+    known = _known_ids(services, now - timedelta(days=14))
+
+    assert known == {edge.id, recent.id}
+    assert old.id not in known
+
+
+def test_ingest_uses_the_configured_window_and_since_widens_it(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    recording = _RecordingRepository(repository)
+    services = _services(tmp_path, recording, _fetcher(), dedupe_window_days=3)  # type: ignore[arg-type]
+    before = datetime.now(UTC)
+
+    ingest_sources(services, [], RunTally())
+    window = recording.since_args[-1]
+    assert window is not None
+    assert before - timedelta(days=3) <= window <= datetime.now(UTC) - timedelta(days=3)
+
+    long_ago = datetime(2020, 1, 1, tzinfo=UTC)
+    ingest_sources(services, [], RunTally(), since=long_ago)
+    assert recording.since_args[-1] == long_ago
+
+    recent = datetime.now(UTC) - timedelta(days=1)
+    ingest_sources(services, [], RunTally(), since=recent)
+    last = recording.since_args[-1]
+    assert last is not None and last < recent  # the window is wider than --since
+
+
+def test_old_article_that_reappears_keeps_its_stored_state(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    # Stored 30 days ago, so outside the 14-day window, but already extracted.
+    fetched = datetime.now(UTC) - timedelta(days=30)
+    stored = _stored(
+        repository,
+        "https://blog.example.org/2026/10/post",
+        fetched,
+        content_ref="blobs/post.html",
+        score=0.9,
+        extraction={"status": "ok", "method": "trafilatura", "word_count": 150},
+    )
+    services = _services(tmp_path, repository, _fetcher())
+    tally = RunTally()
+
+    ingest_sources(services, [SOURCE], tally)
+
+    assert repository.get_article(stored.id) == stored
+    assert len(repository.list_articles()) == 4  # the other entries are new
+    stats = tally.stats("run", fetched, fetched)
+    assert stats.stage_counts[PipelineStage.INGEST]["new"] == 3
