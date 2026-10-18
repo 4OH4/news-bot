@@ -6,7 +6,10 @@ Most domains use the default extractor chain. A domain listed in the file can:
 * ``render: playwright``: also try the JavaScript renderer (#15), after the
   static extractors;
 * ``mode: summary_only``: skip extraction and keep the feed summary;
-* ``min_words``: use a different word count threshold for ``ok``.
+* ``min_words``: use a different word count threshold for ``ok``;
+* ``paywall: true``: the domain answers subscriber-only pages with HTTP 403, so
+  the extract stage records a 403 from it as ``paywalled`` rather than
+  ``failed`` (HTTP 402 is ``paywalled`` on every domain).
 
 Domain keys are matched against the article URL's host with ``www.`` stripped,
 and a key also matches its subdomains: ``example.com`` applies to
@@ -80,6 +83,10 @@ class DomainOverride(BaseModel):
     min_words: Annotated[int, Field(ge=1)] | None = Field(
         default=None, description="Word count at or above which a result is ok."
     )
+    paywall: bool = Field(
+        default=False,
+        description="HTTP 403 from this domain means a subscriber-only page (status paywalled).",
+    )
 
     @field_validator("order")
     @classmethod
@@ -104,6 +111,8 @@ class DomainOverride(BaseModel):
                     ("order", self.order),
                     ("render", self.render),
                     ("min_words", self.min_words),
+                    # summary_only never fetches, so there is no 403 to interpret.
+                    ("paywall", self.paywall or None),
                 )
                 if value is not None
             ]
