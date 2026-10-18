@@ -1,0 +1,4195 @@
+{
+  "commit": "b7fb963",
+  "date": "2026-10-18",
+  "domains": {
+    "404media.co": {
+      "chain": {
+        "clean": 3,
+        "percent": 100.0,
+        "total": 3
+      },
+      "newspaper4k": {
+        "clean": 3,
+        "percent": 100.0,
+        "total": 3
+      },
+      "readability": {
+        "clean": 3,
+        "percent": 100.0,
+        "total": 3
+      },
+      "trafilatura": {
+        "clean": 3,
+        "percent": 100.0,
+        "total": 3
+      }
+    },
+    "aeon.co": {
+      "chain": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      },
+      "newspaper4k": {
+        "clean": 0,
+        "percent": 0.0,
+        "total": 4
+      },
+      "readability": {
+        "clean": 0,
+        "percent": 0.0,
+        "total": 4
+      },
+      "trafilatura": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      }
+    },
+    "arstechnica.com": {
+      "chain": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      },
+      "newspaper4k": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      },
+      "readability": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      },
+      "trafilatura": {
+        "clean": 3,
+        "percent": 75.0,
+        "total": 4
+      }
+    },
+    "bbc.co.uk": {
+      "chain": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      },
+      "newspaper4k": {
+        "clean": 3,
+        "percent": 75.0,
+        "total": 4
+      },
+      "readability": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      },
+      "trafilatura": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      }
+    },
+    "bbc.com": {
+      "chain": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      },
+      "newspaper4k": {
+        "clean": 3,
+        "percent": 75.0,
+        "total": 4
+      },
+      "readability": {
+        "clean": 0,
+        "percent": 0.0,
+        "total": 4
+      },
+      "trafilatura": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      }
+    },
+    "blog.cloudflare.com": {
+      "chain": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      },
+      "newspaper4k": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      },
+      "readability": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      },
+      "trafilatura": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      }
+    },
+    "businessinsider.com": {
+      "chain": {
+        "clean": 1,
+        "percent": 100.0,
+        "total": 1
+      },
+      "newspaper4k": {
+        "clean": 0,
+        "percent": 0.0,
+        "total": 1
+      },
+      "readability": {
+        "clean": 0,
+        "percent": 0.0,
+        "total": 1
+      },
+      "trafilatura": {
+        "clean": 1,
+        "percent": 100.0,
+        "total": 1
+      }
+    },
+    "carbonbrief.org": {
+      "chain": {
+        "clean": 3,
+        "percent": 100.0,
+        "total": 3
+      },
+      "newspaper4k": {
+        "clean": 2,
+        "percent": 66.7,
+        "total": 3
+      },
+      "readability": {
+        "clean": 3,
+        "percent": 100.0,
+        "total": 3
+      },
+      "trafilatura": {
+        "clean": 3,
+        "percent": 100.0,
+        "total": 3
+      }
+    },
+    "dw.com": {
+      "chain": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      },
+      "newspaper4k": {
+        "clean": 3,
+        "percent": 75.0,
+        "total": 4
+      },
+      "readability": {
+        "clean": 3,
+        "percent": 75.0,
+        "total": 4
+      },
+      "trafilatura": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      }
+    },
+    "independent.co.uk": {
+      "chain": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      },
+      "newspaper4k": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      },
+      "readability": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      },
+      "trafilatura": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      }
+    },
+    "inews.co.uk": {
+      "chain": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      },
+      "newspaper4k": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      },
+      "readability": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      },
+      "trafilatura": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      }
+    },
+    "interactive.carbonbrief.org": {
+      "chain": {
+        "clean": 1,
+        "percent": 100.0,
+        "total": 1
+      },
+      "newspaper4k": {
+        "clean": 1,
+        "percent": 100.0,
+        "total": 1
+      },
+      "readability": {
+        "clean": 1,
+        "percent": 100.0,
+        "total": 1
+      },
+      "trafilatura": {
+        "clean": 1,
+        "percent": 100.0,
+        "total": 1
+      }
+    },
+    "jvns.ca": {
+      "chain": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      },
+      "newspaper4k": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      },
+      "readability": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      },
+      "trafilatura": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      }
+    },
+    "lwn.net": {
+      "chain": {
+        "clean": 2,
+        "percent": 100.0,
+        "total": 2
+      },
+      "newspaper4k": {
+        "clean": 2,
+        "percent": 100.0,
+        "total": 2
+      },
+      "readability": {
+        "clean": 2,
+        "percent": 100.0,
+        "total": 2
+      },
+      "trafilatura": {
+        "clean": 2,
+        "percent": 100.0,
+        "total": 2
+      }
+    },
+    "martinfowler.com": {
+      "chain": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      },
+      "newspaper4k": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      },
+      "readability": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      },
+      "trafilatura": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      }
+    },
+    "nature.com": {
+      "chain": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      },
+      "newspaper4k": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      },
+      "readability": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      },
+      "trafilatura": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      }
+    },
+    "newyorker.com": {
+      "chain": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      },
+      "newspaper4k": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      },
+      "readability": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      },
+      "trafilatura": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      }
+    },
+    "noahpinion.blog": {
+      "chain": {
+        "clean": 3,
+        "percent": 100.0,
+        "total": 3
+      },
+      "newspaper4k": {
+        "clean": 3,
+        "percent": 100.0,
+        "total": 3
+      },
+      "readability": {
+        "clean": 3,
+        "percent": 100.0,
+        "total": 3
+      },
+      "trafilatura": {
+        "clean": 3,
+        "percent": 100.0,
+        "total": 3
+      }
+    },
+    "phys.org": {
+      "chain": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      },
+      "newspaper4k": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      },
+      "readability": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      },
+      "trafilatura": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      }
+    },
+    "quantamagazine.org": {
+      "chain": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      },
+      "newspaper4k": {
+        "clean": 2,
+        "percent": 50.0,
+        "total": 4
+      },
+      "readability": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      },
+      "trafilatura": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      }
+    },
+    "simonwillison.net": {
+      "chain": {
+        "clean": 3,
+        "percent": 75.0,
+        "total": 4
+      },
+      "newspaper4k": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      },
+      "readability": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      },
+      "trafilatura": {
+        "clean": 3,
+        "percent": 75.0,
+        "total": 4
+      }
+    },
+    "technologyreview.com": {
+      "chain": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      },
+      "newspaper4k": {
+        "clean": 2,
+        "percent": 50.0,
+        "total": 4
+      },
+      "readability": {
+        "clean": 3,
+        "percent": 75.0,
+        "total": 4
+      },
+      "trafilatura": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      }
+    },
+    "theguardian.com": {
+      "chain": {
+        "clean": 8,
+        "percent": 100.0,
+        "total": 8
+      },
+      "newspaper4k": {
+        "clean": 8,
+        "percent": 100.0,
+        "total": 8
+      },
+      "readability": {
+        "clean": 8,
+        "percent": 100.0,
+        "total": 8
+      },
+      "trafilatura": {
+        "clean": 8,
+        "percent": 100.0,
+        "total": 8
+      }
+    },
+    "theverge.com": {
+      "chain": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      },
+      "newspaper4k": {
+        "clean": 2,
+        "percent": 50.0,
+        "total": 4
+      },
+      "readability": {
+        "clean": 3,
+        "percent": 75.0,
+        "total": 4
+      },
+      "trafilatura": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      }
+    },
+    "wired.com": {
+      "chain": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      },
+      "newspaper4k": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      },
+      "readability": {
+        "clean": 3,
+        "percent": 75.0,
+        "total": 4
+      },
+      "trafilatura": {
+        "clean": 4,
+        "percent": 100.0,
+        "total": 4
+      }
+    }
+  },
+  "entries": {
+    "evaluated": 98,
+    "not_snapshotted": [
+      "lwn-2026-10-15-vendor-hooks-in-the-android-kernel",
+      "lwn-2026-10-16-safe-self-referential-data-structures-in"
+    ],
+    "total": 100,
+    "unreadable": []
+  },
+  "extractors": {
+    "chain": {
+      "clean": 92,
+      "failures": {
+        "word_count_high": 1
+      },
+      "percent": 98.9,
+      "statuses": {
+        "ok": 89,
+        "partial": 4
+      },
+      "total": 93
+    },
+    "newspaper4k": {
+      "clean": 78,
+      "failures": {
+        "boilerplate": 1,
+        "extraction_failed": 1,
+        "missing_snippet": 4,
+        "title_mismatch": 5,
+        "word_count_low": 9
+      },
+      "percent": 83.9,
+      "statuses": {
+        "failed": 1,
+        "ok": 84,
+        "partial": 8
+      },
+      "total": 93
+    },
+    "readability": {
+      "clean": 80,
+      "failures": {
+        "boilerplate": 1,
+        "missing_snippet": 5,
+        "title_mismatch": 6,
+        "word_count_low": 7
+      },
+      "percent": 86.0,
+      "statuses": {
+        "ok": 86,
+        "partial": 7
+      },
+      "total": 93
+    },
+    "trafilatura": {
+      "clean": 91,
+      "failures": {
+        "word_count_high": 1,
+        "word_count_low": 1
+      },
+      "percent": 97.8,
+      "statuses": {
+        "ok": 88,
+        "partial": 5
+      },
+      "total": 93
+    }
+  },
+  "headline": {
+    "clean": 92,
+    "extractor": "chain",
+    "failures": {
+      "word_count_high": 1
+    },
+    "percent": 98.9,
+    "statuses": {
+      "ok": 89,
+      "partial": 4
+    },
+    "total": 93
+  },
+  "outcomes": {
+    "404media-2026-10-16-heres-what-telegram-giving-data-to": {
+      "chain": {
+        "clean": false,
+        "details": [
+          "status paywalled"
+        ],
+        "failures": [
+          "extraction_failed"
+        ],
+        "paywalled": true,
+        "status": "paywalled",
+        "words": 112
+      },
+      "newspaper4k": {
+        "clean": false,
+        "details": [
+          "56 words < 60"
+        ],
+        "failures": [
+          "word_count_low"
+        ],
+        "paywalled": true,
+        "status": "partial",
+        "words": 56
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": true,
+        "status": "partial",
+        "words": 110
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": true,
+        "status": "partial",
+        "words": 112
+      }
+    },
+    "404media-2026-10-16-podcast-cops-can-use-ai-to": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 167
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 282
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 203
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 167
+      }
+    },
+    "404media-2026-10-16-undercover-cops-using-ai-generated-child": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 646
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 604
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 686
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 646
+      }
+    },
+    "404media-2026-10-17-this-might-be-the-earliest-known": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1333
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1318
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1422
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1333
+      }
+    },
+    "aeon-2026-10-12-does-the-principle-of-sufficient-reason": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 4595
+      },
+      "newspaper4k": {
+        "clean": false,
+        "details": [
+          "title similarity 0.12 < 0.9"
+        ],
+        "failures": [
+          "title_mismatch"
+        ],
+        "paywalled": false,
+        "status": "ok",
+        "words": 4573
+      },
+      "readability": {
+        "clean": false,
+        "details": [
+          "title similarity 0.12 < 0.9"
+        ],
+        "failures": [
+          "title_mismatch"
+        ],
+        "paywalled": false,
+        "status": "ok",
+        "words": 4588
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 4595
+      }
+    },
+    "aeon-2026-10-13-the-more-we-rely-on-tech": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 3439
+      },
+      "newspaper4k": {
+        "clean": false,
+        "details": [
+          "title similarity 0.32 < 0.9"
+        ],
+        "failures": [
+          "title_mismatch"
+        ],
+        "paywalled": false,
+        "status": "ok",
+        "words": 3432
+      },
+      "readability": {
+        "clean": false,
+        "details": [
+          "title similarity 0.32 < 0.9"
+        ],
+        "failures": [
+          "title_mismatch"
+        ],
+        "paywalled": false,
+        "status": "ok",
+        "words": 3432
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 3439
+      }
+    },
+    "aeon-2026-10-15-hohle-fels-cave-illuminates-the-rich": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 291
+      },
+      "newspaper4k": {
+        "clean": false,
+        "details": [
+          "title similarity 0.89 < 0.9",
+          "128 words < 130"
+        ],
+        "failures": [
+          "title_mismatch",
+          "word_count_low"
+        ],
+        "paywalled": false,
+        "status": "partial",
+        "words": 128
+      },
+      "readability": {
+        "clean": false,
+        "details": [
+          "title similarity 0.89 < 0.9",
+          "128 words < 130"
+        ],
+        "failures": [
+          "title_mismatch",
+          "word_count_low"
+        ],
+        "paywalled": false,
+        "status": "partial",
+        "words": 128
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 291
+      }
+    },
+    "aeon-2026-10-16-the-politics-of-masculinity-at-the": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 3402
+      },
+      "newspaper4k": {
+        "clean": false,
+        "details": [
+          "title similarity 0.31 < 0.9"
+        ],
+        "failures": [
+          "title_mismatch"
+        ],
+        "paywalled": false,
+        "status": "ok",
+        "words": 3366
+      },
+      "readability": {
+        "clean": false,
+        "details": [
+          "title similarity 0.31 < 0.9"
+        ],
+        "failures": [
+          "title_mismatch"
+        ],
+        "paywalled": false,
+        "status": "ok",
+        "words": 3396
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 3402
+      }
+    },
+    "ars-2026-10-16-openai-models-hacked-a-crypto-wallet": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 820
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 820
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 820
+      },
+      "trafilatura": {
+        "clean": false,
+        "details": [
+          "251 words < 650"
+        ],
+        "failures": [
+          "word_count_low"
+        ],
+        "paywalled": false,
+        "status": "ok",
+        "words": 251
+      }
+    },
+    "ars-2026-10-16-polymarket-saw-600-million-in-election": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1223
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1223
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1223
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1245
+      }
+    },
+    "ars-2026-10-17-science-says-your-boss-should-talk": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1938
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1938
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1938
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1926
+      }
+    },
+    "ars-2026-10-17-why-biowares-neverwinter-nights-still-has": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 2675
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 2587
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 2675
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 2786
+      }
+    },
+    "bbc-2026-10-16-toxic-algorithms-wouldn-t-let-them": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1982
+      },
+      "newspaper4k": {
+        "clean": false,
+        "details": [
+          "1396 words < 1450"
+        ],
+        "failures": [
+          "word_count_low"
+        ],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1396
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1824
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1982
+      }
+    },
+    "bbc-2026-10-16-why-people-who-have-never-smoked": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1291
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1182
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1188
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1291
+      }
+    },
+    "bbc-2026-10-17-more-nhs-staff-sacked-over-attacks": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 980
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 670
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 841
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 980
+      }
+    },
+    "bbc-2026-10-17-watch-mood-has-really-shifted-as": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "partial",
+        "words": 131
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "partial",
+        "words": 95
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "partial",
+        "words": 100
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "partial",
+        "words": 131
+      }
+    },
+    "bbcfuture-2026-10-12-how-can-i-eat-30-plants": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1466
+      },
+      "newspaper4k": {
+        "clean": false,
+        "details": [
+          "1086 words < 1170"
+        ],
+        "failures": [
+          "word_count_low"
+        ],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1086
+      },
+      "readability": {
+        "clean": false,
+        "details": [
+          "1 of 1 snippets missing (#1)",
+          "186 words < 1170"
+        ],
+        "failures": [
+          "missing_snippet",
+          "word_count_low"
+        ],
+        "paywalled": false,
+        "status": "ok",
+        "words": 186
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1466
+      }
+    },
+    "bbcfuture-2026-10-14-how-metagenomics-can-identify-almost-every": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1246
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1007
+      },
+      "readability": {
+        "clean": false,
+        "details": [
+          "1 of 1 snippets missing (#1)",
+          "158 words < 1000"
+        ],
+        "failures": [
+          "missing_snippet",
+          "word_count_low"
+        ],
+        "paywalled": false,
+        "status": "ok",
+        "words": 158
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1246
+      }
+    },
+    "bbcfuture-2026-10-15-the-strange-new-battle-over-ais": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1504
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1255
+      },
+      "readability": {
+        "clean": false,
+        "details": [
+          "1 of 1 snippets missing (#1)",
+          "484 words < 1200"
+        ],
+        "failures": [
+          "missing_snippet",
+          "word_count_low"
+        ],
+        "paywalled": false,
+        "status": "ok",
+        "words": 484
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1504
+      }
+    },
+    "bbcfuture-2026-10-16-sharks-washed-up-one-after-another": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 2307
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 2115
+      },
+      "readability": {
+        "clean": false,
+        "details": [
+          "1 of 1 snippets missing (#1)",
+          "181 words < 1840"
+        ],
+        "failures": [
+          "missing_snippet",
+          "word_count_low"
+        ],
+        "paywalled": false,
+        "status": "ok",
+        "words": 181
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 2307
+      }
+    },
+    "bi-2026-10-17-anthropic-ai-robots-gardening-jobs-automation": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": true,
+        "status": "ok",
+        "words": 174
+      },
+      "newspaper4k": {
+        "clean": false,
+        "details": [
+          "title similarity 0.43 < 0.9"
+        ],
+        "failures": [
+          "title_mismatch"
+        ],
+        "paywalled": true,
+        "status": "ok",
+        "words": 174
+      },
+      "readability": {
+        "clean": false,
+        "details": [
+          "title similarity 0.43 < 0.9"
+        ],
+        "failures": [
+          "title_mismatch"
+        ],
+        "paywalled": true,
+        "status": "ok",
+        "words": 174
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": true,
+        "status": "ok",
+        "words": 174
+      }
+    },
+    "bi-2026-10-17-building-house-with-husband-money-differences": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": true,
+        "status": "ok",
+        "words": 802
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": true,
+        "status": "ok",
+        "words": 802
+      },
+      "readability": {
+        "clean": false,
+        "details": [
+          "title similarity 0.30 < 0.9"
+        ],
+        "failures": [
+          "title_mismatch"
+        ],
+        "paywalled": true,
+        "status": "ok",
+        "words": 842
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": true,
+        "status": "ok",
+        "words": 802
+      }
+    },
+    "bi-2026-10-17-couple-wont-share-bank-account-finances": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": true,
+        "status": "ok",
+        "words": 761
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": true,
+        "status": "ok",
+        "words": 761
+      },
+      "readability": {
+        "clean": false,
+        "details": [
+          "title similarity 0.72 < 0.9"
+        ],
+        "failures": [
+          "title_mismatch"
+        ],
+        "paywalled": true,
+        "status": "ok",
+        "words": 771
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": true,
+        "status": "ok",
+        "words": 761
+      }
+    },
+    "bi-2026-10-17-greenland-cruise-ship-iceberg-arctic-titanic": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "partial",
+        "words": 119
+      },
+      "newspaper4k": {
+        "clean": false,
+        "details": [
+          "55 words < 60"
+        ],
+        "failures": [
+          "word_count_low"
+        ],
+        "paywalled": false,
+        "status": "partial",
+        "words": 55
+      },
+      "readability": {
+        "clean": false,
+        "details": [
+          "53 words < 60"
+        ],
+        "failures": [
+          "word_count_low"
+        ],
+        "paywalled": false,
+        "status": "partial",
+        "words": 53
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "partial",
+        "words": 119
+      }
+    },
+    "carbonbrief-2026-09-28-analysis-lula-presidency-saved-at-least": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1865
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1758
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1882
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1865
+      }
+    },
+    "carbonbrief-2026-10-09-factcheck-uk-conservatives-double-the-cost": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 776
+      },
+      "newspaper4k": {
+        "clean": false,
+        "details": [
+          "title similarity 0.76 < 0.9"
+        ],
+        "failures": [
+          "title_mismatch"
+        ],
+        "paywalled": false,
+        "status": "ok",
+        "words": 721
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 761
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 776
+      }
+    },
+    "carbonbrief-2026-10-12-interactive-tracking-negotiating-texts-at-the": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 645
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 587
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 631
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 645
+      }
+    },
+    "carbonbrief-2026-10-15-nature-targets-2030-progress": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 4601
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 4605
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 4487
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 4601
+      }
+    },
+    "cloudflare-2026-10-13-d1-control-plane": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 4802
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 4657
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 4796
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 4802
+      }
+    },
+    "cloudflare-2026-10-14-yandex-outage": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1637
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1479
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1637
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1637
+      }
+    },
+    "cloudflare-2026-10-15-deploy-with-void": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1378
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1179
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1334
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1378
+      }
+    },
+    "cloudflare-2026-10-16-verified-bots-accountability": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1040
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1020
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1040
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1040
+      }
+    },
+    "dw-2026-10-15-germany-news-train-station-alcohol-ban": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 2503
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 2597
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 2561
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 2503
+      }
+    },
+    "dw-2026-10-17-china-s-influence-in-the-gaming": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1215
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1202
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1294
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1215
+      }
+    },
+    "dw-2026-10-17-india-news-cjp-founder-released-a": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 2210
+      },
+      "newspaper4k": {
+        "clean": false,
+        "details": [
+          "3 boilerplate phrases > 2"
+        ],
+        "failures": [
+          "boilerplate"
+        ],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1986
+      },
+      "readability": {
+        "clean": false,
+        "details": [
+          "3 boilerplate phrases > 2"
+        ],
+        "failures": [
+          "boilerplate"
+        ],
+        "paywalled": false,
+        "status": "ok",
+        "words": 2144
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 2210
+      }
+    },
+    "dw-2026-10-17-pope-leo-leaves-hospital-after-cancer": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 309
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 251
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 325
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 309
+      }
+    },
+    "fowler-2026-09-29-sensibledefault": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 355
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 304
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 350
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 355
+      }
+    },
+    "fowler-2026-10-05-fragments": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1611
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1604
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1604
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1611
+      }
+    },
+    "fowler-2026-10-13-are-harnesses-worth-the-cost": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 3935
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 3464
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 3660
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 3935
+      }
+    },
+    "fowler-2026-10-15-software-meets-hardware": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 2937
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 2546
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 2658
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 2937
+      }
+    },
+    "guardian-2026-10-14-guinea-bissau-vaccine-hepatitis-b-trial": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1076
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1018
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1076
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1076
+      }
+    },
+    "guardian-2026-10-14-indias-cockroach-protesters-defy-modis-crackdown": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "partial",
+        "words": 116
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "partial",
+        "words": 111
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "partial",
+        "words": 111
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "partial",
+        "words": 116
+      }
+    },
+    "guardian-2026-10-15-senegal-homosexuality-criminalised-anti-lgbtq-arrests": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 739
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 693
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 766
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 739
+      }
+    },
+    "guardian-2026-10-17-california-datacenter-imperial": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 2606
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 2597
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 2740
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 2606
+      }
+    },
+    "guardian-lr-2026-10-08-a-death-a-plagiarism-scandal-and": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 5252
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 5299
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 5326
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 5252
+      }
+    },
+    "guardian-lr-2026-10-13-i-was-kidnapped-and-held-hostage": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 5476
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 5476
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 5526
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 5476
+      }
+    },
+    "guardian-lr-2026-10-15-a-perfect-storm-how-the-super": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 3753
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 3746
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 3810
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 3753
+      }
+    },
+    "guardian-lr-2026-10-16-a-completely-unique-opportunity-the-secretive": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "partial",
+        "words": 70
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "partial",
+        "words": 40
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "partial",
+        "words": 40
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "partial",
+        "words": 70
+      }
+    },
+    "independent-2026-10-17-accountant-edward-franklin-emails-abuse": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 496
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 446
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 494
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 496
+      }
+    },
+    "independent-2026-10-17-burnham-blair-andrew-neil-dud": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1159
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1069
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1126
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1159
+      }
+    },
+    "independent-2026-10-17-clacton-murder-daniel-fox-valley-farm": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 215
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 172
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 252
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 215
+      }
+    },
+    "independent-2026-10-17-russell-brand-trial-news-court": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1079
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 993
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1133
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1079
+      }
+    },
+    "inews-2026-10-17-areas-risk-missile-attacks-not-ready": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1301
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1301
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1353
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1301
+      }
+    },
+    "inews-2026-10-17-poll-shows-badenoch-bounce-punishing-reform": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 886
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 886
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 919
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 886
+      }
+    },
+    "inews-2026-10-17-tourists-flocking-see-ukraines-darkest-sites": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1134
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1134
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1205
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1134
+      }
+    },
+    "inews-2026-10-17-wrong-midlife-women-not-just-menopause": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 802
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 802
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 802
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 802
+      }
+    },
+    "jvns-2026-05-04-css-colour-palettes": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 254
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 247
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 229
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 254
+      }
+    },
+    "jvns-2026-05-15-moving-away-from-tailwind-and-learning": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 2037
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 2006
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1923
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 2037
+      }
+    },
+    "jvns-2026-07-17-learning-about-running-sqlite": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 984
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 983
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 953
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 984
+      }
+    },
+    "jvns-2026-09-27-replacing-the-old-battery-on-rechargeable": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1109
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1109
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1063
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1109
+      }
+    },
+    "lwn-2026-10-15-ubuntu-26-10-released": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 150
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "partial",
+        "words": 65
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 150
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "partial",
+        "words": 144
+      }
+    },
+    "lwn-2026-10-16-introducing-gnome-os-preview": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 240
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 241
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 244
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 240
+      }
+    },
+    "mittr-2026-10-16-kids-are-outsmarting-social-media-bans": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1520
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1234
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1447
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1520
+      }
+    },
+    "mittr-2026-10-16-love-is-infrastructure-fiction-charlie-jane": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 5769
+      },
+      "newspaper4k": {
+        "clean": false,
+        "details": [
+          "1 of 1 snippets missing (#1)",
+          "4244 words < 4540"
+        ],
+        "failures": [
+          "missing_snippet",
+          "word_count_low"
+        ],
+        "paywalled": false,
+        "status": "ok",
+        "words": 4244
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 5681
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 5769
+      }
+    },
+    "mittr-2026-10-16-prima-implant-restores-sight-macular-degeneration": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 590
+      },
+      "newspaper4k": {
+        "clean": false,
+        "details": [
+          "178 words < 400"
+        ],
+        "failures": [
+          "word_count_low"
+        ],
+        "paywalled": false,
+        "status": "ok",
+        "words": 178
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 506
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 590
+      }
+    },
+    "mittr-2026-10-16-the-download-failed-social-media-bans": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1185
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1009
+      },
+      "readability": {
+        "clean": false,
+        "details": [
+          "title similarity 0.41 < 0.9"
+        ],
+        "failures": [
+          "title_mismatch"
+        ],
+        "paywalled": false,
+        "status": "ok",
+        "words": 895
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1185
+      }
+    },
+    "nature-2026-10-15-world-s-timekeepers-upend-how-they": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 312
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 255
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 272
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 312
+      }
+    },
+    "nature-2026-10-16-memory-stays-strong-in-old-age": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 504
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 441
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 468
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 504
+      }
+    },
+    "nature-2026-10-16-phd-students-who-write-dissertation-with": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 622
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 525
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 537
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 622
+      }
+    },
+    "nature-2026-10-16-the-pianist-who-never-played": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 691
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 691
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 691
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 691
+      }
+    },
+    "newyorker-2026-10-17-elon-musk-is-trying-to-buy": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 202
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 231
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 207
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 202
+      }
+    },
+    "newyorker-2026-10-17-my-year-of-ocd": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 4996
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 4996
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 4996
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 4996
+      }
+    },
+    "newyorker-2026-10-17-we-can-never-understand-elizabeth-holmes": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1578
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1578
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1578
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1578
+      }
+    },
+    "newyorker-2026-10-17-your-next-vacay-is-the-strait": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 697
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 697
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 697
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 697
+      }
+    },
+    "noahpinion-2026-10-05-what-the-ai-boom-is-doing": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 2424
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 2351
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 2364
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 2424
+      }
+    },
+    "noahpinion-2026-10-09-maybe-the-rapture-is-already-here": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1567
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1560
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1567
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1567
+      }
+    },
+    "noahpinion-2026-10-13-a-nobel-for-new-keynesian-macro": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 2997
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 2771
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 2772
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 2997
+      }
+    },
+    "noahpinion-2026-10-15-ai-vs-the-railroads": {
+      "chain": {
+        "clean": false,
+        "details": [
+          "status paywalled"
+        ],
+        "failures": [
+          "extraction_failed"
+        ],
+        "paywalled": true,
+        "status": "paywalled",
+        "words": 860
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": true,
+        "status": "ok",
+        "words": 849
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": true,
+        "status": "ok",
+        "words": 930
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": true,
+        "status": "ok",
+        "words": 860
+      }
+    },
+    "physorg-2026-10-17-australian-scavengers-dont-approach-carcass": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 816
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 729
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 926
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 816
+      }
+    },
+    "physorg-2026-10-17-lone-starless-cloud-dark-galaxy": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 716
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 593
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 834
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 716
+      }
+    },
+    "physorg-2026-10-17-popular-song-lyrics-emotion-analysis": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 562
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 500
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 616
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 562
+      }
+    },
+    "physorg-2026-10-17-red-sensitive-pigments-mantis-shrimp": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 962
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 899
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1074
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 962
+      }
+    },
+    "quanta-2026-10-12-is-attention-the-essence-of-intelligence": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 2353
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 2303
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 2395
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 2353
+      }
+    },
+    "quanta-2026-10-14-triplet-of-ghostly-galaxies-hints-at": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1728
+      },
+      "newspaper4k": {
+        "clean": false,
+        "details": [
+          "1 of 1 snippets missing (#1)",
+          "492 words < 1380"
+        ],
+        "failures": [
+          "missing_snippet",
+          "word_count_low"
+        ],
+        "paywalled": false,
+        "status": "ok",
+        "words": 492
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1809
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1728
+      }
+    },
+    "quanta-2026-10-15-how-do-fungi-keep-the-planet": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 9930
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 9886
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 10105
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 9930
+      }
+    },
+    "quanta-2026-10-16-he-wants-ai-benchmarking-to-be": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1813
+      },
+      "newspaper4k": {
+        "clean": false,
+        "details": [
+          "1 of 1 snippets missing (#1)",
+          "355 words < 1450"
+        ],
+        "failures": [
+          "missing_snippet",
+          "word_count_low"
+        ],
+        "paywalled": false,
+        "status": "ok",
+        "words": 355
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1839
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1813
+      }
+    },
+    "verge-2026-10-16-apple-iphone-duo-news-announcements": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 2061
+      },
+      "newspaper4k": {
+        "clean": false,
+        "details": [
+          "1 of 1 snippets missing (#1)",
+          "59 words < 1600"
+        ],
+        "failures": [
+          "missing_snippet",
+          "word_count_low"
+        ],
+        "paywalled": false,
+        "status": "partial",
+        "words": 59
+      },
+      "readability": {
+        "clean": false,
+        "details": [
+          "1 of 1 snippets missing (#1)",
+          "95 words < 1600"
+        ],
+        "failures": [
+          "missing_snippet",
+          "word_count_low"
+        ],
+        "paywalled": false,
+        "status": "partial",
+        "words": 95
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 2061
+      }
+    },
+    "verge-2026-10-17-jad-abumrad-radiolab-dolly-parton-fela": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1141
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1070
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1094
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1141
+      }
+    },
+    "verge-2026-10-17-meta-removes-language-that-may-have": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 307
+      },
+      "newspaper4k": {
+        "clean": false,
+        "details": [
+          "status failed"
+        ],
+        "failures": [
+          "extraction_failed"
+        ],
+        "paywalled": false,
+        "status": "failed",
+        "words": 0
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 254
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 307
+      }
+    },
+    "verge-2026-10-17-spacex-starlink-elon-musk-cell-carrier": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 9547
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 9483
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 9500
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 9547
+      }
+    },
+    "willison-2026-10-13-redesigning-source-control-at-anthropic": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 448
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 388
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 388
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 448
+      }
+    },
+    "willison-2026-10-15-anthropic-tells-investors": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 295
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 215
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 241
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 295
+      }
+    },
+    "willison-2026-10-15-latex": {
+      "chain": {
+        "clean": false,
+        "details": [
+          "470 words > 410"
+        ],
+        "failures": [
+          "word_count_high"
+        ],
+        "paywalled": false,
+        "status": "ok",
+        "words": 470
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 314
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 330
+      },
+      "trafilatura": {
+        "clean": false,
+        "details": [
+          "470 words > 410"
+        ],
+        "failures": [
+          "word_count_high"
+        ],
+        "paywalled": false,
+        "status": "ok",
+        "words": 470
+      }
+    },
+    "willison-2026-10-16-code-review": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 177
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "partial",
+        "words": 103
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "partial",
+        "words": 123
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 177
+      }
+    },
+    "wired-2026-10-16-leap-second-is-abolished-bipm-says": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 826
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 826
+      },
+      "readability": {
+        "clean": false,
+        "details": [
+          "title similarity 0.52 < 0.9"
+        ],
+        "failures": [
+          "title_mismatch"
+        ],
+        "paywalled": false,
+        "status": "ok",
+        "words": 826
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 826
+      }
+    },
+    "wired-2026-10-17-best-automatic-cat-feeders": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1851
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1760
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1329
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 1851
+      }
+    },
+    "wired-2026-10-17-kernel-panic-encryption-is-getting-squeezed": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 914
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 914
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 914
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 914
+      }
+    },
+    "wired-2026-10-17-why-ai-isnt-ready-to-tackle": {
+      "chain": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 3521
+      },
+      "newspaper4k": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 3077
+      },
+      "readability": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 3533
+      },
+      "trafilatura": {
+        "clean": true,
+        "details": [],
+        "failures": [],
+        "paywalled": false,
+        "status": "ok",
+        "words": 3521
+      }
+    }
+  },
+  "paywalled": {
+    "chain": {
+      "clean": 3,
+      "detected_paywall": 2,
+      "total": 5
+    },
+    "newspaper4k": {
+      "clean": 3,
+      "detected_paywall": 0,
+      "total": 5
+    },
+    "readability": {
+      "clean": 2,
+      "detected_paywall": 0,
+      "total": 5
+    },
+    "trafilatura": {
+      "clean": 5,
+      "detected_paywall": 0,
+      "total": 5
+    }
+  },
+  "schema": 1,
+  "slowest": [
+    {
+      "entry": "lwn-2026-10-15-ubuntu-26-10-released",
+      "extractor": "trafilatura",
+      "seconds": 0.294
+    },
+    {
+      "entry": "wired-2026-10-17-best-automatic-cat-feeders",
+      "extractor": "newspaper4k",
+      "seconds": 0.292
+    },
+    {
+      "entry": "verge-2026-10-17-spacex-starlink-elon-musk-cell-carrier",
+      "extractor": "newspaper4k",
+      "seconds": 0.29
+    },
+    {
+      "entry": "cloudflare-2026-10-13-d1-control-plane",
+      "extractor": "newspaper4k",
+      "seconds": 0.269
+    },
+    {
+      "entry": "carbonbrief-2026-10-15-nature-targets-2030-progress",
+      "extractor": "newspaper4k",
+      "seconds": 0.267
+    }
+  ]
+}
