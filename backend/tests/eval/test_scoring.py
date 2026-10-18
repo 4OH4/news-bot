@@ -211,3 +211,11 @@ def test_page_titles_reads_meta_and_headings_and_survives_bad_html() -> None:
     assert "Invented Headline | Example Daily" in meta
     assert headings == ("Example Daily", "Invented Headline")
     assert page_titles("") == ((), ())
+
+
+def test_page_titles_reads_xhtml_with_encoding_declaration() -> None:
+    xhtml = '<?xml version="1.0" encoding="UTF-8"?>\n' + TITLE_PAGE
+
+    assert page_titles(xhtml) == page_titles(TITLE_PAGE)
+    assert page_titles(xhtml)[1] == ("Example Daily", "Invented Headline")
+    assert page_titles('<?xml version="1.0" encoding="UTF-8"?>') == ((), ())
