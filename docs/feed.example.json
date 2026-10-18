@@ -1,0 +1,111 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-10-18T09:00:12Z",
+  "run_id": "20261018T090000-000000",
+  "items": [
+    {
+      "id": "2dd50c8ba0dfa7df",
+      "title": "City trials solar canopies over bus stops",
+      "url": "https://news.example.com/2026/10/18/city-trials-solar-canopies-over-bus-stops",
+      "source_id": "example-news",
+      "domain": "news.example.com",
+      "author": "A. Writer",
+      "published_at": "2026-10-18T06:30:00Z",
+      "summary": "An invented pilot scheme fits twelve bus shelters with solar panels that power their own lights and a phone charger.",
+      "lead_image": "https://news.example.com/images/solar-bus-stop.jpg",
+      "score": 3.42,
+      "score_breakdown": {
+        "topic:energy": 2.0,
+        "topic:cities": 0.5,
+        "source": 1.2,
+        "recency": 0.95
+      },
+      "extraction_status": "ok",
+      "display": "article",
+      "word_count": 812,
+      "content_path": "articles/2dd50c8ba0dfa7df.html"
+    },
+    {
+      "id": "1c472b87a4a7f210",
+      "title": "Tiny moss survives a year in orbit",
+      "url": "https://science.example.org/articles/tiny-moss-survives-a-year-in-orbit",
+      "source_id": "example-science",
+      "domain": "science.example.org",
+      "author": null,
+      "published_at": "2026-10-17T15:00:00Z",
+      "summary": "A made-up experiment left moss samples outside a space station for twelve months; most of them grew again on return.",
+      "lead_image": null,
+      "score": 2.1,
+      "score_breakdown": {
+        "topic:space": 1.5,
+        "source": 1.0,
+        "recency": 0.7
+      },
+      "extraction_status": "ok",
+      "display": "article",
+      "word_count": 433,
+      "content_path": "articles/1c472b87a4a7f210.html"
+    },
+    {
+      "id": "4cb59e059e0a84b8",
+      "title": "The chip shortage, explained",
+      "url": "https://tech.example.com/2026/10/chip-shortage-explained",
+      "source_id": "example-tech",
+      "domain": "tech.example.com",
+      "author": "B. Reporter",
+      "published_at": "2026-10-17T11:45:00Z",
+      "summary": "An invented explainer on why some components are hard to buy. Subscribers can read the full piece.",
+      "lead_image": "https://tech.example.com/img/chips.png",
+      "score": 1.65,
+      "score_breakdown": {
+        "topic:hardware": 1.0,
+        "source": 1.0,
+        "recency": 0.6
+      },
+      "extraction_status": "paywalled",
+      "display": "link",
+      "word_count": null,
+      "content_path": null
+    },
+    {
+      "id": "045dd3914407e7c3",
+      "title": "The weekly briefing: what happened this week",
+      "url": "https://radio.example.net/audio/2026/oct/17/the-weekly-briefing-podcast",
+      "source_id": "example-radio",
+      "domain": "radio.example.net",
+      "author": null,
+      "published_at": "2026-10-17T05:00:00Z",
+      "summary": "An invented podcast episode: two presenters talk through the week's stories.",
+      "lead_image": "https://radio.example.net/static/briefing-cover.jpg",
+      "score": 0.9,
+      "score_breakdown": {
+        "source": 1.0,
+        "recency": 0.5
+      },
+      "extraction_status": "partial",
+      "display": "link",
+      "word_count": null,
+      "content_path": null
+    },
+    {
+      "id": "a77f8433bedf5a3d",
+      "title": "Notes on a rainy hackathon",
+      "url": "https://blog.example.org/posts/notes-on-a-rainy-hackathon",
+      "source_id": "example-blog",
+      "domain": "blog.example.org",
+      "author": "C. Blogger",
+      "published_at": null,
+      "summary": null,
+      "lead_image": null,
+      "score": 0.4,
+      "score_breakdown": {
+        "source": 0.8,
+        "recency": 0.3
+      },
+      "extraction_status": "failed",
+      "display": "link",
+      "word_count": null,
+      "content_path": null
+    }
+  ]
+}
