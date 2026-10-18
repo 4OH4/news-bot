@@ -5,6 +5,9 @@
 # This is a placeholder with no personal topics yet (#80 adds the real ones).
 # Unknown keys are rejected.
 #
+# Quote keywords that YAML would read as a boolean or number (on, off, yes,
+# no, 2024), e.g. "on" or "2024"; unquoted they are not strings and are rejected.
+#
 # Schema (everything is optional):
 #
 #   topics:                       # each match adds `weight` points
