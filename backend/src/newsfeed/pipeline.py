@@ -12,6 +12,7 @@ from __future__ import annotations
 import codecs
 import re
 import threading
+import time
 from collections import Counter, defaultdict
 from collections.abc import Callable, Collection, Sequence
 from concurrent.futures import ThreadPoolExecutor
@@ -24,6 +25,7 @@ from newsfeed.extract.overrides import Mode, url_domain
 from newsfeed.ingest.canonical import canonical_from_html, normalise_url, with_canonical_url
 from newsfeed.ingest.dedupe import dedupe
 from newsfeed.logging import get_logger
+from newsfeed.metrics import ExtractionRecord, FeedRecord, reason_category, summarise_run
 from newsfeed.models import (
     Article,
     ArticleExtraction,
@@ -188,14 +190,30 @@ class RunTally:
         self._counts: defaultdict[PipelineStage, Counter[str]] = defaultdict(Counter)
         self._domains: defaultdict[str, Counter[ExtractionStatus]] = defaultdict(Counter)
         self._errors = 0
+        self._extractions: list[ExtractionRecord] = []
+        self._feeds: dict[str, FeedRecord] = {}
 
     def count(self, stage: PipelineStage, name: str, n: int = 1) -> None:
         with self._lock:
             self._counts[stage][name] += n
 
-    def domain(self, domain: str, status: ExtractionStatus) -> None:
+    def extraction(self, record: ExtractionRecord) -> None:
+        """Count one processed article per domain, and by failure reason when it failed."""
         with self._lock:
-            self._domains[domain][status] += 1
+            self._domains[record.domain][record.status] += 1
+            self._extractions.append(record)
+            if record.status is ExtractionStatus.FAILED:
+                reason = f"failed:{reason_category(record.error)}"
+                self._counts[PipelineStage.EXTRACT][reason] += 1
+
+    def feed(self, source_id: str, record: FeedRecord) -> None:
+        with self._lock:
+            self._feeds[source_id] = record
+
+    def summary(self, run_id: str, durations: dict[str, float]) -> dict[str, object]:
+        """The ``run finished`` metrics (see ``newsfeed.metrics``)."""
+        with self._lock:
+            return summarise_run(run_id, durations, list(self._extractions), dict(self._feeds))
 
     def error(self) -> None:
         with self._lock:
@@ -273,6 +291,7 @@ def _ingest_source(
             extra={"stage": stage.value, "source_id": source.id, "source_type": source.type.value},
         )
         tally.count(stage, "sources_skipped")
+        tally.feed(source.id, FeedRecord("skipped", reason="no ingester for this source type"))
         return
     state = services.repository.get_source_state(source.id) or SourceState(source_id=source.id)
     try:
@@ -295,6 +314,15 @@ def _ingest_source(
     except Exception as exc:
         tally.error()
         tally.count(stage, "sources_failed")
+        error = f"{type(exc).__name__}: {exc}"
+        tally.feed(
+            source.id,
+            FeedRecord(
+                "failed",
+                http_status=getattr(exc, "status_code", None),
+                reason=error[:200],
+            ),
+        )
         _warn(
             "source failed; continuing with the next",
             stage=stage,
@@ -309,6 +337,17 @@ def _ingest_source(
     tally.count(stage, "entries", len(articles))
     tally.count(stage, "duplicates", len(entries) - len(fresh))
     tally.count(stage, "new", len(fresh))
+    # The ingesters hand back the old state unchanged on a 304, and a successful
+    # fetch always sets last_fetched_at, so equality means "not modified".
+    not_modified = new_state == state
+    tally.feed(
+        source.id,
+        FeedRecord(
+            "not_modified" if not_modified else "ok",
+            http_status=304 if not_modified else new_state.last_status,
+            new=len(fresh),
+        ),
+    )
     log.info(
         "source ingested",
         extra={"stage": stage.value, "source_id": source.id, "new": len(fresh)},
@@ -377,24 +416,55 @@ class _ExtractRun:
     rekeyed: dict[str, str] = field(default_factory=dict)
 
 
-def _finish_skipped(run: _ExtractRun, article: Article, reason: str, domain: str) -> None:
+@dataclass(frozen=True)
+class _Outcome:
+    """How one article's extraction ended; logged exactly once by ``_extract_safely``."""
+
+    article: Article
+    domain: str
+    status: str  # an ExtractionStatus value, or "merged" for a duplicate dropped at refinement
+    method: str | None = None
+    word_count: int = 0
+    error: str | None = None
+    attempts: tuple[tuple[str, str], ...] = ()
+
+
+def _log_outcome(outcome: _Outcome, elapsed_ms: int) -> None:
+    """The one ``extraction finished`` entry per article (NFR-5)."""
+    log.info(
+        "extraction finished",
+        extra={
+            "stage": PipelineStage.EXTRACT.value,
+            "source_id": outcome.article.source_id,
+            "url": outcome.article.url,
+            "domain": outcome.domain,
+            "status": outcome.status,
+            "method": outcome.method,
+            "word_count": outcome.word_count,
+            "elapsed_ms": elapsed_ms,
+            "chain": [{"method": m, "status": s} for m, s in outcome.attempts],
+            "error": outcome.error,
+        },
+    )
+
+
+def _finish_skipped(run: _ExtractRun, article: Article, reason: str, domain: str) -> _Outcome:
     run.services.repository.upsert_article(
         _with_changes(
             article,
             extraction=ArticleExtraction(status=ExtractionStatus.SKIPPED, error=reason),
         )
     )
-    run.tally.domain(domain, ExtractionStatus.SKIPPED)
+    run.tally.extraction(ExtractionRecord(domain, ExtractionStatus.SKIPPED, error=reason))
     run.tally.count(PipelineStage.EXTRACT, ExtractionStatus.SKIPPED.value)
-    log.info(
-        "extraction skipped",
-        extra={"stage": "extract", "source_id": article.source_id, "url": article.url},
-    )
+    return _Outcome(article, domain, ExtractionStatus.SKIPPED.value, error=reason)
 
 
-def _finish_failed(run: _ExtractRun, article: Article, error_type: str, error: str) -> None:
+def _finish_failed(
+    run: _ExtractRun, article: Article, error_type: str, error: str, domain: str | None = None
+) -> _Outcome:
     """Record a failure on the article and in the run, and log it."""
-    domain = url_domain(article.url) or "unknown"
+    domain = domain or url_domain(article.url) or "unknown"
     _warn(
         "extraction failed",
         stage=PipelineStage.EXTRACT,
@@ -404,7 +474,7 @@ def _finish_failed(run: _ExtractRun, article: Article, error_type: str, error: s
         error=error,
     )
     run.tally.error()
-    run.tally.domain(domain, ExtractionStatus.FAILED)
+    run.tally.extraction(ExtractionRecord(domain, ExtractionStatus.FAILED, error=error))
     run.tally.count(PipelineStage.EXTRACT, ExtractionStatus.FAILED.value)
     try:
         run.services.repository.upsert_article(
@@ -424,6 +494,7 @@ def _finish_failed(run: _ExtractRun, article: Article, error_type: str, error: s
             error_type=type(exc).__name__,
             error=str(exc),
         )
+    return _Outcome(article, domain, ExtractionStatus.FAILED.value, error=error)
 
 
 def _summary_only(extractor: Extractor, url: str) -> bool:
@@ -433,40 +504,39 @@ def _summary_only(extractor: Extractor, url: str) -> bool:
     return override is not None and override.mode is Mode.SUMMARY_ONLY
 
 
-def _extract_article(run: _ExtractRun, article: Article) -> None:
+def _extract_article(run: _ExtractRun, article: Article) -> _Outcome:
     services = run.services
     domain = url_domain(article.url) or "unknown"
     reason = _skip_reason(article.url)
     if reason is None and _summary_only(services.extractor, article.url):
         reason = f"extraction skipped: {domain} is configured summary_only"
     if reason is not None:
-        _finish_skipped(run, article, reason, domain)
-        return
+        return _finish_skipped(run, article, reason, domain)
 
     try:
         page = fetch_page(services.fetcher, article.url)
     except NotAnArticleError as exc:
-        _finish_skipped(run, article, str(exc), domain)
-        return
+        return _finish_skipped(run, article, str(exc), domain)
     except PageUnavailableError as exc:
-        _finish_failed(run, article, type(exc).__name__, str(exc))
-        return
+        return _finish_failed(run, article, type(exc).__name__, str(exc), domain)
 
     # After redirects the domain may differ; per-domain behaviour (overrides,
     # stats) follows the page we actually got.
     domain = url_domain(page.final_url) or domain
     refined = _refine_canonical(run, article, page)
     if refined is None:
-        return
+        return _Outcome(article, domain, "merged", error="duplicate of a stored canonical URL")
 
     try:
-        _extract_content(run, refined, page, domain)
+        return _extract_content(run, refined, page, domain)
     except Exception as exc:
         # Report against the refined article: the original id is already retired.
-        _finish_failed(run, refined, type(exc).__name__, str(exc))
+        return _finish_failed(run, refined, type(exc).__name__, str(exc), domain)
 
 
-def _extract_content(run: _ExtractRun, article: Article, page: FetchedPage, domain: str) -> None:
+def _extract_content(
+    run: _ExtractRun, article: Article, page: FetchedPage, domain: str
+) -> _Outcome:
     services = run.services
     result = services.extractor.extract(page.html, page.final_url)
     content_ref = None
@@ -479,7 +549,9 @@ def _extract_content(run: _ExtractRun, article: Article, page: FetchedPage, doma
             "text/html; charset=utf-8",
         )
     services.repository.upsert_article(_merge(article, result, content_ref))
-    run.tally.domain(domain, result.status)
+    run.tally.extraction(
+        ExtractionRecord(domain, result.status, word_count=result.word_count, error=result.error)
+    )
     run.tally.count(PipelineStage.EXTRACT, result.status.value)
     if result.status is ExtractionStatus.FAILED:
         _warn(
@@ -491,6 +563,15 @@ def _extract_content(run: _ExtractRun, article: Article, page: FetchedPage, doma
             error=result.error or "unknown error",
         )
         run.tally.error()
+    return _Outcome(
+        article,
+        domain,
+        result.status.value,
+        method=result.method,
+        word_count=result.word_count,
+        error=result.error,
+        attempts=tuple((a.method, a.status.value) for a in result.attempts),
+    )
 
 
 def _refine_canonical(run: _ExtractRun, article: Article, page: FetchedPage) -> Article | None:
@@ -532,10 +613,12 @@ def _refine_canonical(run: _ExtractRun, article: Article, page: FetchedPage) -> 
 
 def _extract_safely(run: _ExtractRun, article: Article) -> None:
     """Process one article; whatever goes wrong is recorded on it and never raised."""
+    started = time.perf_counter()
     try:
-        _extract_article(run, article)
+        outcome = _extract_article(run, article)
     except Exception as exc:
-        _finish_failed(run, article, type(exc).__name__, str(exc))
+        outcome = _finish_failed(run, article, type(exc).__name__, str(exc))
+    _log_outcome(outcome, round((time.perf_counter() - started) * 1000))
 
 
 def extract_pending(
@@ -664,10 +747,15 @@ def run_pipeline(
     run_id = run_id or started.strftime("%Y%m%dT%H%M%S") + f"-{started.microsecond:06d}"
     tally = RunTally()
     services.repository.save_run_stats(tally.stats(run_id, started, None))
+    durations: dict[str, float] = {}
     if ingest:
+        began = time.perf_counter()
         ingest_sources(services, sources, tally, since=since, limit=limit)
+        durations[PipelineStage.INGEST.value] = time.perf_counter() - began
     if extract:
+        began = time.perf_counter()
         extract_pending(services, tally, source_ids=extract_source_ids, since=since, limit=limit)
+        durations[PipelineStage.EXTRACT.value] = time.perf_counter() - began
     stats = tally.stats(run_id, started, clock())
     services.repository.save_run_stats(stats)
     log.info(
@@ -677,6 +765,7 @@ def run_pipeline(
             "run_id": run_id,
             "error_count": stats.error_count,
             "stage_counts": {s.value: c for s, c in stats.stage_counts.items()},
+            "metrics": tally.summary(run_id, durations),
         },
     )
     return stats
