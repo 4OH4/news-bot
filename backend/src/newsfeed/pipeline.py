@@ -315,7 +315,14 @@ def _ingest_source(
         tally.error()
         tally.count(stage, "sources_failed")
         error = f"{type(exc).__name__}: {exc}"
-        tally.feed(source.id, FeedRecord("failed", reason=error[:200]))
+        tally.feed(
+            source.id,
+            FeedRecord(
+                "failed",
+                http_status=getattr(exc, "status_code", None),
+                reason=error[:200],
+            ),
+        )
         _warn(
             "source failed; continuing with the next",
             stage=stage,
@@ -330,12 +337,14 @@ def _ingest_source(
     tally.count(stage, "entries", len(articles))
     tally.count(stage, "duplicates", len(entries) - len(fresh))
     tally.count(stage, "new", len(fresh))
-    not_modified = new_state.last_status == 304
+    # The ingesters hand back the old state unchanged on a 304, and a successful
+    # fetch always sets last_fetched_at, so equality means "not modified".
+    not_modified = new_state == state
     tally.feed(
         source.id,
         FeedRecord(
             "not_modified" if not_modified else "ok",
-            http_status=new_state.last_status,
+            http_status=304 if not_modified else new_state.last_status,
             new=len(fresh),
         ),
     )

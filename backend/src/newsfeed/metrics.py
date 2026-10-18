@@ -28,10 +28,12 @@ __all__ = [
 
 REASONS: Final = (
     "http_403",
+    "http_429",
     "http_4xx",
     "http_5xx",
     "robots",
     "timeout",
+    "connection",
     "too_short",
     "no_content",
     "other",
@@ -39,6 +41,16 @@ REASONS: Final = (
 """Every value ``reason_category`` can return."""
 
 _HTTP_STATUS = re.compile(r"\bHTTP[ /]?(\d{3})\b", re.I)
+_CONNECTION_MARKERS: Final = (
+    "connecterror",
+    "connection refused",
+    "connection reset",
+    "connection error",
+    "name or service not known",
+    "temporary failure in name resolution",
+    "getaddrinfo",
+    "nodename nor servname",
+)
 _TOO_SHORT = re.compile(r"\bonly \d+ words\b", re.I)
 
 
@@ -59,12 +71,16 @@ def reason_category(error: str | None) -> str:
         code = int(match.group(1))
         if code == 403:
             return "http_403"
+        if code == 429:
+            return "http_429"
         if 400 <= code < 500:
             return "http_4xx"
         if 500 <= code < 600:
             return "http_5xx"
     if "timeout" in text or "timed out" in text:
         return "timeout"
+    if any(m in text for m in _CONNECTION_MARKERS):
+        return "connection"
     if _TOO_SHORT.search(error):
         return "too_short"
     if "no usable content" in text or "no text extracted" in text or "no main content" in text:
