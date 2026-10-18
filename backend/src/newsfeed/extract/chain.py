@@ -12,6 +12,13 @@ domain's override in ``config/extraction.yaml`` (see ``overrides.py``), then:
    usually boilerplate, such as a JavaScript shell's "enable JavaScript" notice,
    so the chain returns ``failed`` instead and the article keeps its feed
    summary. Failing that, a ``paywalled`` result, and finally ``failed``.
+4. If that result is not ``ok`` and ``detect_paywall`` (``paywall.py``) finds a
+   subscriber gate or teaser on the page, the chain returns it as
+   ``paywalled``, with the detector's reason in ``error`` (ADR-0003 decision
+   2). A teaser's content and metadata are kept; publish shows a paywalled
+   article as headline, summary and link. An ``ok`` result is returned as it
+   is even on a page with paywall markup, because metered sites label articles
+   they serve in full that way too.
 
 Every attempt is recorded in ``ExtractionResult.attempts``, in order, and the
 returned result's ``method`` names the extractor that produced it (``None`` when
@@ -26,6 +33,7 @@ from typing import Final
 
 from newsfeed.extract.common import grade, run_safely
 from newsfeed.extract.overrides import DomainOverride, ExtractionConfig, Mode, url_domain
+from newsfeed.extract.paywall import detect_paywall
 from newsfeed.logging import get_logger
 from newsfeed.models import ExtractionAttempt, ExtractionResult, ExtractionStatus
 from newsfeed.ports import Extractor
@@ -145,6 +153,8 @@ class ExtractorChain:
 
         attempts = [_attempt_record(result) for result in results]
         chosen = self._choose(results)
+        if chosen.status is not ExtractionStatus.OK:
+            chosen = _check_paywall(chosen, html, url)
         return chosen.model_copy(update={"attempts": attempts})
 
     def _plan(self, override: DomainOverride | None) -> list[Extractor]:
@@ -212,6 +222,34 @@ class ExtractorChain:
 
 # Statuses that come from grading a word count, so a domain's min_words can change them.
 _GRADED: Final = frozenset({ExtractionStatus.OK, ExtractionStatus.PARTIAL})
+
+
+def _check_paywall(chosen: ExtractionResult, html: str, url: str) -> ExtractionResult:
+    """``chosen`` marked ``paywalled`` if the page is a gate or teaser, else unchanged."""
+    if chosen.status is ExtractionStatus.PAYWALLED:
+        return chosen  # An extractor already said so; keep its reason.
+    try:
+        reason = detect_paywall(html, url)
+    except Exception as exc:  # the chain promises never to raise
+        log.warning(
+            "paywall detection failed",
+            extra={
+                "stage": "extract",
+                "url": url,
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+            },
+        )
+        return chosen
+    if reason is None:
+        return chosen
+    log.info(
+        "paywall detected",
+        extra={"stage": "extract", "url": url, "reason": reason, "status": chosen.status},
+    )
+    return chosen.model_copy(
+        update={"status": ExtractionStatus.PAYWALLED, "error": f"paywall detected: {reason}"}
+    )
 
 
 def _attempt_record(result: ExtractionResult) -> ExtractionAttempt:

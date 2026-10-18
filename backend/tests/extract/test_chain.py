@@ -455,3 +455,115 @@ def test_real_chain_falls_back_when_trafilatura_finds_nothing(
     assert res.method == "readability"
     assert methods(res) == ["trafilatura", "readability"]
     assert res.attempts[0].error == "no main content found"
+
+
+# --- Paywall detection (#84) -------------------------------------------------
+
+PAYWALL_DIR = FIXTURES_DIR / "paywall"
+GATE_PAGE = (PAYWALL_DIR / "gate_markup.html").read_text(encoding="utf-8")
+FREE_PAGE = (PAYWALL_DIR / "free_newsletter_signup.html").read_text(encoding="utf-8")
+PAYWALLED = ExtractionStatus.PAYWALLED
+
+
+@pytest.mark.parametrize(
+    "canned",
+    [
+        result(PARTIAL, 90, title="Teaser title"),  # a usable-length teaser
+        result(PARTIAL, 20),  # too short to be content
+        result(FAILED),
+    ],
+)
+def test_detected_paywall_turns_a_non_ok_result_into_paywalled(canned: ExtractionResult) -> None:
+    extractors, _ = stubs(("trafilatura", canned), ("readability", canned))
+    res = ExtractorChain(extractors).extract(GATE_PAGE, URL)
+    assert res.status is PAYWALLED
+    assert res.error == "paywall detected: subscriber gate element (class 'paywall')"
+    # Every attempt is still recorded as the extractor reported it.
+    assert [a.status for a in res.attempts] == [canned.status, canned.status]
+
+
+def test_a_paywalled_teaser_keeps_its_content_and_metadata() -> None:
+    teaser = result(PARTIAL, 90, title="Teaser title")
+    extractors, _ = stubs(("trafilatura", teaser))
+    res = ExtractorChain(extractors).extract(GATE_PAGE, URL)
+    assert res.status is PAYWALLED
+    assert (res.method, res.title, res.word_count) == ("trafilatura", "Teaser title", 90)
+    assert res.content_html == teaser.content_html
+
+
+def test_an_ok_result_on_a_paywall_page_is_left_as_it_is() -> None:
+    extractors, _ = stubs(("trafilatura", result(OK, 900)))
+    res = ExtractorChain(extractors).extract(GATE_PAGE, URL)
+    assert res.status is OK
+    assert res.error is None
+
+
+def test_a_domain_min_words_decides_what_counts_as_ok_on_a_paywall_page() -> None:
+    extractors, _ = stubs(("trafilatura", result(OK, 200)))
+    config = overrides(**{"news.example.com": {"min_words": 300}})
+    res = ExtractorChain(extractors, config).extract(GATE_PAGE, URL)
+    assert res.status is PAYWALLED
+
+
+def test_short_results_on_free_pages_are_not_paywalled() -> None:
+    extractors, _ = stubs(("trafilatura", result(PARTIAL, 90)))
+    assert ExtractorChain(extractors).extract(FREE_PAGE, URL).status is PARTIAL
+    extractors, _ = stubs(("trafilatura", result(FAILED)))
+    assert ExtractorChain(extractors).extract(FREE_PAGE, URL).status is FAILED
+
+
+def test_an_extractor_reported_paywall_keeps_its_own_reason() -> None:
+    own = result(PAYWALLED, 30).model_copy(update={"error": "extractor's own reason"})
+    extractors, _ = stubs(("trafilatura", own))
+    res = ExtractorChain(extractors).extract(GATE_PAGE, URL)
+    assert (res.status, res.error) == (PAYWALLED, "extractor's own reason")
+
+
+def test_summary_only_domains_are_not_checked_for_paywalls() -> None:
+    extractors, _ = stubs(("trafilatura", result(FAILED)))
+    config = overrides(**{"news.example.com": {"mode": "summary_only"}})
+    res = ExtractorChain(extractors, config).extract(GATE_PAGE, URL)
+    assert res.status is ExtractionStatus.SKIPPED
+
+
+def test_a_detector_error_leaves_the_result_unchanged(
+    monkeypatch: pytest.MonkeyPatch, log_records: list[logging.LogRecord]
+) -> None:
+    from newsfeed.extract import chain
+
+    def boom(html: str, url: str) -> str | None:
+        raise RuntimeError("detector bug")
+
+    monkeypatch.setattr(chain, "detect_paywall", boom)
+    extractors, _ = stubs(("trafilatura", result(PARTIAL, 90)))
+    res = ExtractorChain(extractors).extract(GATE_PAGE, URL)
+    assert res.status is PARTIAL
+    (record,) = [r for r in log_records if r.getMessage() == "paywall detection failed"]
+    assert record.error == "detector bug"  # type: ignore[attr-defined]
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "jsonld_not_free.html",
+        "microdata_not_free.html",
+        "gate_markup.html",
+        "notice_members_only.html",
+        "notice_subscribe_to_continue.html",
+    ],
+)
+def test_real_chain_marks_paywall_fixtures_paywalled(name: str) -> None:
+    html = (PAYWALL_DIR / name).read_text(encoding="utf-8")
+    res = real_chain().extract(html, URL)
+    assert res.status is PAYWALLED
+    assert res.error is not None
+    assert res.error.startswith("paywall detected: ")
+
+
+@pytest.mark.parametrize(
+    "name", ["free_newsletter_signup.html", "free_article_about_paywalls.html"]
+)
+def test_real_chain_leaves_free_fixtures_alone(name: str) -> None:
+    html = (PAYWALL_DIR / name).read_text(encoding="utf-8")
+    res = real_chain().extract(html, URL)
+    assert res.status is not PAYWALLED
