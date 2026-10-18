@@ -29,6 +29,7 @@ def page(body: str, head: str = "") -> str:
         ("jsonld_not_free.html", "schema.org isAccessibleForFree is false (JSON-LD)"),
         ("microdata_not_free.html", "schema.org isAccessibleForFree is false (microdata)"),
         ("gate_markup.html", "subscriber gate element (class 'paywall')"),
+        ("gate_open_dialog.html", "subscriber gate element (class 'paywall')"),
         (
             "notice_members_only.html",
             "subscriber notice ('This post is for paid members')",
@@ -50,6 +51,7 @@ def test_each_signal_flags_its_fixture(name: str, expected: str) -> None:
         "free_article_about_paywalls.html",
         "free_metered_markup.html",
         "free_promos_and_hidden_gate.html",
+        "free_closed_dialog_gate.html",
         # The existing article fixtures are free pages too.
         "../news_article.html",
         "../blog_post.html",
@@ -68,6 +70,7 @@ def test_free_pages_mentioning_subscriptions_are_not_flagged(name: str) -> None:
         ("jsonld_not_free.html", False),
         ("microdata_not_free.html", False),
         ("gate_markup.html", True),
+        ("gate_open_dialog.html", True),
         ("notice_members_only.html", True),
         ("notice_subscribe_to_continue.html", True),
     ],
@@ -189,6 +192,9 @@ def test_gate_class_and_id_names(attrs: str) -> None:
         f'<div class="paywall" style="visibility: hidden">{_CTA}</div>',
         f'<div class="paywall" aria-hidden="true">{_CTA}</div>',
         f'<div class="paywall hidden">{_CTA}</div>',
+        # A <dialog> without "open" isn't rendered, so neither is a gate inside it.
+        f'<dialog class="paywall">{_CTA}</dialog>',
+        f'<dialog><div class="paywall">{_CTA}</div></dialog>',
         f'<div class="modal d-none"><div class="paywall">{_CTA}</div></div>',
         # A paywall-named element whose words ask, but which offers no link or button.
         '<div class="paywall">Start your free trial today. Already a member? Sign in.</div>',
@@ -259,6 +265,11 @@ def test_notice_phrases(notice: str) -> None:
 _ACTION = '<a href="/subscribe">Subscribe</a>'
 
 
+def test_notice_in_an_open_dialog_is_a_gate() -> None:
+    body = f"<p>Teaser.</p><dialog open><h2>Subscribe to continue reading</h2>{_ACTION}</dialog>"
+    assert detect_paywall(page(body), URL) is not None
+
+
 @pytest.mark.parametrize(
     "body",
     [
@@ -270,6 +281,8 @@ _ACTION = '<a href="/subscribe">Subscribe</a>'
         f'<div class="sidebar"><p>Bonus episodes for paid subscribers only. {_ACTION}</p></div>',
         # Hidden by a class.
         f'<div class="hidden"><h2>Subscribe to continue reading</h2>{_ACTION}</div>',
+        # A closed <dialog> isn't rendered; the same notice in an open one is (below).
+        f"<p>Teaser.</p><dialog><h2>Subscribe to continue reading</h2>{_ACTION}</dialog>",
         # A promo box in the middle of the article, with more article after it.
         f"<article><p>Teaser.</p><div><h3>For paid subscribers only</h3>{_ACTION}</div>"
         f"{_MORE_ARTICLE}</article>",
