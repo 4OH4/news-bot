@@ -63,12 +63,30 @@ For each finished PR:
 
 ## 5. Report
 
-Keep it short:
-- **PRs ready to merge**, in merge order, with one line each and its tier.
-- **Merged by the lead** (Tier A) since the last report, one line each, so the human can read them after the fact and revert if needed. They are all listed at https://github.com/4OH4/news-bot/pulls?q=label%3Alead-merged.
-- **Points from each PR's "For human review" section** that most need the human's attention, and the decisions they approve by merging for `needs-human` PRs.
-- **Anything only the human can do**, with exact steps: settings, credentials, real decisions.
-- What starts next once those merge.
+Keep it short, in this order. The human acts on the first section, so keep their actions apart from agent work:
+
+1. **Merge queue**: a numbered list of the PRs waiting for the human, in the order to merge them, one line each:
+   `<n>. PR #<P> <plain title> (Tier <X>): <when>`
+   - `<when>` is "any time" or "after PR #<Q>" plus the reason in a few words ("both change `pipeline.py`"). It names PRs only. If a PR needs a rebase from an agent after an earlier merge, leave it out of the queue; it appears in section 2.
+   - Label every number `PR #` or `issue #`, never a bare `#N`, and give each one a plain name the first time it appears.
+2. **After each merge**: for each queued PR whose merge lets agents do something, one line starting "When you merge PR #<P>:" saying what the lead then does ("I rebase PR #108 (paywall detection) and it joins the queue", "issue #99 (run stats) starts"). Leave out PRs that unlock nothing.
+3. **Agents are working on**: running work, one line each, so the human can see it doesn't need them.
+4. **Merged by the lead** (Tier A) since the last report, one line each, so the human can read them after the fact and revert if needed. They are all listed at https://github.com/4OH4/news-bot/pulls?q=label%3Alead-merged.
+5. **From "For human review"**: the points that most need the human's attention, and the decisions they approve by merging `needs-human` PRs.
+6. **Only you can do**: anything only the human can do, with exact steps: settings, credentials, real decisions.
+
+Omit a section with nothing in it. For example:
+
+```
+**Merge queue**
+1. PR #106 Bound the dedupe lookup (Tier B): any time
+2. PR #109 Firestore adapter (Tier B): any time
+3. PR #111 Rule-based scoring (Tier B): after PR #106 (both change pipeline.py)
+
+**After each merge**
+- When you merge PR #106: I rebase PR #108 (paywall detection) and it joins the queue.
+- When you merge PR #111: issue #99 (run stats) starts, and I prepare issue #80 (first interest rules) for you.
+```
 
 ## 6. Idle shutdown
 
