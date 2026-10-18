@@ -37,6 +37,21 @@ uv run playwright install chromium   # one-off browser download
 docker build -f backend/Dockerfile --target playwright -t newsfeed:playwright .
 ```
 
+### Firestore emulator tests (optional)
+
+`FirestoreRepository` also runs the shared repository contract tests against the Firestore
+emulator. They are excluded from `make test` (marker `emulator`) and skipped unless
+`FIRESTORE_EMULATOR_HOST` is set:
+
+```bash
+docker run -d --name firestore-emulator -p 8080:8080 \
+    gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators \
+    gcloud emulators firestore start --host-port=0.0.0.0:8080
+cd backend
+FIRESTORE_EMULATOR_HOST=localhost:8080 uv run pytest -m emulator --allow-hosts=localhost,127.0.0.1
+docker rm -f firestore-emulator
+```
+
 ## Layout
 
 ```
