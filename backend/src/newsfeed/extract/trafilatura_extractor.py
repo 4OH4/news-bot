@@ -13,6 +13,7 @@ from typing import Any, Final
 import trafilatura
 
 from newsfeed.extract.common import DEFAULT_MIN_WORDS, build_result, run_safely
+from newsfeed.extract.prune import strip_recent_articles
 from newsfeed.logging import get_logger
 from newsfeed.models import ExtractionResult, ExtractionStatus
 
@@ -61,7 +62,7 @@ class TrafilaturaExtractor:
 
     def _extract(self, html: str, url: str) -> ExtractionResult:
         document = trafilatura.extract_with_metadata(
-            html,
+            strip_recent_articles(html),
             url=url,
             output_format="html",
             include_formatting=True,
