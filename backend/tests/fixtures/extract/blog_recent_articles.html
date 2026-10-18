@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tiny Tools for Tidy Notebooks</title>
+<meta property="og:title" content="Tiny Tools for Tidy Notebooks">
+</head>
+<body class="smallhead">
+<div id="smallhead"><h1><a href="/">An Invented Weblog</a></h1></div>
+<div id="wrapper">
+<div id="primary">
+<div class="entry entryPage">
+<p class="mobile-date-eyebrow">3rd March 2026</p>
+<h2>Tiny Tools for Tidy Notebooks</h2>
+<div class="entry-body">
+<p>Last week I spent an afternoon building a small helper that renames the cells of a notebook so that they sort in the order they were written. The idea is simple, but the details turned out to be more interesting than I expected, so here are my notes on how it works.</p>
+<p>The helper walks every cell, reads its first comment line and turns that into a slug. Cells without a comment get a numbered placeholder so nothing is ever left unnamed, which matters when two people edit the same notebook on different days.</p>
+<pre><code>def slugify(line: str) -&gt; str:
+    words = [w for w in line.lower().split() if w.isalnum()]
+    return "-".join(words[:6]) or "cell"</code></pre>
+<p>The second half of the tool checks for collisions. If two cells produce the same slug it appends a counter, starting at two, because the first cell keeps the plain name. I wrote a handful of tests for this part, since off-by-one mistakes in counters are exactly the sort of thing that sneaks past a quick manual check.</p>
+<pre><code>def unique(slugs: list[str]) -&gt; list[str]:
+    seen: dict[str, int] = {}
+    out = []
+    for slug in slugs:
+        seen[slug] = seen.get(slug, 0) + 1
+        out.append(slug if seen[slug] == 1 else f"{slug}-{seen[slug]}")
+    return out</code></pre>
+<p>Finally, the tool writes the notebook back with the original formatting intact. Preserving whitespace was the fiddliest requirement, because the JSON writer I started with reflowed every long line and produced diffs that were far larger than the change itself.</p>
+<p>I have been using it for a week now and the notebooks in my archive are noticeably easier to navigate. The next step is to teach it about cell tags, so that the slug can carry a hint about whether the cell is setup, analysis or output.</p>
+</div>
+</div>
+<div class="entryFooter">Posted <a href="/2026/Mar/3/">3rd March 2026</a> at 9:41 am</div>
+
+<div class="recent-articles">
+<h2>Recent articles</h2>
+<ul class="bullets">
+  <li><a href="/2026/Feb/27/slow-builds/">Why my slow builds got slower</a> - 27th February 2026</li>
+  <li><a href="/2026/Feb/21/tiny-parser/">A tiny parser for an invented format</a> - 21st February 2026</li>
+  <li><a href="/2026/Feb/14/weekend-notes/">Weekend notes on small scripts</a> - 14th February 2026</li>
+  <li><a href="/2026/Feb/9/cache-keys/">Choosing cache keys carefully</a> - 9th February 2026</li>
+</ul>
+</div>
+</div>
+<div id="secondary"><div class="metabox"><p>About this invented weblog.</p></div></div>
+</div>
+</body>
+</html>

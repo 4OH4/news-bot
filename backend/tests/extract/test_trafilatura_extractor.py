@@ -272,3 +272,27 @@ def test_content_without_text_is_failed_but_keeps_metadata(
     assert result.content_html is None
     assert result.text is None
     assert result.word_count == 0
+
+
+# --- Recent-articles sidebar (#90) -------------------------------------------
+
+
+def test_recent_articles_sidebar_is_dropped_but_the_post_is_kept() -> None:
+    result = extract("blog_recent_articles.html")
+    assert result.status is ExtractionStatus.OK
+    text = result.text or ""
+    html = result.content_html or ""
+    assert "Recent articles" not in text
+    assert "Why my slow builds got slower" not in text
+    assert "/2026/Feb/" not in html
+    for phrase in (
+        "renames the cells of a notebook",
+        "Cells without a comment",
+        "off-by-one mistakes",
+        "reflowed every long line",
+        "cell tags",
+    ):
+        assert phrase in text
+    assert html.count("<pre>") == 2
+    assert "def slugify" in html
+    assert "def unique" in html
