@@ -18,7 +18,6 @@ from newsfeed.models import (
     Feedback,
     FeedbackEvent,
     FetchResult,
-    InterestRules,
     PipelineStage,
     Profile,
     RunStats,
@@ -362,7 +361,7 @@ ROUND_TRIP_MODELS: list[BaseModel] = [
         cluster_id="c1",
     ),
     Feedback(article_id=article_id(URL), event=FeedbackEvent.READ, value=42.5, created_at=NOW),
-    Profile(rules=InterestRules(boost_topics=["python"], mute_sources=["noisy"])),
+    Profile(),
     RunStats(
         run_id="2026-10-11T12:30:00Z",
         started_at=NOW,
@@ -384,6 +383,13 @@ def test_json_round_trip(model: BaseModel) -> None:
 def test_python_dict_round_trip(model: BaseModel) -> None:
     restored = type(model).model_validate(model.model_dump(mode="json"))
     assert restored == model
+
+
+def test_profile_rejects_the_retired_rules_field() -> None:
+    # Interest rules moved to config/interests.yaml (#96), so the old shape must
+    # fail loudly rather than be silently dropped.
+    with pytest.raises(ValidationError):
+        Profile.model_validate({"rules": {"boost_topics": ["python"]}})
 
 
 def test_feedback_ids_are_unique_by_default() -> None:
