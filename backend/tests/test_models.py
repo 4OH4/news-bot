@@ -200,6 +200,8 @@ def test_published_at_assignment_is_lenient() -> None:
     [
         (RunStats, "started_at"),
         (SourceState, "last_fetched_at"),
+        (SourceState, "last_success_at"),
+        (ArticleExtraction, "last_attempt_at"),
         (Feedback, "created_at"),
     ],
 )
@@ -207,6 +209,7 @@ def test_own_timestamps_stay_strict(model: type[BaseModel], field: str) -> None:
     base: dict[str, Any] = {
         RunStats: {"run_id": "r1", "started_at": NOW},
         SourceState: {"source_id": "example"},
+        ArticleExtraction: {},
         Feedback: {"article_id": "a", "event": "open", "created_at": NOW},
     }[model]
     with pytest.raises(ValidationError, match="timezone-aware"):
@@ -396,3 +399,81 @@ def test_run_stats_rejects_unknown_stage_and_negative_counts() -> None:
         )
     with pytest.raises(ValidationError):
         RunStats(run_id="r", started_at=NOW, stage_counts={PipelineStage.RANK: {"n": -1}})
+
+
+# --- health, retry and run metrics fields (#85) ---------------------------------
+
+
+def test_new_fields_default_so_older_data_loads() -> None:
+    # Data saved before #85 lacks these fields; it must still validate.
+    state = SourceState.model_validate({"source_id": "example", "last_status": 200})
+    assert state.consecutive_failures == 0
+    assert state.last_error is None
+    assert state.last_success_at is None
+    extraction = ArticleExtraction.model_validate({"status": "failed", "error": "timed out"})
+    assert extraction.attempts == 0
+    assert extraction.last_attempt_at is None
+    assert extraction.error_type is None
+    stats = RunStats.model_validate({"run_id": "r1", "started_at": "2026-10-11T12:30:00Z"})
+    assert stats.stage_durations_ms == {}
+    assert stats.failures_by_reason == {}
+    assert stats.median_word_count_by_domain == {}
+
+
+def test_new_fields_round_trip_through_json() -> None:
+    state = SourceState(
+        source_id="example", consecutive_failures=3, last_error="HTTP 500", last_success_at=NOW
+    )
+    assert SourceState.model_validate_json(state.model_dump_json()) == state
+    article = make_article(
+        extraction=ArticleExtraction(
+            status=ExtractionStatus.FAILED,
+            error="timed out",
+            attempts=2,
+            last_attempt_at=NOW,
+            error_type="timeout",
+        )
+    )
+    assert Article.model_validate_json(article.model_dump_json()) == article
+    stats = RunStats(
+        run_id="r1",
+        started_at=NOW,
+        stage_durations_ms={PipelineStage.EXTRACT: 1500},
+        failures_by_reason={"http_403": 2},
+        median_word_count_by_domain={"example.com": 812.5},
+    )
+    assert RunStats.model_validate_json(stats.model_dump_json()) == stats
+
+
+@pytest.mark.parametrize(
+    ("model", "fields"),
+    [
+        (SourceState, {"source_id": "example", "consecutive_failures": -1}),
+        (ArticleExtraction, {"attempts": -1}),
+        (RunStats, {"run_id": "r1", "started_at": NOW, "stage_durations_ms": {"extract": -1}}),
+        (RunStats, {"run_id": "r1", "started_at": NOW, "stage_durations_ms": {"render": 1}}),
+        (RunStats, {"run_id": "r1", "started_at": NOW, "failures_by_reason": {"timeout": -1}}),
+        (
+            RunStats,
+            {"run_id": "r1", "started_at": NOW, "median_word_count_by_domain": {"a.com": -1.0}},
+        ),
+    ],
+)
+def test_new_counters_reject_bad_values(model: type[BaseModel], fields: dict[str, Any]) -> None:
+    with pytest.raises(ValidationError):
+        model.model_validate(fields)
+
+
+@pytest.mark.parametrize("value", ["http_403", "robots", "timeout", "too_short", "5xx"])
+def test_error_type_accepts_slugs(value: str) -> None:
+    assert ArticleExtraction(error_type=value).error_type == value
+    stats = RunStats(run_id="r", started_at=NOW, failures_by_reason={value: 1})
+    assert stats.failures_by_reason == {value: 1}
+
+
+@pytest.mark.parametrize("value", ["", "HTTP 403", "Timeout", "too-short", "_other"])
+def test_error_type_rejects_free_text(value: str) -> None:
+    with pytest.raises(ValidationError):
+        ArticleExtraction(error_type=value)
+    with pytest.raises(ValidationError):
+        RunStats(run_id="r", started_at=NOW, failures_by_reason={value: 1})
