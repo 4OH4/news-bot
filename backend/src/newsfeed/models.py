@@ -43,7 +43,6 @@ __all__ = [
     "Feedback",
     "FeedbackEvent",
     "FetchResult",
-    "InterestRules",
     "LenientUtcDatetime",
     "PipelineStage",
     "Profile",
@@ -392,19 +391,14 @@ class Feedback(_Model):
     created_at: UtcDatetime
 
 
-class InterestRules(_Model):
-    """Rule-based interests, mirroring ``config/interests.yaml``."""
-
-    boost_topics: list[str] = Field(default_factory=list)
-    mute_topics: list[str] = Field(default_factory=list)
-    boost_sources: list[str] = Field(default_factory=list)
-    mute_sources: list[str] = Field(default_factory=list)
-
-
 class Profile(_Model):
-    """The reader's interest profile. Embedding centroids arrive in Phase 4."""
+    """The reader's learned interest profile: an empty placeholder until Phase 4.
 
-    rules: InterestRules = Field(default_factory=InterestRules)
+    Rule-based interests are configuration, not stored data: they live in
+    ``config/interests.yaml`` and load into ``newsfeed.rank.interests``
+    (CLAUDE.md, rule 5). The fields learned from feedback, such as embedding
+    centroids, are designed in Phase 4, when the profile starts to be stored.
+    """
 
 
 # --- Run statistics ----------------------------------------------------------

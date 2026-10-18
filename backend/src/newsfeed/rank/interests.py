@@ -12,10 +12,10 @@ into a score per article. It holds:
 Keywords are case-insensitive words or phrases matched on word boundaries
 (``keyword_pattern``), so ``ai`` matches "AI safety" but not "maintain".
 
-The model lives here rather than in ``models.py`` (which has a smaller
-``InterestRules`` stub that nothing uses yet). A missing file is an empty
-config, so the pipeline runs before any rules are written; an invalid one
-fails at load time with the location named (ADR-0002).
+The model lives here rather than in ``models.py``: rules are configuration,
+not stored data, so they are not part of the contract (#96). A missing file
+is an empty config, so the pipeline runs before any rules are written; an
+invalid one fails at load time with the location named (ADR-0002).
 """
 
 from __future__ import annotations
