@@ -128,8 +128,9 @@ Article      id (hash of canonical_url), canonical_url, url, source_id, title,
              content_ref (blob path), score, score_breakdown, cluster_id
 Feedback     id, article_id, event (open|read|like|dismiss|mute_source),
              value (e.g. read seconds), created_at
-Profile      rules: {boost_topics, mute_topics, boost_sources, mute_sources},
-             embedding_centroids (later)
+Profile      empty placeholder; learned fields such as embedding centroids
+             are designed in Phase 4 (interest rules are config, in
+             config/interests.yaml, not part of the profile)
 SourceState  source_id, etag, last_modified, last_fetched_at, last_status,
              consecutive_failures, last_error, last_success_at
 RunStats     run_id, started_at, finished_at, counts per stage,
