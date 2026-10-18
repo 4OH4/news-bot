@@ -2,7 +2,8 @@
 # the rank stage to order the feed. A missing or empty file means no rules:
 # articles then score on recency and source weight alone.
 #
-# This is a placeholder with no personal topics yet (#80 adds the real ones).
+# First version of the reader's rules (#80), proposed from the sources in
+# sources.yaml and the titles of the Phase 1 live run; tune from here.
 # Unknown keys are rejected.
 #
 # Quote keywords that YAML would read as a boolean or number (on, off, yes,
@@ -10,7 +11,8 @@
 #
 # Schema (everything is optional):
 #
-#   topics:                       # a match adds `weight` points per field
+#   topics:                       # a match adds weight x field weight
+#                                 # for each field it is found in
 #     - name: example-topic       # unique label, shown in the score breakdown
 #       keywords: [foo, "bar baz"]  # case-insensitive words or phrases,
 #                                 # matched on word boundaries ("ai" does not
@@ -42,11 +44,277 @@
 #     summary: 2.0
 #     body: 1.0
 
-topics: []
-mute_keywords: []
-sources: {}
+# --- How the weights were chosen --------------------------------------------
+# An unmatched article scores 1 (before source and recency). A topic of
+# weight 1 found in the title adds 3, in the summary 2, in the body 1, so a
+# title-and-summary match at weight 2 lifts an article to 11: it stays above a
+# brand-new unmatched story for about three and a half half-lives (~3.5 days).
+#
+# Demotion multiplies instead, by 1 / (1 + |weight| x strongest field). At -2
+# a title match gives 0.14, a summary match 0.2 and a body-only match 0.33.
+# A sport story (sport in its title) then sinks below unmatched stories even
+# when its body mentions a liked topic (3 x 0.14 = 0.43); it only rises above
+# them when a liked topic is in its title and summary too (11 x 0.14 = 1.6).
+# At -1 the same sport story would score 0.75 and a story with a liked topic
+# in its title alone 1.75, so most demotions would barely show. Stronger than
+# -2 mostly hurts the stories that only mention a demoted keyword in passing
+# in the body (a third of their score at -2, a quarter at -3), which are
+# common: news sites' related-links and sport roundups end up in the body.
+
+topics:
+  # Interests, strongest first.
+  - name: ai
+    weight: 2.0
+    keywords:
+      - AI
+      - artificial intelligence
+      - machine learning
+      - LLM
+      - LLMs
+      - large language model
+      - large language models
+      - language model
+      - language models
+      - chatbot
+      - chatbots
+      - ChatGPT
+      - OpenAI
+      - Anthropic
+      - Claude
+      - Gemini
+      - AI agent
+      - AI agents
+      - agentic
+
+  - name: software
+    weight: 2.0
+    keywords:
+      - software engineering
+      - software development
+      - programming
+      - programmer
+      - programmers
+      - developer
+      - developers
+      - open source
+      - open-source
+      - Python
+      - Rust
+      - JavaScript
+      - TypeScript
+      - SQLite
+      - Postgres
+      - PostgreSQL
+      - Django
+      - Git
+      - version control
+      - compiler
+      - refactoring
+      - code review
+      - terminal
+      - CSS
+
+  - name: linux
+    weight: 1.5
+    keywords: [Linux, kernel, KDE, GNOME, Ubuntu, Debian, Fedora, systemd]
+
+  - name: security-privacy
+    weight: 1.5
+    keywords:
+      - cybersecurity
+      - vulnerability
+      - vulnerabilities
+      - exploit
+      - exploits
+      - malware
+      - spyware
+      - ransomware
+      - encryption
+      - privacy
+      - surveillance
+      - data breach
+      - zero-day
+      - zero-click
+
+  - name: internet-infrastructure
+    weight: 1.0
+    keywords:
+      - Cloudflare
+      - DNS
+      - data center
+      - data centers
+      - datacenter
+      - datacenters
+      - outage
+      - outages
+      - web browser
+      - internet
+
+  - name: space
+    weight: 1.5
+    keywords:
+      - NASA
+      - ESA
+      - SpaceX
+      - Blue Origin
+      - rocket
+      - rockets
+      - spacecraft
+      - satellite
+      - satellites
+      - Mars
+      - lunar
+      - Artemis
+      - telescope
+      - galaxy
+      - galaxies
+      - dark matter
+
+  - name: science
+    weight: 1.0
+    keywords:
+      - physics
+      - physicists
+      - quantum
+      - astronomy
+      - astronomers
+      - mathematics
+      - mathematicians
+      - evolution
+      - fossil
+      - fossils
+      - dinosaur
+      - neuroscience
+      - neuroscientists
+      - genetics
+      - genome
+      - scientists
+
+  - name: climate-energy
+    weight: 1.5
+    keywords:
+      - climate
+      - climate change
+      - net zero
+      - net-zero
+      - emissions
+      - carbon
+      - renewable
+      - renewables
+      - solar
+      - wind power
+      - heat pump
+      - heat pumps
+      - nuclear power
+      - electric vehicle
+      - electric vehicles
+      - EV
+      - EVs
+      - deforestation
+      - biodiversity
+      - El Niño
+      - El Nino
+
+  - name: economics
+    weight: 1.0
+    keywords:
+      - economy
+      - economics
+      - economist
+      - economists
+      - inflation
+      - interest rates
+      - productivity
+      - tariff
+      - tariffs
+      - recession
+      - GDP
+
+  # Demoted: still in the feed, but below unmatched stories (see above).
+  - name: sport
+    weight: -2.0
+    keywords:
+      - football
+      - Premier League
+      - Bundesliga
+      - Champions League
+      - Nations League
+      - World Cup
+      - FIFA
+      - UEFA
+      - goalkeeper
+      - cricket
+      - rugby
+      - tennis
+      - golf
+      - Formula 1
+      - Formula One
+      - Olympics
+      - Olympic
+
+  - name: celebrity-royals
+    weight: -2.0
+    keywords:
+      - celebrity
+      - celebrities
+      - royal family
+      - royals
+      - Kardashian
+      - Love Island
+      - Strictly Come Dancing
+      - reality TV
+
+  - name: shopping
+    weight: -2.0
+    keywords:
+      - best deals
+      - deal of the day
+      - buying guide
+      - gift guide
+      - the best we tested
+      - Black Friday
+      - Prime Day
+
+# Muted: left out of the feed when in the title or summary. These are the
+# non-articles seen in the Phase 1 run: affiliate coupon pages, daily cartoons
+# and newsletter or app sign-up items.
+mute_keywords:
+  - promo codes
+  - promo code
+  - coupon codes
+  - coupon code
+  - coupons
+  - daily cartoon
+  - sign up now
+  - download now
+
+# Per-source multipliers, replacing the weight in sources.yaml (1.0 by
+# default). The personal blogs post rarely and are close to the interests
+# above, so they get a lift; the high-volume general sources are damped so
+# they don't fill the feed on volume alone.
+sources:
+  simon-willison:
+    weight: 1.5
+  julia-evans:
+    weight: 1.5
+  martin-fowler:
+    weight: 1.3
+  lwn:
+    weight: 1.3
+  quanta:
+    weight: 1.3
+  carbon-brief:
+    weight: 1.2
+  dw-news:
+    weight: 0.7
+  business-insider:
+    weight: 0.6
+  independent-uk:
+    weight: 0.8
+
 recency:
   half_life_hours: 24
+
 fields:
   title: 3.0
   summary: 2.0
