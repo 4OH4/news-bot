@@ -16,6 +16,19 @@ from newsfeed.settings import Settings
 from newsfeed.wiring import open_services, open_storage
 
 
+@pytest.fixture(autouse=True)
+def _clean_storage_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep the developer's shell from changing which storage the tests select."""
+    for name in (
+        "NEWSFEED_STORAGE",
+        "NEWSFEED_GCS_BUCKET",
+        "NEWSFEED_GCS_PREFIX",
+        "NEWSFEED_FIRESTORE_DATABASE",
+        "NEWSFEED_GCP_PROJECT",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+
 def _settings(tmp_path: Path, **kwargs: object) -> Settings:
     return Settings(_env_file=None, data_dir=tmp_path, **kwargs)  # type: ignore[call-arg]
 
@@ -29,6 +42,11 @@ def test_local_is_default_and_unchanged(tmp_path: Path) -> None:
 def test_gcp_requires_bucket(tmp_path: Path) -> None:
     with pytest.raises(ValidationError, match="NEWSFEED_GCS_BUCKET"):
         _settings(tmp_path, storage="gcp")
+
+
+def test_gcp_rejects_blank_bucket(tmp_path: Path) -> None:
+    with pytest.raises(ValidationError, match="NEWSFEED_GCS_BUCKET"):
+        _settings(tmp_path, storage="gcp", gcs_bucket="   ")
 
 
 def test_gcp_builds_firestore_and_gcs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -54,6 +72,7 @@ def test_gcp_builds_firestore_and_gcs(tmp_path: Path, monkeypatch: pytest.Monkey
     fs_ctor.assert_called_once_with(project="proj", database="db")
     gcs_ctor.assert_called_once_with(project="proj")
     gcs_ctor.return_value.bucket.assert_called_once_with("b")
+    assert blobs._prefix == "p/"  # no public accessor for the prefix
 
 
 def test_gcp_services_open_and_close_without_close_method(
