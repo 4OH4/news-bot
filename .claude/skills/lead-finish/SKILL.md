@@ -27,7 +27,7 @@ Anything with uncommitted or unmerged work is **kept and listed**. Never force-d
 ## 3. Hand off
 
 Update the `lead-handoff` memory file, replacing its contents. Use absolute dates. Record:
-- what merged this session, marking the PRs the lead merged itself (Tier A), and which PRs are open and ready to merge (cards in "Human review"), in order;
+- what merged this session, marking the PRs the lead merged itself (Tier A), and the merge queue (cards in "Human review") with what each merge unlocks, as in `/lead-start` step 5;
 - what is In progress, in Agent review or kept back, and why;
 - the next steps: which issues become Ready after the pending merges, which `needs-human` PRs to prepare next, and any decision waiting on the user.
 
@@ -36,7 +36,7 @@ Don't copy information the board or git history already holds. Record only what 
 ## 4. Report
 
 Tell the user, briefly:
-- PRs ready to merge, in order, with their tiers;
+- the merge queue, what each merge unlocks, and what agents are working on, in the format of `/lead-start` step 5;
 - the Tier A PRs the lead merged this session, one line each;
 - anything only they can do;
 - how to resume: start a new conversation in this folder with `/lead-start`.
