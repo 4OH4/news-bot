@@ -336,6 +336,6 @@ Once 6 and 7 are merged, issues 8–10, 12 and 13 can run in parallel. 11, 14, 1
 | Occasional commits from Windows introducing CRLF line endings | `.gitattributes` enforces LF; development itself happens on Ubuntu |
 | Agents colliding on shared files | Contracts first; area-scoped issues; serialised contract changes |
 | **Open:** PWA framework choice | Decide at the start of Phase 3 (ADR) |
-| **Open:** Terraform vs scripted gcloud | Decide at the start of Phase 2 (ADR) |
+| **Decided:** Terraform vs scripted gcloud | Terraform, after a one-off `gcloud` bootstrap of the project and state bucket; only I apply changes ([ADR-0004](docs/adr/0004-infrastructure-as-code.md)) |
 | **Open:** content retention period | Proposal: keep metadata indefinitely and full content for 30–90 days |
 | **Open:** embedding provider (Vertex AI vs local) | Decide in Phase 4 based on cost and quality |
