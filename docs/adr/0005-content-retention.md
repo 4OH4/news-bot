@@ -21,7 +21,7 @@ Volumes from the Phase 1 live run (25 sources, 2026-10-17, local SQLite and file
 | Content for 90 days | 84–200 MB, steady | the same |
 | Keep everything | 340–820 MB more each year, without limit | the same |
 
-Storage cost doesn't decide this. Cloud Storage Standard costs a few US cents per GB per month, so even keeping everything costs well under $1 a month after a year, and Firestore's free tier includes 1 GiB of storage. What differs is how much third-party content we hold, and for how long, while the reader doesn't need it. The feed shows recent articles, an old article stays reachable through its link, and the dedupe that stops old URLs being ingested again needs only the metadata.
+Storage cost doesn't decide this. Cloud Storage Standard costs a few US cents per GB per month, so even keeping everything costs well under $1 a month after a year, and Firestore's free tier includes 1 GiB of storage. What differs is how much third-party content we hold, and for how long, while the reader doesn't need it. The feed shows recent articles, an old article stays reachable through its link, and the dedupe that stops old URLs being ingested again needs only the metadata. Keeping metadata indefinitely does have one running cost: ingest's dedupe currently lists every stored article on each run, and on Firestore each document read is billed, so at hourly runs the reads would outgrow the free tier (50,000 a day) within weeks. #104 bounds that lookup to recently fetched articles before the unattended week, which keeps reads flat as history grows.
 
 ## Decision
 
@@ -52,4 +52,4 @@ Storage cost doesn't decide this. Cloud Storage Standard costs a few US cents pe
 - One follow-up issue, after #83: treat a missing content blob as expired content in the publish stage and the preview (headline, summary and link; an info log if the article is older than the retention period, a warning otherwise), and add the `NEWSFEED_CONTENT_RETENTION_DAYS` setting. #83's feed window must also be shorter than the retention period.
 - Lowering the retention period later takes effect at the next lifecycle pass. Raising it doesn't bring back content already deleted.
 - Anything that needs article text after 30 days (embeddings or story clustering in Phase 4) must be computed while the content exists, or re-fetched from the source.
-- **Revisit** if Firestore metadata approaches its 1 GiB free tier (at about 130 MB a year, not for several years), if Phase 3 shows I regularly want unsaved articles older than 30 days, or if Phase 4 needs a backlog of article text.
+- **Revisit** if Firestore reads per run grow with the number of stored articles rather than staying flat (they shouldn't once #104 lands), if Firestore metadata approaches its 1 GiB free tier (at about 130 MB a year, not for several years), if Phase 3 shows I regularly want unsaved articles older than 30 days, or if Phase 4 needs a backlog of article text.
