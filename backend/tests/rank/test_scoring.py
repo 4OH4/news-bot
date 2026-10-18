@@ -63,25 +63,81 @@ def test_keywords_match_whole_words_only() -> None:
     assert "topic:ai" not in breakdown
 
 
-def test_negative_topic_demotes_and_score_never_goes_below_zero() -> None:
-    cfg = config(topics=[{"name": "celebs", "keywords": ["celebrity"], "weight": -0.2}])
-    a = article(title="Celebrity wedding")
-    score, breakdown = score_article(a, None, cfg, None, NOW)
-    assert breakdown["topic:celebs"] == pytest.approx(-0.6)
-    assert score == pytest.approx(0.4)
-
-    harsh = config(topics=[{"name": "celebs", "keywords": ["celebrity"], "weight": -5}])
-    assert score_article(a, None, harsh, None, NOW)[0] == 0.0
+CELEBS = {"name": "celebs", "keywords": ["celebrity"], "weight": -1.0}
 
 
-def test_mute_keyword_zeroes_the_score_but_keeps_the_breakdown() -> None:
+@pytest.mark.parametrize(
+    ("title", "body", "expected"),
+    [
+        ("A quiet day", "A celebrity was there", 0.5),  # body only: 1 / (1 + 1 * 1)
+        ("Celebrity wedding", None, 0.25),  # title: 1 / (1 + 1 * 3)
+        ("Celebrity wedding", "celebrity guests", 0.25),  # strongest field, not summed
+    ],
+)
+def test_negative_topic_is_a_multiplier_from_the_strongest_field(
+    title: str, body: str | None, expected: float
+) -> None:
+    score, breakdown = score_article(article(title=title), body, config(topics=[CELEBS]), None, NOW)
+
+    assert breakdown["demote:celebs"] == pytest.approx(expected)
+    assert "topic:celebs" not in breakdown
+    assert score == pytest.approx(expected)
+
+
+def test_demoted_article_scores_above_zero_and_below_the_same_article_undemoted() -> None:
+    cfg = config(topics=[TOPIC_AI, {**CELEBS, "weight": -5.0}])
+    a = article(title="Celebrity AI startup")
+
+    demoted, breakdown = score_article(a, None, cfg, None, NOW)
+    undemoted, _ = score_article(a, None, config(topics=[TOPIC_AI]), None, NOW)
+
+    assert 0.0 < demoted < undemoted
+    assert demoted == pytest.approx(
+        (1 + breakdown["topic:ai"])
+        * breakdown["demote:celebs"]
+        * breakdown["source"]
+        * breakdown["recency"]
+    )
+
+
+def test_demoted_articles_keep_their_recency_order() -> None:
+    cfg = config(topics=[{**CELEBS, "weight": -10.0}])
+    newer = article(title="Celebrity news", published_at=NOW - timedelta(hours=2))
+    older = article(title="Celebrity news", published_at=NOW - timedelta(hours=30))
+
+    newer_score = score_article(newer, None, cfg, None, NOW)[0]
+    older_score = score_article(older, None, cfg, None, NOW)[0]
+
+    assert newer_score > older_score > 0.0
+
+
+@pytest.mark.parametrize(
+    ("title", "summary"), [("Sponsored: AI roundup", None), ("AI roundup", "A sponsored post")]
+)
+def test_mute_keyword_in_title_or_summary_zeroes_the_score_but_keeps_the_breakdown(
+    title: str, summary: str | None
+) -> None:
     cfg = config(topics=[TOPIC_AI], mute_keywords=["sponsored"])
-    a = article(title="AI roundup")
-    score, breakdown = score_article(a, "This post is sponsored.", cfg, None, NOW)
+    a = article(title=title, summary=summary)
+    score, breakdown = score_article(a, "Body text.", cfg, None, NOW)
 
     assert score == 0.0
     assert breakdown["muted"] == 1.0
     assert "topic:ai" in breakdown
+    assert "mute_keyword_in_body" not in breakdown
+
+
+def test_mute_keyword_only_in_body_halves_the_score_without_muting() -> None:
+    cfg = config(topics=[TOPIC_AI], mute_keywords=["sponsored"])
+    a = article(title="AI roundup")
+
+    score, breakdown = score_article(a, "This post is sponsored.", cfg, None, NOW)
+    unmentioned, _ = score_article(a, "This post is not.", cfg, None, NOW)
+
+    assert "muted" not in breakdown
+    assert breakdown["mute_keyword_in_body"] == 0.5
+    assert score == pytest.approx(unmentioned * 0.5)
+    assert score > 0.0
 
 
 def test_muted_source() -> None:
