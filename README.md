@@ -27,6 +27,11 @@ docker run --rm newsfeed run
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
+| `NEWSFEED_STORAGE` | `local` | `local` uses SQLite and files under `NEWSFEED_DATA_DIR`; `gcp` uses Firestore and Cloud Storage with application default credentials (no key files). |
+| `NEWSFEED_GCS_BUCKET` | none | Required when `NEWSFEED_STORAGE=gcp`: the Cloud Storage bucket for blobs. |
+| `NEWSFEED_GCS_PREFIX` | empty | Optional key prefix inside the bucket. |
+| `NEWSFEED_FIRESTORE_DATABASE` | default database | Optional Firestore database id. |
+| `NEWSFEED_GCP_PROJECT` | from credentials | Optional Google Cloud project for both clients. |
 | `NEWSFEED_DEDUPE_WINDOW_DAYS` | `14` (at least 1) | Ingest dedupes against articles fetched in this many days, which bounds the reads per run on Firestore. Keep it at least as long as any `--since` you use (a longer `--since` widens it for that run). An older entry that reappears is never allowed to overwrite a stored article. |
 
 ### JavaScript rendering (optional)
