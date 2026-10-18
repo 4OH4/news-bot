@@ -396,7 +396,24 @@ def test_failed_feed_is_a_feed_outcome(
     run_pipeline(services, [SOURCE])
 
     (record,) = [r for r in log_records if r.getMessage() == "run finished"]
-    assert record.metrics["feeds"]["gazette"]["outcome"] == "failed"  # type: ignore[attr-defined]
+    feed = record.metrics["feeds"]["gazette"]  # type: ignore[attr-defined]
+    assert feed["outcome"] == "failed"
+    assert feed["http_status"] == 404
+
+
+def test_second_run_of_unchanged_feed_is_not_modified(
+    tmp_path: Path, repository: SqliteRepository, log_records: list[logging.LogRecord]
+) -> None:
+    services = _services(tmp_path, repository, _fetcher(etag='"v1"'))
+
+    run_pipeline(services, [SOURCE], extract=False)
+    run_pipeline(services, [SOURCE], extract=False)
+
+    first, second = [r for r in log_records if r.getMessage() == "run finished"]
+    assert first.metrics["feeds"]["gazette"]["outcome"] == "ok"  # type: ignore[attr-defined]
+    feed = second.metrics["feeds"]["gazette"]  # type: ignore[attr-defined]
+    assert feed["outcome"] == "not_modified"
+    assert feed["http_status"] == 304
 
 
 def test_merged_article_also_logs_one_entry(
