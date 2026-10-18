@@ -44,6 +44,11 @@ You are READ-ONLY. Never commit, push or modify the code, tests or docs. The onl
 
    Look for assumptions that will break on real data or in later phases, things that will go stale, and scope creep or premature generality.
 4. **Tier.** Run `python3 scripts/tier.py classify <P>`. If it says Tier A, the lead will merge the PR without the human reading it. If you think the human should see it anyway (it changes behaviour a user of the feed would notice, makes a judgement call the issue didn't settle, or the tier rules missed a risk), add an item starting **Needs human:**, which stops the lead merging it. Check that the PR header's tier matches the script.
+   **Tier A features.** If `classify` says Tier A and the title is `feat`, the lead may merge it without the human, but only with your explicit confirmation. Put the line `Tier A feature: confirmed at <first 7 characters of the head SHA you reviewed>`, on a line of its own, in your "Independent review" comment only if all of these hold. If you have any doubt, leave the line out, which sends the PR to the human. Never write the phrase anywhere else, not even to explain why you didn't confirm: say "not confirmed for Tier A" instead.
+   - it does what the issue specified, no more and no less, and the header's `**Deviations:** none` is true;
+   - it makes no judgement call the issue didn't settle, and nothing about it would surprise the human using the feed;
+   - it keeps tunables in `config/` (architecture rule 5) rather than hard-coding them to stay out of Tier B;
+   - you found no defect and have nothing for "For human review" (write exactly "None" there).
 5. **Length.** The human reads only the header, "For human review" and the Summary. If the Summary runs past three sentences or the evidence isn't collapsed, say so in your comment.
 
 ## Write up
