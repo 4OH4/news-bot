@@ -12,13 +12,14 @@ domain's override in ``config/extraction.yaml`` (see ``overrides.py``), then:
    usually boilerplate, such as a JavaScript shell's "enable JavaScript" notice,
    so the chain returns ``failed`` instead and the article keeps its feed
    summary. Failing that, a ``paywalled`` result, and finally ``failed``.
-4. If that result is not ``ok`` and ``detect_paywall`` (``paywall.py``) finds a
-   subscriber gate or teaser on the page, the chain returns it as
-   ``paywalled``, with the detector's reason in ``error`` (ADR-0003 decision
-   2). A teaser's content and metadata are kept; publish shows a paywalled
-   article as headline, summary and link. An ``ok`` result is returned as it
-   is even on a page with paywall markup, because metered sites label articles
-   they serve in full that way too.
+4. If ``find_paywall`` (``paywall.py``) finds a visible subscriber gate or gate
+   notice on the page, the chain returns the result as ``paywalled``, with the
+   detector's reason in ``error`` (ADR-0003 decision 2), even when it graded
+   ``ok``: a preview cut off by a gate isn't a full article, however long.
+   The schema.org ``isAccessibleForFree: false`` marker alone does the same
+   only for a result that isn't ``ok``, because metered sites put it on
+   articles they serve in full too. A teaser's content and metadata are kept;
+   publish shows a paywalled article as headline, summary and link.
 
 Every attempt is recorded in ``ExtractionResult.attempts``, in order, and the
 returned result's ``method`` names the extractor that produced it (``None`` when
@@ -33,7 +34,7 @@ from typing import Final
 
 from newsfeed.extract.common import grade, run_safely
 from newsfeed.extract.overrides import DomainOverride, ExtractionConfig, Mode, url_domain
-from newsfeed.extract.paywall import detect_paywall
+from newsfeed.extract.paywall import find_paywall
 from newsfeed.logging import get_logger
 from newsfeed.models import ExtractionAttempt, ExtractionResult, ExtractionStatus
 from newsfeed.ports import Extractor
@@ -153,8 +154,7 @@ class ExtractorChain:
 
         attempts = [_attempt_record(result) for result in results]
         chosen = self._choose(results)
-        if chosen.status is not ExtractionStatus.OK:
-            chosen = _check_paywall(chosen, html, url)
+        chosen = _check_paywall(chosen, html, url)
         return chosen.model_copy(update={"attempts": attempts})
 
     def _plan(self, override: DomainOverride | None) -> list[Extractor]:
@@ -225,11 +225,15 @@ _GRADED: Final = frozenset({ExtractionStatus.OK, ExtractionStatus.PARTIAL})
 
 
 def _check_paywall(chosen: ExtractionResult, html: str, url: str) -> ExtractionResult:
-    """``chosen`` marked ``paywalled`` if the page is a gate or teaser, else unchanged."""
+    """``chosen`` marked ``paywalled`` if the page is a gate or teaser, else unchanged.
+
+    A visible gate or notice overrides any status; the schema.org marker alone
+    overrides only a result that isn't ``ok``.
+    """
     if chosen.status is ExtractionStatus.PAYWALLED:
         return chosen  # An extractor already said so; keep its reason.
     try:
-        reason = detect_paywall(html, url)
+        signal = find_paywall(html, url)
     except Exception as exc:  # the chain promises never to raise
         log.warning(
             "paywall detection failed",
@@ -241,14 +245,24 @@ def _check_paywall(chosen: ExtractionResult, html: str, url: str) -> ExtractionR
             },
         )
         return chosen
-    if reason is None:
+    if signal is None:
         return chosen
+    if chosen.status is ExtractionStatus.OK and not signal.conclusive:
+        return chosen  # Only the schema.org marker, on a page served in full.
     log.info(
         "paywall detected",
-        extra={"stage": "extract", "url": url, "reason": reason, "status": chosen.status},
+        extra={
+            "stage": "extract",
+            "url": url,
+            "reason": signal.reason,
+            "status": chosen.status,
+        },
     )
     return chosen.model_copy(
-        update={"status": ExtractionStatus.PAYWALLED, "error": f"paywall detected: {reason}"}
+        update={
+            "status": ExtractionStatus.PAYWALLED,
+            "error": f"paywall detected: {signal.reason}",
+        }
     )
 
 

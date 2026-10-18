@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from newsfeed.extract.paywall import detect_paywall
+from newsfeed.extract.paywall import PaywallSignal, detect_paywall, find_paywall
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent / "fixtures" / "extract" / "paywall"
 URL = "https://news.example.com/2026/10/story"
@@ -49,6 +49,7 @@ def test_each_signal_flags_its_fixture(name: str, expected: str) -> None:
         "free_newsletter_signup.html",
         "free_article_about_paywalls.html",
         "free_metered_markup.html",
+        "free_promos_and_hidden_gate.html",
         # The existing article fixtures are free pages too.
         "../news_article.html",
         "../blog_post.html",
@@ -59,6 +60,33 @@ def test_each_signal_flags_its_fixture(name: str, expected: str) -> None:
 )
 def test_free_pages_mentioning_subscriptions_are_not_flagged(name: str) -> None:
     assert detect_paywall(fixture(name), URL) is None
+
+
+@pytest.mark.parametrize(
+    ("name", "conclusive"),
+    [
+        ("jsonld_not_free.html", False),
+        ("microdata_not_free.html", False),
+        ("gate_markup.html", True),
+        ("notice_members_only.html", True),
+        ("notice_subscribe_to_continue.html", True),
+    ],
+)
+def test_only_visible_gates_are_conclusive(name: str, conclusive: bool) -> None:
+    signal = find_paywall(fixture(name), URL)
+    assert signal is not None
+    assert signal.conclusive is conclusive
+    assert signal.reason == detect_paywall(fixture(name), URL)
+
+
+def test_a_visible_gate_wins_over_the_schema_org_marker() -> None:
+    gate = fixture("gate_markup.html").replace(
+        "</head>",
+        '<script type="application/ld+json">{"isAccessibleForFree": false}</script></head>',
+    )
+    assert find_paywall(gate, URL) == PaywallSignal(
+        "subscriber gate element (class 'paywall')", conclusive=True
+    )
 
 
 # --- schema.org ---------------------------------------------------------------------
@@ -88,6 +116,33 @@ def test_json_ld_in_a_list_is_found() -> None:
     assert detect_paywall(html, URL) is not None
 
 
+@pytest.mark.parametrize(
+    "data",
+    [
+        '{"@graph": [{"@type": "WebSite"}, {"@type": "Article", "isAccessibleForFree": false}]}',
+        '{"@type": "Article", "hasPart": {"isAccessibleForFree": false}}',
+        '{"hasPart": [{"cssSelector": ".a"}, {"isAccessibleForFree": "False"}]}',
+        '{"@type": "WebPage", "mainEntity": {"@type": "Article", "isAccessibleForFree": false}}',
+        '{"@type": "WebPage", "mainEntity": {"hasPart": {"isAccessibleForFree": false}}}',
+    ],
+)
+def test_json_ld_main_entity_and_its_parts_are_checked(data: str) -> None:
+    assert detect_paywall(jsonld(data), URL) is not None
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        '{"isAccessibleForFree": true, "relatedLink": [{"isAccessibleForFree": false}]}',
+        '{"@type": "Article", "citation": {"isAccessibleForFree": false}}',
+        '{"@type": "Article", "isPartOf": {"@type": "Periodical", "isAccessibleForFree": false}}',
+        '{"@type": "Article", "hasPart": {"relatedLink": {"isAccessibleForFree": false}}}',
+    ],
+)
+def test_json_ld_on_related_items_is_not_flagged(data: str) -> None:
+    assert detect_paywall(jsonld(data), URL) is None
+
+
 def test_malformed_json_ld_is_ignored() -> None:
     html = jsonld('{"@type": "NewsArticle", "isAccessibleForFree": false')  # unclosed
     assert detect_paywall(html, URL) is None
@@ -101,7 +156,9 @@ def test_microdata_value_can_be_element_text() -> None:
 # --- Gate markup --------------------------------------------------------------------
 
 # Asks the reader to pay, without a notice phrase, so only the gate markup counts.
-_CTA = "Start your free trial today. Already a member? Sign in."
+_CTA = 'Start your free trial today. Already a member? <a href="/login">Sign in</a>.'
+# Article text long enough that a block before it doesn't end the article.
+_MORE_ARTICLE = "<p>" + "More of the invented article. " * 10 + "</p>"
 
 
 @pytest.mark.parametrize(
@@ -130,6 +187,23 @@ def test_gate_class_and_id_names(attrs: str) -> None:
         f'<div class="paywall" hidden>{_CTA}</div>',
         f'<div style="display:none"><div class="paywall">{_CTA}</div></div>',
         f'<div class="paywall" style="visibility: hidden">{_CTA}</div>',
+        f'<div class="paywall" aria-hidden="true">{_CTA}</div>',
+        f'<div class="paywall hidden">{_CTA}</div>',
+        f'<div class="modal d-none"><div class="paywall">{_CTA}</div></div>',
+        # A paywall-named element whose words ask, but which offers no link or button.
+        '<div class="paywall">Start your free trial today. Already a member? Sign in.</div>',
+        # A members-area link above the article, not a gate that ends it.
+        f'<div class="members-only-link">Members area: <a href="/login">log in</a></div>'
+        f"<main><article>{_MORE_ARTICLE}</article></main>",
+        '<div class="members-only-link">Members area: log in</div>',
+        # Promos outside the article: an aside, a sidebar, navigation, a footer.
+        f'<aside><div class="paywall">{_CTA}</div></aside>',
+        f'<div class="post-sidebar"><div class="paywall">{_CTA}</div></div>',
+        f'<nav><div class="members-only">{_CTA}</div></nav>',
+        f'<div role="complementary"><div class="paywall">{_CTA}</div></div>',
+        f'<footer><div class="paywall">{_CTA}</div></footer>',
+        # A promo box in the middle of an article.
+        f'<article><p>Teaser.</p><div class="paywall-promo">{_CTA}</div>{_MORE_ARTICLE}</article>',
         # A paragraph of article text labelled "paywall".
         f'<p class="paywall">{_CTA}</p>',
         # A paywall-named element with no call to action.
@@ -140,6 +214,25 @@ def test_gate_class_and_id_names(attrs: str) -> None:
 )
 def test_gate_markup_that_is_not_a_visible_gate(body: str) -> None:
     assert detect_paywall(page(body), URL) is None
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        # A gate at the end of the article, inside an article that has a sidebar.
+        f'<article class="post has-sidebar"><p>Teaser.</p><div class="paywall">{_CTA}</div>'
+        "</article>",
+        # A short footer note after the gate doesn't stop it ending the article.
+        f'<main><p>Teaser.</p><div class="paywall">{_CTA}</div><p>Share this post.</p></main>',
+        # The action can be a button or a submit input.
+        '<div class="paywall">Keep reading with a trial. <button>Subscribe</button></div>',
+        '<form class="regwall">Register to read on. <input type="submit" value="Sign up"></form>',
+        # Text after the article ends (comments, related posts) doesn't count.
+        f'<article><p>Teaser.</p><div class="paywall">{_CTA}</div></article>{_MORE_ARTICLE}',
+    ],
+)
+def test_gates_that_end_the_article(body: str) -> None:
+    assert detect_paywall(page(body), URL) is not None
 
 
 # --- Notices --------------------------------------------------------------------------
@@ -159,7 +252,31 @@ def test_gate_markup_that_is_not_a_visible_gate(body: str) -> None:
     ],
 )
 def test_notice_phrases(notice: str) -> None:
-    assert detect_paywall(page(f"<p>Teaser.</p><div><h2>{notice}</h2></div>"), URL) is not None
+    gate = f'<div><h2>{notice}</h2><a href="/subscribe">Subscribe</a></div>'
+    assert detect_paywall(page(f"<p>Teaser.</p>{gate}"), URL) is not None
+
+
+_ACTION = '<a href="/subscribe">Subscribe</a>'
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        # A notice with nothing to act on: a promo line, not a gate.
+        "<p>Teaser.</p><div><h2>This article is for subscribers only.</h2></div>",
+        # Sidebar and aside promos mentioning paid subscribers.
+        "<aside><p>Ad-free bonus episodes for paid subscribers only.</p></aside>",
+        f"<aside><p>Bonus episodes for paid subscribers only. {_ACTION}</p></aside>",
+        f'<div class="sidebar"><p>Bonus episodes for paid subscribers only. {_ACTION}</p></div>',
+        # Hidden by a class.
+        f'<div class="hidden"><h2>Subscribe to continue reading</h2>{_ACTION}</div>',
+        # A promo box in the middle of the article, with more article after it.
+        f"<article><p>Teaser.</p><div><h3>For paid subscribers only</h3>{_ACTION}</div>"
+        f"{_MORE_ARTICLE}</article>",
+    ],
+)
+def test_notices_that_are_not_gates(body: str) -> None:
+    assert detect_paywall(page(body), URL) is None
 
 
 @pytest.mark.parametrize(

@@ -10,6 +10,7 @@ import pytest
 from newsfeed.extract.chain import DEFAULT_MIN_PARTIAL_WORDS, ExtractorChain
 from newsfeed.extract.newspaper_extractor import Newspaper4kExtractor
 from newsfeed.extract.overrides import DomainOverride, ExtractionConfig
+from newsfeed.extract.paywall import PaywallSignal
 from newsfeed.extract.readability_extractor import ReadabilityExtractor
 from newsfeed.extract.trafilatura_extractor import TrafilaturaExtractor
 from newsfeed.models import ExtractionAttempt, ExtractionResult, ExtractionStatus
@@ -461,6 +462,7 @@ def test_real_chain_falls_back_when_trafilatura_finds_nothing(
 
 PAYWALL_DIR = FIXTURES_DIR / "paywall"
 GATE_PAGE = (PAYWALL_DIR / "gate_markup.html").read_text(encoding="utf-8")
+JSONLD_PAGE = (PAYWALL_DIR / "jsonld_not_free.html").read_text(encoding="utf-8")
 FREE_PAGE = (PAYWALL_DIR / "free_newsletter_signup.html").read_text(encoding="utf-8")
 PAYWALLED = ExtractionStatus.PAYWALLED
 
@@ -491,17 +493,40 @@ def test_a_paywalled_teaser_keeps_its_content_and_metadata() -> None:
     assert res.content_html == teaser.content_html
 
 
-def test_an_ok_result_on_a_paywall_page_is_left_as_it_is() -> None:
+@pytest.mark.parametrize("name", ["gate_markup.html", "notice_members_only.html"])
+def test_an_ok_length_result_on_a_gated_page_is_paywalled(name: str) -> None:
+    # A long preview cut off by a visible gate (e.g. a paid newsletter post)
+    # grades ok on length alone, but it isn't the full article.
+    page = (PAYWALL_DIR / name).read_text(encoding="utf-8")
+    extractors, _ = stubs(("trafilatura", result(OK, 900, title="Preview title")))
+    res = ExtractorChain(extractors).extract(page, URL)
+    assert res.status is PAYWALLED
+    assert res.error is not None
+    assert res.error.startswith("paywall detected: subscriber ")
+    assert (res.method, res.title, res.word_count) == ("trafilatura", "Preview title", 900)
+    assert [a.status for a in res.attempts] == [OK]
+
+
+def test_an_ok_result_with_only_the_schema_org_marker_is_left_as_it_is() -> None:
+    # Metered sites mark articles they serve in full isAccessibleForFree: false.
     extractors, _ = stubs(("trafilatura", result(OK, 900)))
-    res = ExtractorChain(extractors).extract(GATE_PAGE, URL)
+    res = ExtractorChain(extractors).extract(JSONLD_PAGE, URL)
     assert res.status is OK
     assert res.error is None
 
 
-def test_a_domain_min_words_decides_what_counts_as_ok_on_a_paywall_page() -> None:
+def test_the_schema_org_marker_alone_marks_a_non_ok_result_paywalled() -> None:
+    extractors, _ = stubs(("trafilatura", result(PARTIAL, 90)))
+    res = ExtractorChain(extractors).extract(JSONLD_PAGE, URL)
+    assert res.status is PAYWALLED
+    assert res.error == "paywall detected: schema.org isAccessibleForFree is false (JSON-LD)"
+
+
+def test_a_domain_min_words_decides_what_counts_as_ok_on_a_schema_org_page() -> None:
     extractors, _ = stubs(("trafilatura", result(OK, 200)))
+    assert ExtractorChain(extractors).extract(JSONLD_PAGE, URL).status is OK
     config = overrides(**{"news.example.com": {"min_words": 300}})
-    res = ExtractorChain(extractors, config).extract(GATE_PAGE, URL)
+    res = ExtractorChain(extractors, config).extract(JSONLD_PAGE, URL)
     assert res.status is PAYWALLED
 
 
@@ -531,10 +556,10 @@ def test_a_detector_error_leaves_the_result_unchanged(
 ) -> None:
     from newsfeed.extract import chain
 
-    def boom(html: str, url: str) -> str | None:
+    def boom(html: str, url: str) -> PaywallSignal | None:
         raise RuntimeError("detector bug")
 
-    monkeypatch.setattr(chain, "detect_paywall", boom)
+    monkeypatch.setattr(chain, "find_paywall", boom)
     extractors, _ = stubs(("trafilatura", result(PARTIAL, 90)))
     res = ExtractorChain(extractors).extract(GATE_PAGE, URL)
     assert res.status is PARTIAL
@@ -561,7 +586,13 @@ def test_real_chain_marks_paywall_fixtures_paywalled(name: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "name", ["free_newsletter_signup.html", "free_article_about_paywalls.html"]
+    "name",
+    [
+        "free_newsletter_signup.html",
+        "free_article_about_paywalls.html",
+        "free_metered_markup.html",
+        "free_promos_and_hidden_gate.html",
+    ],
 )
 def test_real_chain_leaves_free_fixtures_alone(name: str) -> None:
     html = (PAYWALL_DIR / name).read_text(encoding="utf-8")
