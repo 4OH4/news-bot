@@ -16,6 +16,7 @@ import pytest
 from pydantic import BaseModel
 
 from newsfeed.adapters.sqlite_repository import (
+    _MIGRATIONS,
     SCHEMA_VERSION,
     SchemaVersionError,
     SqliteRepository,
@@ -25,6 +26,7 @@ from newsfeed.models import (
     ArticleExtraction,
     ExtractionStatus,
     Feedback,
+    PipelineStage,
     RunStats,
     SourceState,
 )
@@ -114,6 +116,67 @@ def test_migrates_a_database_at_version_zero(db_path: Path) -> None:
     assert raw(db_path, "SELECT version FROM schema_version") == [(SCHEMA_VERSION,)]
 
 
+def test_migrates_a_version_one_database_with_data(db_path: Path) -> None:
+    # A database written before #85: the version 1 schema, with rows as the
+    # models of that time stored them (no health, retry or metrics fields).
+    db_path.parent.mkdir(parents=True)
+    connection = sqlite3.connect(db_path)
+    connection.execute("CREATE TABLE schema_version (version INTEGER)")
+    connection.execute("INSERT INTO schema_version (version) VALUES (1)")
+    for statement in _MIGRATIONS[0]:
+        connection.execute(statement)
+    article = make_article(1)
+    connection.execute(
+        "INSERT INTO articles (id, canonical_url, url, source_id, title, fetched_at,"
+        " extraction, score_breakdown) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            article.id,
+            article.canonical_url,
+            article.url,
+            article.source_id,
+            article.title,
+            "2026-10-11T12:00:00.000000Z",
+            '{"error": null, "method": "trafilatura", "status": "ok", "word_count": 0}',
+            '{"topic": 0.5}',
+        ),
+    )
+    connection.execute(
+        "INSERT INTO source_state (source_id, etag, last_fetched_at, last_status)"
+        " VALUES (?, ?, ?, ?)",
+        ("example", '"v1"', "2026-10-11T12:00:00.000000Z", 200),
+    )
+    connection.execute(
+        "INSERT INTO run_stats (run_id, started_at, finished_at, stage_counts,"
+        " extraction_by_domain, error_count) VALUES (?, ?, ?, ?, ?, ?)",
+        ("run-1", "2026-10-11T12:00:00.000000Z", None, '{"ingest": {"new": 3}}', "{}", 0),
+    )
+    connection.commit()
+    connection.close()
+
+    with SqliteRepository(db_path) as repo:
+        assert repo.schema_version() == SCHEMA_VERSION
+        assert repo.get_article(article.id) == article
+        assert repo.get_source_state("example") == SourceState(
+            source_id="example", etag='"v1"', last_fetched_at=T0, last_status=200
+        )
+        old_run = RunStats(
+            run_id="run-1", started_at=T0, stage_counts={PipelineStage.INGEST: {"new": 3}}
+        )
+        assert repo.get_run_stats("run-1") == old_run
+        assert repo.list_run_stats() == [old_run]
+        # The migrated tables store the new fields.
+        state = SourceState(source_id="example", consecutive_failures=2, last_error="HTTP 500")
+        repo.save_source_state(state)
+        assert repo.get_source_state("example") == state
+        newer = RunStats(
+            run_id="run-2",
+            started_at=T0 + timedelta(hours=1),
+            stage_durations_ms={PipelineStage.EXTRACT: 5},
+        )
+        repo.save_run_stats(newer)
+        assert repo.list_run_stats() == [newer, old_run]
+
+
 def test_refuses_a_newer_schema(db_path: Path) -> None:
     with SqliteRepository(db_path):
         pass
@@ -164,6 +227,11 @@ def test_timestamps_are_stored_as_fixed_width_utc(db_path: Path) -> None:
     assert stored == ["2026-10-11T12:00:00.000000Z", "2026-10-11T12:00:00.000005Z"]
     assert raw(db_path, "SELECT started_at, finished_at FROM run_stats") == [
         ("2026-10-11T12:00:00.000000Z", None)
+    ]
+    with SqliteRepository(db_path) as repo:
+        repo.save_source_state(SourceState(source_id="s", last_success_at=T0))
+    assert raw(db_path, "SELECT last_success_at FROM source_state") == [
+        ("2026-10-11T12:00:00.000000Z",)
     ]
 
 

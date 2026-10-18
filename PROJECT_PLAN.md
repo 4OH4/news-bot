@@ -123,14 +123,18 @@ The authoritative definitions are the Pydantic models in `backend/src/newsfeed/m
 Source       id, type (rss|google_news|hn|reddit), url/query, weight, enabled
 Article      id (hash of canonical_url), canonical_url, url, source_id, title,
              author, published_at, fetched_at, summary, lead_image,
-             extraction: {status, method, error, word_count},
+             extraction: {status, method, error, error_type, word_count,
+                          attempts, last_attempt_at},
              content_ref (blob path), score, score_breakdown, cluster_id
 Feedback     id, article_id, event (open|read|like|dismiss|mute_source),
              value (e.g. read seconds), created_at
 Profile      rules: {boost_topics, mute_topics, boost_sources, mute_sources},
              embedding_centroids (later)
-RunStats     run_id, started_at, duration, counts per stage,
-             extraction success by domain
+SourceState  source_id, etag, last_modified, last_fetched_at, last_status,
+             consecutive_failures, last_error, last_success_at
+RunStats     run_id, started_at, finished_at, counts per stage,
+             extraction success by domain, stage durations, failures by
+             reason, median word count by domain
 ```
 
 ## 6. Phased Delivery
