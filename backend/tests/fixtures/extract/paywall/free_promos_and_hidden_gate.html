@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<!-- Synthetic fixture: invented text. A free article on a site that sells
+     memberships, carrying everything that looks like a gate but isn't one:
+     a "members area" link above the article, JSON-LD that marks only a
+     *related* item as paid, a gate hidden by a "hidden" class for when the
+     meter runs out, a sidebar promo for paid-subscriber extras, and a
+     mid-article promo box followed by more of the article. None of it ends
+     the article as a visible gate, so the page must not be flagged. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>The ferry timetable nobody can read | Saltmarsh Weekly</title>
+  <script type="application/ld+json">
+  {"@context": "https://schema.org", "@type": "NewsArticle",
+   "headline": "The ferry timetable nobody can read",
+   "isAccessibleForFree": true,
+   "relatedLink": [{"@type": "NewsArticle", "headline": "Inside the timetable office",
+                    "isAccessibleForFree": false}],
+   "citation": {"@type": "CreativeWork", "isAccessibleForFree": "False"}}
+  </script>
+</head>
+<body>
+  <div class="members-only-link">Members area: <a href="/login">log in</a></div>
+  <main>
+    <article class="post has-sidebar">
+      <h1>The ferry timetable nobody can read</h1>
+      <p>The new ferry timetable for the estuary runs to eleven pages, uses four colours and three kinds of footnote, and has already been printed twice because the first run left out the Sunday sailings.</p>
+      <div class="members-only-promo">
+        <h3>For paid subscribers only</h3>
+        <p>Our weekly harbour data digest. <a href="/subscribe">Subscribe</a></p>
+      </div>
+      <p>Passengers at the north slipway say they now ask the crew rather than read the board. The operator says a simpler version is on its way, and that the colours were meant to make the tide-dependent sailings easier to spot.</p>
+      <p>A spokesperson added that the footnotes would be cut from three kinds to one, and that the next printing would be checked against the old timetable line by line before it went to the slipways.</p>
+      <p>Regular passengers have started a noticeboard of their own beside the ticket hut, with the week's sailings written out by hand in a single colour.</p>
+      <div class="paywall-gate hidden">
+        <h2>This article is for subscribers only</h2>
+        <a href="/subscribe">Subscribe to continue reading</a>
+      </div>
+    </article>
+    <div class="post-sidebar">
+      <div class="paywall-teaser">Ad-free bonus episodes for paid subscribers only. <a href="/join">Become a member</a></div>
+    </div>
+    <aside>
+      <p>Ad-free bonus episodes for paid subscribers only.</p>
+    </aside>
+  </main>
+</body>
+</html>

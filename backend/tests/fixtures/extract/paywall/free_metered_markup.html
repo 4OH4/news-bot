@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<!-- Synthetic fixture: invented text. A free article on a metered site: the
+     body paragraphs carry a "paywall" class (the publisher's way of marking
+     metered text), and the page ships an empty paywall placeholder plus a
+     hidden subscribe modal for when the meter runs out. None of that is a gate
+     the reader sees, so it must not be flagged. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>The orchard that grows forty kinds of pear | Wireframe Magazine</title>
+  <style>.paywall-modal { position: fixed; }</style>
+</head>
+<body>
+  <aside class="paywall-modal paywall-modal--full" aria-hidden="true">
+    <div class="paywall-modal__unit">You have read all your free articles this month. Subscribe for unlimited access.</div>
+  </aside>
+  <div id="paywall"></div>
+  <div class="paywall-bar" style="display: none">Subscribe now and save. Already a subscriber? Sign in.</div>
+  <main>
+    <article>
+      <h1>The orchard that grows forty kinds of pear</h1>
+      <div class="body__inner-container">
+        <p class="paywall">On a slope above the river there is an orchard where every tree is a different variety of pear, planted by a retired engineer who wanted to know which ones would still fruit after a cold spring.</p>
+        <p class="paywall">Twelve years later he has an answer of sorts. About a third of the trees fruit reliably, a third sulk, and the rest produce in alternate years, apparently at random.</p>
+        <p class="paywall">Members of the local fruit group now visit every autumn to taste them.</p>
+      </div>
+    </article>
+  </main>
+  <template id="meter-expired">
+    <section class="paywall-gate">This article is for subscribers only. Subscribe to continue reading.</section>
+  </template>
+</body>
+</html>
