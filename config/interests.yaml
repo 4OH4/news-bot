@@ -10,15 +10,21 @@
 #
 # Schema (everything is optional):
 #
-#   topics:                       # each match adds `weight` points
+#   topics:                       # a match adds `weight` points per field
 #     - name: example-topic       # unique label, shown in the score breakdown
 #       keywords: [foo, "bar baz"]  # case-insensitive words or phrases,
 #                                 # matched on word boundaries ("ai" does not
 #                                 # match "maintain")
-#       weight: 2.0               # may be negative to demote a topic
+#       weight: 2.0               # may be negative to demote a topic: the
+#                                 # score is then multiplied by
+#                                 # 1 / (1 + |weight| x strongest field
+#                                 # weight), e.g. -1 in the body halves it;
+#                                 # never 0, so demoted articles keep order
 #
-#   mute_keywords: [foo]          # an article matching one is muted: scored
-#                                 # and stored, but left out of the feed
+#   mute_keywords: [foo]          # one in the title or summary mutes the
+#                                 # article: scored and stored, but left out
+#                                 # of the feed; one only in the body halves
+#                                 # the score instead
 #
 #   sources:                      # keyed by source id from sources.yaml
 #     some-source-id:
