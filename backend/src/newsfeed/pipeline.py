@@ -1,4 +1,4 @@
-"""The pipeline stages that make up ``newsfeed run``: ingest, then extract.
+"""The pipeline stages that make up ``newsfeed run``: ingest, extract, then rank.
 
 Stages talk to each other only through the ``Repository`` and ``BlobStore``
 (CLAUDE.md, rule 3): ingest leaves ``pending`` articles behind and extract picks
@@ -38,6 +38,8 @@ from newsfeed.models import (
     article_id,
 )
 from newsfeed.ports import Extractor, Fetcher
+from newsfeed.rank.interests import InterestsConfig
+from newsfeed.rank.stage import DEFAULT_WINDOW_HOURS, rank_recent
 from newsfeed.wiring import Services
 
 __all__ = [
@@ -799,6 +801,10 @@ def run_pipeline(
     *,
     ingest: bool = True,
     extract: bool = True,
+    rank: bool = True,
+    interests: InterestsConfig | None = None,
+    rank_sources: Sequence[Source] | None = None,
+    rank_window_hours: float = DEFAULT_WINDOW_HOURS,
     extract_source_ids: Collection[str] | None = None,
     since: datetime | None = None,
     limit: int | None = None,
@@ -810,7 +816,9 @@ def run_pipeline(
     ``sources`` are ingested. Extract takes every pending article unless
     ``extract_source_ids`` narrows it (the CLI passes ``--source`` here), so
     articles left pending by a source since disabled or removed, and ad hoc
-    ones, are still extracted by a plain run.
+    ones, are still extracted by a plain run. Rank scores articles fetched in
+    the last ``rank_window_hours`` against ``interests`` (none means no rules),
+    taking source weights from ``rank_sources`` (default: ``sources``).
     """
     started = clock()
     run_id = run_id or started.strftime("%Y%m%dT%H%M%S") + f"-{started.microsecond:06d}"
@@ -825,6 +833,21 @@ def run_pipeline(
         began = time.perf_counter()
         extract_pending(services, tally, source_ids=extract_source_ids, since=since, limit=limit)
         durations[PipelineStage.EXTRACT.value] = time.perf_counter() - began
+    if rank:
+        began = time.perf_counter()
+        summary = rank_recent(
+            services,
+            interests or InterestsConfig(),
+            since=clock() - timedelta(hours=rank_window_hours),
+            sources=sources if rank_sources is None else rank_sources,
+            clock=clock,
+        )
+        for name, n in summary.counts().items():
+            if n:
+                tally.count(PipelineStage.RANK, name, n)
+        for _ in range(summary.errors):
+            tally.error()
+        durations[PipelineStage.RANK.value] = time.perf_counter() - began
     stats = tally.stats(run_id, started, clock())
     services.repository.save_run_stats(stats)
     log.info(
