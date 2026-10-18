@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-18
-- **Related:** #73 (this decision); #74 (GCP setup, applies the lifecycle rule); #77 (GCS `BlobStore`); #82, #83 (`feed.json` and the publish stage); [ADR-0001](0001-ports-and-adapters.md) (content in the `BlobStore`, metadata in the `Repository`); [ADR-0003](0003-phase-1-go-decision.md) (headline-and-link display); ADR-0004 (#72, Terraform manages the bucket); `PROJECT_PLAN.md` §11 ("Cost creep", "content retention period"); NFR-2.
+- **Related:** #73 (this decision); #74 (GCP setup, applies the lifecycle rule); #77 (GCS `BlobStore`); #82, #83 (`feed.json` and the publish stage); [ADR-0001](0001-ports-and-adapters.md) (content in the `BlobStore`, metadata in the `Repository`); [ADR-0003](0003-phase-1-go-decision.md) (headline-and-link display); [ADR-0004](0004-infrastructure-as-code.md) (Terraform manages the bucket); `PROJECT_PLAN.md` §11 ("Cost creep", "content retention period"); NFR-2.
 
 ## Context
 
