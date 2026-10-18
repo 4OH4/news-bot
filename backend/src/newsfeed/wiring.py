@@ -26,7 +26,14 @@ from newsfeed.models import SourceType
 from newsfeed.ports import BlobStore, Extractor, Fetcher, Repository, SourceIngester
 from newsfeed.settings import Settings
 
-__all__ = ["Services", "build_extractor", "build_ingesters", "open_fetcher", "open_services"]
+__all__ = [
+    "Services",
+    "build_extractor",
+    "build_ingesters",
+    "open_fetcher",
+    "open_services",
+    "open_storage",
+]
 
 
 @dataclass(frozen=True)
@@ -69,15 +76,38 @@ def open_fetcher(settings: Settings) -> Iterator[HttpFetcher]:
         yield fetcher
 
 
+def open_storage(settings: Settings) -> tuple[Repository, BlobStore]:
+    """The repository and blob store for ``settings.storage``.
+
+    The Google adapters are imported only for ``gcp``, so local runs and CI need
+    neither the Google libraries' import cost nor any credentials.
+    """
+    if settings.storage == "gcp":
+        from newsfeed.adapters.gcp import open_firestore_repository, open_gcs_blobstore
+
+        assert settings.gcs_bucket  # Settings rejects gcp without a bucket
+        return (
+            open_firestore_repository(
+                project=settings.gcp_project, database=settings.firestore_database
+            ),
+            open_gcs_blobstore(
+                project=settings.gcp_project,
+                bucket=settings.gcs_bucket,
+                prefix=settings.gcs_prefix,
+            ),
+        )
+    return SqliteRepository(settings.database_path), LocalBlobStore(settings.blob_dir)
+
+
 @contextmanager
 def open_services(settings: Settings) -> Iterator[Services]:
     """Build the services for a run and release the database and HTTP pool afterwards."""
-    repository = SqliteRepository(settings.database_path)
+    repository, blobs = open_storage(settings)
     try:
         with open_fetcher(settings) as fetcher:
             yield Services(
                 repository=repository,
-                blobs=LocalBlobStore(settings.blob_dir),
+                blobs=blobs,
                 fetcher=fetcher,
                 ingesters=build_ingesters(),
                 extractor=build_extractor(settings),
@@ -86,4 +116,6 @@ def open_services(settings: Settings) -> Iterator[Services]:
                 dedupe_window_days=settings.dedupe_window_days,
             )
     finally:
-        repository.close()
+        close = getattr(repository, "close", None)  # Firestore's client needs none
+        if close is not None:
+            close()
