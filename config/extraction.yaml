@@ -18,10 +18,16 @@
 #                                  # optional `playwright` group and Chromium
 #                                  # (see README.md)
 #       min_words: 80              # words needed for "ok" (default 150)
+#       paywall: true              # this domain answers subscriber-only pages
+#                                  # with HTTP 403, so a 403 from it is stored
+#                                  # as "paywalled", not "failed" (default
+#                                  # false). HTTP 402 is "paywalled" on every
+#                                  # domain. Only set it with evidence that
+#                                  # the 403s are a paywall, not bot blocking.
 #     paywalled.example.org:
 #       mode: summary_only         # don't extract; keep the feed summary
 #                                  # (status "skipped"). Can't be combined
-#                                  # with order, render or min_words.
+#                                  # with order, render, min_words or paywall.
 #
 # Add domains here when `make eval` (#18) shows the default chain doing badly
 # on them.
@@ -34,3 +40,10 @@ domains:
   # four Ars evaluation entries, so it goes first.
   arstechnica.com:
     order: [readability, trafilatura, newspaper4k]
+
+  # Phase 1 review (#21, docs/phase1-review.md): 6 of the 8 failures in the
+  # live run were LWN subscriber-only articles ("[$]" in the feed), served as
+  # HTTP 403 "Subscription required" for their first week; the two paywalled
+  # LWN evaluation entries return 403 too. Other LWN articles extract fine.
+  lwn.net:
+    paywall: true

@@ -914,3 +914,136 @@ def test_old_article_that_reappears_keeps_its_stored_state(
     assert len(repository.list_articles()) == 4  # the other entries are new
     stats = tally.stats("run", fetched, fetched)
     assert stats.stage_counts[PipelineStage.INGEST]["new"] == 3
+
+
+# --- Paywalls (#84) ------------------------------------------------------------------
+
+PAYWALL_CONFIG = ExtractionConfig.model_validate(
+    {"domains": {"subs.example.com": {"paywall": True}}}
+)
+
+
+def _paywall_run(
+    tmp_path: Path, repository: SqliteRepository, url: str, response: FakeResponse
+) -> tuple[Article, ExtractionStatus, int]:
+    """Extract one article served ``response``; return it as stored, its status and errors."""
+    article = _article_for(url)
+    repository.upsert_article(article)
+    chain = ExtractorChain([TrafilaturaExtractor()], PAYWALL_CONFIG)
+    services = _services(tmp_path, repository, FakeFetcher({url: response}), chain)
+
+    stats = run_pipeline(services, [], ingest=False)
+
+    stored = repository.get_article(article.id)
+    assert stored is not None
+    ((_, statuses),) = stats.extraction_by_domain.items()
+    (status,) = statuses
+    return stored, status, stats.error_count
+
+
+@pytest.mark.parametrize(
+    ("url", "status", "reason"),
+    [
+        ("https://news.example.com/a/1", 402, "HTTP 402 Payment Required"),
+        ("https://subs.example.com/a/1", 402, "HTTP 402 Payment Required"),
+        (
+            "https://subs.example.com/a/1",
+            403,
+            "HTTP 403 from subs.example.com, configured paywall: true",
+        ),
+        (
+            "https://www.subs.example.com/a/1",
+            403,
+            "HTTP 403 from subs.example.com, configured paywall: true",
+        ),
+    ],
+)
+def test_payment_required_and_paywall_domain_403_are_stored_paywalled(
+    tmp_path: Path,
+    repository: SqliteRepository,
+    log_records: list[logging.LogRecord],
+    url: str,
+    status: int,
+    reason: str,
+) -> None:
+    stored, counted, errors = _paywall_run(
+        tmp_path, repository, url, FakeResponse(b"Subscription required", status=status)
+    )
+
+    assert stored.extraction.status is ExtractionStatus.PAYWALLED
+    assert stored.extraction.error == reason
+    assert counted is ExtractionStatus.PAYWALLED
+    # Respecting a paywall is not an error (rule 6).
+    assert errors == 0
+    assert not [r for r in log_records if r.levelno >= logging.WARNING]
+    (finished,) = [r for r in log_records if r.getMessage() == "extraction finished"]
+    assert (finished.status, finished.error) == ("paywalled", reason)  # type: ignore[attr-defined]
+
+
+@pytest.mark.parametrize(
+    ("url", "status"),
+    [
+        ("https://news.example.com/a/1", 403),  # 403 elsewhere may be bot blocking
+        ("https://subs.example.com/a/1", 401),
+        ("https://subs.example.com/a/1", 404),
+    ],
+)
+def test_other_http_errors_stay_failed(
+    tmp_path: Path, repository: SqliteRepository, url: str, status: int
+) -> None:
+    stored, counted, errors = _paywall_run(
+        tmp_path, repository, url, FakeResponse(b"", status=status)
+    )
+
+    assert stored.extraction.status is ExtractionStatus.FAILED
+    assert stored.extraction.error == f"PageUnavailableError: HTTP {status}"
+    assert counted is ExtractionStatus.FAILED
+    assert errors == 1
+
+
+def test_a_paywall_domain_403_without_a_chain_stays_failed(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    # Overrides come from the chain; a bare extractor has none to consult.
+    url = "https://subs.example.com/a/1"
+    article = _article_for(url)
+    repository.upsert_article(article)
+    fetcher = FakeFetcher({url: FakeResponse(b"", status=403)})
+    services = _services(tmp_path, repository, fetcher, FakeExtractor())
+
+    run_pipeline(services, [], ingest=False)
+
+    stored = repository.get_article(article.id)
+    assert stored is not None
+    assert stored.extraction.status is ExtractionStatus.FAILED
+
+
+def test_a_served_teaser_is_stored_paywalled_with_the_reason(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    teaser = (FIXTURES / "extract" / "paywall" / "notice_members_only.html").read_bytes()
+    stored, counted, errors = _paywall_run(
+        tmp_path, repository, "https://news.example.com/a/1", FakeResponse(teaser, headers=HTML)
+    )
+
+    assert stored.extraction.status is ExtractionStatus.PAYWALLED
+    assert stored.extraction.error == (
+        "paywall detected: subscriber notice ('This post is for paid members')"
+    )
+    assert counted is ExtractionStatus.PAYWALLED
+    assert errors == 0
+
+
+def test_fetch_page_reports_the_http_status_of_an_error() -> None:
+    fetcher = FakeFetcher(
+        {"https://x.example.com/paid": FakeResponse(b"", status=402)},
+        disallowed=["https://x.example.com/private"],
+    )
+
+    with pytest.raises(PageUnavailableError) as paid:
+        fetch_page(fetcher, "https://x.example.com/paid")
+    with pytest.raises(PageUnavailableError) as refused:
+        fetch_page(fetcher, "https://x.example.com/private")
+
+    assert paid.value.status_code == 402
+    assert refused.value.status_code is None

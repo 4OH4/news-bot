@@ -185,3 +185,40 @@ def test_overrides_are_immutable() -> None:
 def test_null_values_mean_the_defaults(tmp_path: Path) -> None:
     path = write(tmp_path, "domains:\n  example.com:\n    order: null\n    min_words: null\n")
     assert load_extraction_config(path).domains == {"example.com": DomainOverride()}
+
+
+def test_paywall_flag_loads_and_defaults_to_false(tmp_path: Path) -> None:
+    path = write(
+        tmp_path,
+        "domains:\n  subs.example.com:\n    paywall: true\n  example.org:\n    min_words: 80\n",
+    )
+    config = load_extraction_config(path)
+    assert config.domains["subs.example.com"] == DomainOverride(paywall=True)
+    assert config.domains["example.org"].paywall is False
+
+
+@pytest.mark.parametrize(
+    ("yaml_text", "message"),
+    [
+        (
+            "domains:\n  example.com:\n    mode: summary_only\n    paywall: true\n",
+            "summary_only skips extraction, so paywall has no effect",
+        ),
+        ("domains:\n  example.com:\n    paywall: sometimes\n", "valid boolean"),
+    ],
+)
+def test_invalid_paywall_flag_is_rejected(tmp_path: Path, yaml_text: str, message: str) -> None:
+    with pytest.raises(ConfigError, match=message):
+        load_extraction_config(write(tmp_path, yaml_text))
+
+
+def test_summary_only_with_paywall_false_is_allowed(tmp_path: Path) -> None:
+    path = write(tmp_path, "domains:\n  example.com:\n    mode: summary_only\n    paywall: false\n")
+    assert load_extraction_config(path).domains["example.com"].mode is Mode.SUMMARY_ONLY
+
+
+def test_repo_config_marks_lwn_as_a_paywall_domain() -> None:
+    # Phase 1 evidence: LWN's subscriber-only articles return HTTP 403.
+    override = load_extraction_config(REPO_CONFIG).override_for("https://lwn.net/Articles/1/")
+    assert override is not None
+    assert override.paywall is True

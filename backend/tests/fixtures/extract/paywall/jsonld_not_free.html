@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<!-- Synthetic fixture: invented text. A news site's subscriber preview that
+     declares itself paid through schema.org JSON-LD (isAccessibleForFree false,
+     nested under @graph with a hasPart cssSelector, as publishers mark metered
+     content for search engines). No visible gate notice: the JSON-LD is the
+     only signal. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Harbour council weighs a toll on weekend ferry crossings | The Quillport Courier</title>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {"@type": "WebSite", "name": "The Quillport Courier", "url": "https://courier.example.com/"},
+      {
+        "@type": "NewsArticle",
+        "headline": "Harbour council weighs a toll on weekend ferry crossings",
+        "datePublished": "2026-10-12T07:15:00+01:00",
+        "author": {"@type": "Person", "name": "Odile Strachan-Varga"},
+        "isAccessibleForFree": false,
+        "hasPart": {
+          "@type": "WebPageElement",
+          "isAccessibleForFree": false,
+          "cssSelector": ".article-body-locked"
+        }
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+  <header class="site-header">
+    <a class="logo" href="/">The Quillport Courier</a>
+    <a class="btn" href="/subscribe">Subscribe</a>
+  </header>
+  <main>
+    <article>
+      <h1>Harbour council weighs a toll on weekend ferry crossings</h1>
+      <p class="byline">By Odile Strachan-Varga</p>
+      <div class="article-body">
+        <p>Councillors in Quillport will vote next month on a plan to charge a small toll on weekend ferry crossings to the outer islands, a move officials say would pay for a long-delayed refit of the two oldest boats.</p>
+        <p>The proposal, drawn up by the harbour committee, would add a flat fee to each crossing on Saturdays and Sundays between April and September, when the boats carry most of their passengers.</p>
+        <p>Island residents would be exempt, but several shopkeepers on the outer islands said the charge could put off the day visitors they depend on during the summer.</p>
+      </div>
+    </article>
+  </main>
+</body>
+</html>
