@@ -1,8 +1,12 @@
 """Fixtures that run the storage contract tests against every implementation.
 
 Each fixture is parametrised over the in-memory fakes and the real adapters.
-To run the contract suites against a new adapter (Firestore and GCS in
-Phase 2), add a parameter here; the tests themselves don't change.
+To run the contract suites against a new adapter (Firestore in Phase 2), add
+a parameter here; the tests themselves don't change.
+
+``GcsBlobStore`` runs twice: against an in-process fake client (always), and
+against a real Cloud Storage emulator under ``-m emulator`` (excluded by
+default; needs ``STORAGE_EMULATOR_HOST``, see the README).
 
 The ``open_*`` fixtures yield an *opener*: a callable that returns a new handle
 onto the same underlying store each time it is called, so tests can check that
@@ -12,6 +16,7 @@ opener returns the same instance every time.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import threading
 import uuid
@@ -21,9 +26,11 @@ from pathlib import Path
 import pytest
 
 from newsfeed.adapters.firestore_repository import FirestoreRepository
+from newsfeed.adapters.gcs_blobstore import GcsBlobStore
 from newsfeed.adapters.localfs_blobstore import LocalBlobStore
 from newsfeed.adapters.sqlite_repository import SqliteRepository
 from newsfeed.ports import BlobStore, Repository
+from tests.contract.fake_gcs import FakeGcsClient
 from tests.fakes import InMemoryBlobStore, InMemoryRepository
 
 RepositoryOpener = Callable[[], Repository]
@@ -79,13 +86,43 @@ def repo(open_repository: RepositoryOpener) -> Repository:
     return open_repository()
 
 
-@pytest.fixture(params=["memory", "localfs"])
+EMULATOR_BUCKET = "newsfeed-contract-tests"
+
+
+@pytest.fixture(
+    params=[
+        "memory",
+        "localfs",
+        "gcs-fake",
+        pytest.param("gcs-emulator", marks=pytest.mark.emulator),
+    ]
+)
 def open_blob_store(request: pytest.FixtureRequest, tmp_path: Path) -> BlobStoreOpener:
     """Return an opener for each ``BlobStore`` implementation."""
     if request.param == "memory":
         fake = InMemoryBlobStore()
         return lambda: fake
+    if request.param == "gcs-fake":
+        client = FakeGcsClient()
+        return lambda: GcsBlobStore(client, "bucket", prefix="test")  # type: ignore[arg-type]
+    if request.param == "gcs-emulator":
+        return _emulator_opener()
     return lambda: LocalBlobStore(tmp_path / "blobs")
+
+
+def _emulator_opener() -> BlobStoreOpener:
+    """Opener for a store on the real emulator, isolated by a unique prefix per test."""
+    if not os.environ.get("STORAGE_EMULATOR_HOST"):
+        pytest.skip("STORAGE_EMULATOR_HOST is not set")
+    from google.api_core.exceptions import Conflict
+    from google.cloud import storage
+
+    # With STORAGE_EMULATOR_HOST set the client skips authentication.
+    client = storage.Client(project="newsfeed-test")
+    with contextlib.suppress(Conflict):
+        client.create_bucket(EMULATOR_BUCKET)
+    prefix = f"test-{uuid.uuid4().hex}"
+    return lambda: GcsBlobStore(client, EMULATOR_BUCKET, prefix=prefix)
 
 
 @pytest.fixture
