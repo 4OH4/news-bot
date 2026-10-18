@@ -130,6 +130,12 @@ def _text_of(element: lxml_html.HtmlElement) -> str:
     return " ".join(element.text_content().split())
 
 
+# lxml refuses a str that starts with an XML declaration naming an encoding;
+# the text is already decoded, so the declaration is dropped rather than parsing
+# bytes (which would guess the charset again for pages without a declaration).
+_XML_DECLARATION = re.compile(r"^\s*<\?xml\b[^>]*\?>")
+
+
 def page_titles(html: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
     """Return ``(metadata titles, h1 headings)`` found in ``html``.
 
@@ -137,7 +143,7 @@ def page_titles(html: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
     lists may be empty, and unparseable HTML gives two empty tuples.
     """
     try:
-        root = lxml_html.fromstring(html)
+        root = lxml_html.fromstring(_XML_DECLARATION.sub("", html, count=1))
     except (ValueError, ParserError):
         return (), ()
     meta = [
