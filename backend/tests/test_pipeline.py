@@ -1055,6 +1055,7 @@ def test_fetch_page_reports_the_http_status_of_an_error() -> None:
     assert paid.value.status_code == 402
     assert refused.value.status_code is None
 
+
 # --- Rank --------------------------------------------------------------------------
 
 
