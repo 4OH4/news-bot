@@ -69,7 +69,15 @@ _SNIFF_BYTES = 4096
 
 
 class PageUnavailableError(Exception):
-    """A page couldn't be fetched (network error, robots.txt, or an HTTP error status)."""
+    """A page couldn't be fetched (network error, robots.txt, or an HTTP error status).
+
+    ``status_code`` is the HTTP status when the server answered with an error,
+    otherwise None.
+    """
+
+    def __init__(self, message: str, *, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
 
 
 class NotAnArticleError(Exception):
@@ -157,10 +165,12 @@ def fetch_page(fetcher: Fetcher, url: str) -> FetchedPage:
         NotAnArticleError: if the response is not HTML.
     """
     result = fetcher.fetch(url)
+    # The fetcher reports an HTTP error status both as ``error`` and as ``status_code``.
+    error_status = result.status_code if (result.status_code or 0) >= 400 else None
     if result.error is not None or result.status_code is None:
-        raise PageUnavailableError(result.error or "no response")
-    if result.status_code >= 400:
-        raise PageUnavailableError(f"HTTP {result.status_code}")
+        raise PageUnavailableError(result.error or "no response", status_code=error_status)
+    if error_status is not None:
+        raise PageUnavailableError(f"HTTP {error_status}", status_code=error_status)
     content_type = result.headers.get("content-type", "").split(";")[0].strip().lower()
     if content_type and content_type not in _HTML_TYPES:
         raise NotAnArticleError(f"not an HTML page (content-type {content_type})")
@@ -532,6 +542,34 @@ def _summary_only(extractor: Extractor, url: str) -> bool:
     return override is not None and override.mode is Mode.SUMMARY_ONLY
 
 
+def _paywall_refusal(extractor: Extractor, url: str, status_code: int | None) -> str | None:
+    """Why an HTTP error from ``url`` means a paywall (ADR-0003), or None if it doesn't.
+
+    402 Payment Required always does. 403 only does on a domain configured
+    ``paywall: true``; elsewhere it may be bot blocking, which is a failure.
+    """
+    if status_code == 402:
+        return "HTTP 402 Payment Required"
+    if status_code == 403 and isinstance(extractor, ExtractorChain):
+        override = extractor.override_for(url)
+        if override is not None and override.paywall:
+            return f"HTTP 403 from {url_domain(url)}, configured paywall: true"
+    return None
+
+
+def _finish_paywalled(run: _ExtractRun, article: Article, reason: str, domain: str) -> _Outcome:
+    """Record a page refused for want of a subscription; not an error (rule 6)."""
+    run.services.repository.upsert_article(
+        _with_changes(
+            article,
+            extraction=ArticleExtraction(status=ExtractionStatus.PAYWALLED, error=reason),
+        )
+    )
+    run.tally.extraction(ExtractionRecord(domain, ExtractionStatus.PAYWALLED, error=reason))
+    run.tally.count(PipelineStage.EXTRACT, ExtractionStatus.PAYWALLED.value)
+    return _Outcome(article, domain, ExtractionStatus.PAYWALLED.value, error=reason)
+
+
 def _extract_article(run: _ExtractRun, article: Article) -> _Outcome:
     services = run.services
     domain = url_domain(article.url) or "unknown"
@@ -546,6 +584,9 @@ def _extract_article(run: _ExtractRun, article: Article) -> _Outcome:
     except NotAnArticleError as exc:
         return _finish_skipped(run, article, str(exc), domain)
     except PageUnavailableError as exc:
+        paywall = _paywall_refusal(services.extractor, article.url, exc.status_code)
+        if paywall is not None:
+            return _finish_paywalled(run, article, paywall, domain)
         return _finish_failed(run, article, type(exc).__name__, str(exc), domain)
 
     # After redirects the domain may differ; per-domain behaviour (overrides,
