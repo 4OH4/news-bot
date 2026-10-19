@@ -224,6 +224,22 @@ def test_bad_lead_image_becomes_null() -> None:
     assert item["lead_image"] is None
 
 
+def test_trailing_newline_is_invalid_in_urls_and_run_id() -> None:
+    (item,) = build([article("img", lead_image="https://img.example/a.jpg\n")])["items"]
+    assert item["lead_image"] is None
+
+    articles = [
+        article("good"),
+        article("nl", canonical_url="https://news.example.com/nl\n"),
+    ]
+    built = build_feed(articles, SOURCES, now=NOW, run_id=RUN_ID)
+    assert names(built.feed) == ["good"]
+    assert built.dropped == 1
+
+    with pytest.raises(ValueError):
+        build_feed([], SOURCES, now=NOW, run_id=RUN_ID + "\n")
+
+
 def test_schema_rejects_a_muted_key_and_unknown_fields() -> None:
     feed = build([article("a")])
     feed["items"][0]["score_breakdown"]["muted"] = 1.0
