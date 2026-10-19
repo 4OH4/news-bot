@@ -43,6 +43,13 @@
 #     title: 3.0                  # it was found (defaults shown)
 #     summary: 2.0
 #     body: 1.0
+#
+#   scoring:
+#     body_only_demotion: 1.0     # share of a demotion applied when a negative
+#                                 # topic matches only in the body (default 1,
+#                                 # unchanged); 0 ignores such matches, 0.5
+#                                 # halves the demotion strength. The
+#                                 # breakdown then has demote_body_only:<name>
 
 # --- How the weights were chosen --------------------------------------------
 # An unmatched article scores 1 (before source and recency). A topic of

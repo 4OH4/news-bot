@@ -8,7 +8,8 @@ into a score per article. It holds:
   summary (in the body alone they halve its score instead);
 * ``sources``: per source id, a ``weight`` multiplier or ``mute: true``;
 * ``recency``: the half-life of the recency decay;
-* ``fields``: how much a keyword match counts in the title, summary or body.
+* ``fields``: how much a keyword match counts in the title, summary or body;
+* ``scoring``: options such as weakening body-only demotions.
 
 Keywords are case-insensitive words or phrases matched on word boundaries
 (``keyword_pattern``), so ``ai`` matches "AI safety" but not "maintain".
@@ -43,6 +44,7 @@ __all__ = [
     "FieldWeights",
     "InterestsConfig",
     "Recency",
+    "Scoring",
     "SourceRule",
     "Topic",
     "check_sources",
@@ -133,6 +135,14 @@ class FieldWeights(_Frozen):
     body: Annotated[float, Field(ge=0.0)] = 1.0
 
 
+class Scoring(_Frozen):
+    """Switches that change how rules combine into a score."""
+
+    body_only_demotion: Annotated[float, Field(ge=0.0, le=1.0)] = 1.0
+    """Share of a demotion applied when a negative topic matches only in the
+    body: 1 (default) keeps the full body demotion, 0 ignores such matches."""
+
+
 class InterestsConfig(ConfigFile):
     """Schema of ``config/interests.yaml``. Every part is optional."""
 
@@ -143,6 +153,7 @@ class InterestsConfig(ConfigFile):
     sources: dict[str, SourceRule] = Field(default_factory=dict)
     recency: Recency = Field(default_factory=Recency)
     fields: FieldWeights = Field(default_factory=FieldWeights)
+    scoring: Scoring = Field(default_factory=Scoring)
 
     @field_validator("mute_keywords")
     @classmethod
