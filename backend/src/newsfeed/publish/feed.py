@@ -43,9 +43,10 @@ PARTIAL_MIN_WORDS = 150
 """A ``partial`` item is shown as an article from this many words (ADR-0006)."""
 
 _STAGE = PipelineStage.PUBLISH.value
-_HTTP_URL = re.compile(r"^https?://\S+$")
-_SOURCE_ID = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
-_RUN_ID = re.compile(r"^[A-Za-z0-9._-]+$")
+# fullmatch, not match with "$": "$" also accepts a trailing newline, which the JSON Schema rejects.
+_HTTP_URL = re.compile(r"https?://\S+")
+_SOURCE_ID = re.compile(r"[a-z0-9][a-z0-9_-]*")
+_RUN_ID = re.compile(r"[A-Za-z0-9._-]+")
 
 
 @dataclass(frozen=True)
@@ -93,7 +94,7 @@ def _item(article: Article, *, as_article: bool) -> dict[str, Any]:
         "author": article.author,
         "published_at": _timestamp(article.published_at) if article.published_at else None,
         "summary": article.summary,
-        "lead_image": image if image and _HTTP_URL.match(image) else None,
+        "lead_image": image if image and _HTTP_URL.fullmatch(image) else None,
         "score": article.score,
         "score_breakdown": dict(article.score_breakdown),
         "extraction_status": article.extraction.status.value,
@@ -107,9 +108,9 @@ def _problem(article: Article) -> str | None:
     """Why this article can't be a valid feed item, or None. Mirrors the schema."""
     if not article.title.strip():
         return "empty title"
-    if not _HTTP_URL.match(article.canonical_url) or not _domain(article.canonical_url):
+    if not _HTTP_URL.fullmatch(article.canonical_url) or not _domain(article.canonical_url):
         return "invalid url"
-    if not _SOURCE_ID.match(article.source_id):
+    if not _SOURCE_ID.fullmatch(article.source_id):
         return "invalid source id"
     if article.score is None or not math.isfinite(article.score):
         return "invalid score"
@@ -137,7 +138,7 @@ def build_feed(
     Articles that can't form a valid item are dropped and logged, so one bad
     article never blocks the feed.
     """
-    if not _RUN_ID.match(run_id):
+    if not _RUN_ID.fullmatch(run_id):
         raise ValueError(f"invalid run id {run_id!r}")
     live = {s.id for s in sources if s.enabled and s.weight > 0}
     cutoff = now - timedelta(hours=window_hours)
