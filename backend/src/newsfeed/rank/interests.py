@@ -4,7 +4,8 @@ The file says what the reader cares about; the scoring stage (#81) turns it
 into a score per article. It holds:
 
 * ``topics``: named groups of keywords with a weight (negative to demote);
-* ``mute_keywords``: phrases that mute an article;
+* ``mute_keywords``: phrases that mute an article when found in its title or
+  summary (in the body alone they halve its score instead);
 * ``sources``: per source id, a ``weight`` multiplier or ``mute: true``;
 * ``recency``: the half-life of the recency decay;
 * ``fields``: how much a keyword match counts in the title, summary or body.
@@ -82,11 +83,18 @@ def _clean_keywords(keywords: list[str], what: str) -> list[str]:
 
 
 class Topic(_Frozen):
-    """A named group of keywords that adds ``weight`` when one matches."""
+    """A named group of keywords whose ``weight`` counts when one matches.
+
+    A positive weight adds ``weight`` times the field weight for each field
+    (title, summary, body) a keyword matches in; a negative one multiplies the
+    score by a demotion factor instead. ``newsfeed.rank.scoring`` has the rules.
+    """
 
     name: Keyword
     keywords: Annotated[list[Keyword], Field(min_length=1)]
-    weight: float = Field(description="Points added on a match; negative demotes.")
+    weight: float = Field(
+        description="Times the field weight, added per matching field; negative demotes."
+    )
 
     @field_validator("keywords")
     @classmethod
