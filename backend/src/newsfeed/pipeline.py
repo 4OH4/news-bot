@@ -38,6 +38,7 @@ from newsfeed.models import (
     article_id,
 )
 from newsfeed.ports import Extractor, Fetcher
+from newsfeed.publish.feed import FEED_WINDOW_HOURS, publish_feed
 from newsfeed.rank.interests import InterestsConfig
 from newsfeed.rank.stage import DEFAULT_WINDOW_HOURS, rank_recent
 from newsfeed.wiring import Services
@@ -53,6 +54,7 @@ __all__ = [
     "fetch_page",
     "ingest_sources",
     "inspect_url",
+    "publish_stage",
     "run_pipeline",
 ]
 
@@ -795,6 +797,38 @@ def _find_by_first_url(services: Services, canonical: str) -> Article | None:
 # --- Whole runs --------------------------------------------------------------------
 
 
+def publish_stage(
+    services: Services,
+    sources: Sequence[Source],
+    tally: RunTally,
+    *,
+    run_id: str,
+    now: datetime,
+    window_hours: float,
+) -> None:
+    """Write ``feed.json``. A failure is logged and counted; the previous feed stays."""
+    try:
+        built = publish_feed(services, sources, run_id=run_id, now=now, window_hours=window_hours)
+    except Exception as exc:
+        log.error(
+            "publish failed; previous feed.json left in place",
+            extra={
+                "stage": PipelineStage.PUBLISH.value,
+                "run_id": run_id,
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+            },
+        )
+        tally.count(PipelineStage.PUBLISH, "failed")
+        tally.error()
+        return
+    tally.count(PipelineStage.PUBLISH, "items", len(built.feed["items"]))
+    if built.dropped:
+        tally.count(PipelineStage.PUBLISH, "dropped", built.dropped)
+    if built.links_for_missing_content:
+        tally.count(PipelineStage.PUBLISH, "missing_content", built.links_for_missing_content)
+
+
 def run_pipeline(
     services: Services,
     sources: Sequence[Source],
@@ -802,6 +836,7 @@ def run_pipeline(
     ingest: bool = True,
     extract: bool = True,
     rank: bool = True,
+    publish: bool = True,
     interests: InterestsConfig | None = None,
     rank_sources: Sequence[Source] | None = None,
     rank_window_hours: float = DEFAULT_WINDOW_HOURS,
@@ -818,7 +853,8 @@ def run_pipeline(
     articles left pending by a source since disabled or removed, and ad hoc
     ones, are still extracted by a plain run. Rank scores articles fetched in
     the last ``rank_window_hours`` against ``interests`` (none means no rules),
-    taking source weights from ``rank_sources`` (default: ``sources``).
+    taking source weights from ``rank_sources`` (default: ``sources``). Publish
+    then writes ``feed.json``; its window never exceeds ``rank_window_hours``.
     """
     started = clock()
     run_id = run_id or started.strftime("%Y%m%dT%H%M%S") + f"-{started.microsecond:06d}"
@@ -848,6 +884,17 @@ def run_pipeline(
         for _ in range(summary.errors):
             tally.error()
         durations[PipelineStage.RANK.value] = time.perf_counter() - began
+    if publish:
+        began = time.perf_counter()
+        publish_stage(
+            services,
+            sources if rank_sources is None else rank_sources,
+            tally,
+            run_id=run_id,
+            now=clock(),
+            window_hours=min(FEED_WINDOW_HOURS, rank_window_hours),
+        )
+        durations[PipelineStage.PUBLISH.value] = time.perf_counter() - began
     stats = tally.stats(run_id, started, clock())
     services.repository.save_run_stats(stats)
     log.info(
