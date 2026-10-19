@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
@@ -389,7 +390,7 @@ def test_run_finished_carries_metrics_and_failure_reasons_are_counted(
     (record,) = [r for r in log_records if r.getMessage() == "run finished"]
     metrics = record.metrics  # type: ignore[attr-defined]
     assert metrics["run_id"] == stats.run_id
-    assert set(metrics["duration_s"]) == {"ingest", "extract", "rank"}
+    assert set(metrics["duration_s"]) == {"ingest", "extract", "rank", "publish"}
     assert metrics["failures_by_reason"] == {"http_4xx": 1}
     assert metrics["feeds"]["gazette"]["outcome"] == "ok"
     assert metrics["feeds"]["gazette"]["new"] == 4
@@ -1081,3 +1082,55 @@ def test_rank_can_be_skipped(tmp_path: Path, repository: SqliteRepository) -> No
 
     assert all(a.score is None for a in repository.list_articles())
     assert PipelineStage.RANK not in stats.stage_counts
+
+
+# --- Publish -----------------------------------------------------------------------
+
+
+def test_run_publishes_the_feed_and_counts_items(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    services = _services(tmp_path, repository, _fetcher())
+
+    stats = run_pipeline(services, [SOURCE])
+
+    feed = json.loads((tmp_path / "blobs" / "feed.json").read_bytes())
+    assert feed["run_id"] == stats.run_id
+    assert feed["items"]
+    assert (tmp_path / "blobs" / "feeds" / f"{stats.run_id}.json").exists()
+    assert stats.stage_counts[PipelineStage.PUBLISH]["items"] == len(feed["items"])
+
+
+def test_publish_can_be_skipped(tmp_path: Path, repository: SqliteRepository) -> None:
+    services = _services(tmp_path, repository, _fetcher())
+
+    stats = run_pipeline(services, [SOURCE], publish=False)
+
+    assert not (tmp_path / "blobs" / "feed.json").exists()
+    assert PipelineStage.PUBLISH not in stats.stage_counts
+
+
+class _FailingFeedBlobs(LocalBlobStore):
+    """Fails the write of the fixed ``feed.json`` key."""
+
+    def put(self, key: str, data: bytes, content_type: str = "application/octet-stream") -> str:
+        if key == "feed.json":
+            raise OSError("disk full")
+        return super().put(key, data, content_type)
+
+
+def test_failed_publish_is_counted_and_keeps_the_previous_feed(
+    tmp_path: Path, repository: SqliteRepository, log_records: list[logging.LogRecord]
+) -> None:
+    previous = b'{"previous": true}'
+    LocalBlobStore(tmp_path / "blobs").put("feed.json", previous)
+    services = _services(
+        tmp_path, repository, _fetcher(), blobs=_FailingFeedBlobs(tmp_path / "blobs")
+    )
+
+    stats = run_pipeline(services, [SOURCE], ingest=False, extract=False, rank=False)
+
+    assert (tmp_path / "blobs" / "feed.json").read_bytes() == previous
+    assert stats.stage_counts[PipelineStage.PUBLISH] == {"failed": 1}
+    assert stats.error_count == 1
+    assert any(r.getMessage().startswith("publish failed") for r in log_records)

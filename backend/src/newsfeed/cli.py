@@ -133,6 +133,7 @@ def _run_stages(
     ingest: bool,
     extract: bool,
     rank: bool,
+    publish: bool = False,
     source: list[str] | None,
     limit: int | None,
     since: datetime | None,
@@ -151,6 +152,7 @@ def _run_stages(
                 ingest=ingest,
                 extract=extract,
                 rank=rank,
+                publish=publish,
                 interests=interests,
                 rank_sources=all_sources,
                 rank_window_hours=rank_window_hours,
@@ -172,11 +174,12 @@ def run(
     since: SinceOption = None,
     rank_window_hours: WindowOption = DEFAULT_WINDOW_HOURS,
 ) -> None:
-    """Run the pipeline: ingest new articles, extract them, then rank recent ones."""
+    """Run the pipeline: ingest, extract, rank, then write feed.json."""
     _run_stages(
         ingest=True,
         extract=True,
         rank=True,
+        publish=True,
         source=source,
         limit=limit,
         since=since,
@@ -199,6 +202,21 @@ def rank(rank_window_hours: WindowOption = DEFAULT_WINDOW_HOURS) -> None:
         ingest=False,
         extract=False,
         rank=True,
+        source=None,
+        limit=None,
+        since=None,
+        rank_window_hours=rank_window_hours,
+    )
+
+
+@app.command()
+def publish(rank_window_hours: WindowOption = DEFAULT_WINDOW_HOURS) -> None:
+    """Write feed.json (and a timestamped copy) from the ranked articles."""
+    _run_stages(
+        ingest=False,
+        extract=False,
+        rank=False,
+        publish=True,
         source=None,
         limit=None,
         since=None,

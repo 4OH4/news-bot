@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
@@ -243,3 +244,18 @@ def test_rank_scores_recent_articles_from_interests_yaml(env: Path) -> None:
         articles = repo.list_articles()
         assert all(a.score is not None for a in articles)
         assert any("topic:bridges" in a.score_breakdown for a in articles)
+
+
+def test_run_and_publish_write_feed_json_to_the_data_dir(env: Path) -> None:
+    assert runner.invoke(cli.app, ["run"]).exit_code == 0
+    feed_path = env / "blobs" / "feed.json"
+    first = json.loads(feed_path.read_bytes())
+    assert first["items"]
+    feed_path.unlink()
+
+    result = runner.invoke(cli.app, ["publish"])
+
+    assert result.exit_code == 0, result.output
+    assert "publish: items=" in result.output
+    again = json.loads(feed_path.read_bytes())
+    assert [i["id"] for i in again["items"]] == [i["id"] for i in first["items"]]
