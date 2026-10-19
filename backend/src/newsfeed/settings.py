@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from newsfeed.eval.snapshot import default_fixtures_dir
@@ -34,8 +34,17 @@ class Settings(BaseSettings):
         default_factory=default_fixtures_dir,
         description="Evaluation snapshots, outside the repo (see eval/snapshot.py).",
     )
-    storage: Literal["local"] = Field(
-        default="local", description="Storage backend; only 'local' exists until Phase 3."
+    storage: Literal["local", "gcp"] = Field(
+        default="local",
+        description="Storage backend: SQLite and local files, or Firestore and Cloud Storage.",
+    )
+    gcs_bucket: str | None = Field(default=None, description="Cloud Storage bucket (gcp storage).")
+    gcs_prefix: str = Field(default="", description="Key prefix inside the bucket.")
+    firestore_database: str | None = Field(
+        default=None, description="Firestore database id; the default database when unset."
+    )
+    gcp_project: str | None = Field(
+        default=None, description="Google Cloud project; taken from the credentials when unset."
     )
     user_agent: str = Field(default=DEFAULT_USER_AGENT, min_length=1)
     concurrency: int = Field(default=8, ge=1, description="Worker threads in the extract stage.")
@@ -49,6 +58,12 @@ class Settings(BaseSettings):
         ge=0,
         description="Minimum seconds between requests to one host.",
     )
+
+    @model_validator(mode="after")
+    def _gcp_needs_bucket(self) -> Settings:
+        if self.storage == "gcp" and not (self.gcs_bucket or "").strip():
+            raise ValueError("NEWSFEED_STORAGE=gcp requires NEWSFEED_GCS_BUCKET")
+        return self
 
     @property
     def database_path(self) -> Path:
