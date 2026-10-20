@@ -5,7 +5,8 @@
 only and fetches nothing, so it works the same against SQLite and Firestore.
 Per-domain counts and medians come from the ``RunStats`` of the chosen runs;
 failed articles come from the articles themselves, matched to the runs by when
-they were last attempted. Article text is never included, only URLs.
+they were last attempted (or first fetched, until attempts are
+recorded). Article text is never included, only URLs.
 """
 
 from __future__ import annotations
@@ -28,11 +29,16 @@ __all__ = [
     "FeedFailure",
     "Report",
     "RunTrend",
+    "UnknownRunError",
     "build_report",
     "render_text",
 ]
 
 _PROBLEM_STATUSES = (ExtractionStatus.FAILED, ExtractionStatus.PARTIAL)
+
+
+class UnknownRunError(LookupError):
+    """The requested run id has no stored ``RunStats``."""
 
 
 class _Out(BaseModel):
@@ -92,7 +98,7 @@ def _select_runs(repo: Repository, run_id: str | None, since: datetime | None) -
     if run_id is not None:
         stats = repo.get_run_stats(run_id)
         if stats is None:
-            raise LookupError(f"no run with id {run_id!r}")
+            raise UnknownRunError(f"no run with id {run_id!r}")
         return [stats]
     if since is not None:
         return repo.list_run_stats(since=since)
@@ -143,9 +149,9 @@ def _failed_groups(articles: Iterable[Article], runs: list[RunStats]) -> list[Fa
     windows = [(r.started_at, r.finished_at) for r in runs]
     urls: defaultdict[tuple[str, str, str], list[str]] = defaultdict(list)
     for article in articles:
-        attempted = article.extraction.last_attempt_at
-        if attempted is None:
-            continue
+        # Nothing sets last_attempt_at yet (issue #88 will), so fall back to when
+        # the article was first fetched, which is within the run that extracted it.
+        attempted = article.extraction.last_attempt_at or article.fetched_at
         # A run still marked unfinished has no end, so it covers everything after its start.
         if not any(s <= attempted and (e is None or attempted <= e) for s, e in windows):
             continue
@@ -168,7 +174,7 @@ def build_report(
 ) -> Report:
     """Summarise the latest run, run ``run_id``, or every run since ``since``.
 
-    Raises ``LookupError`` for an unknown ``run_id``. Feed health is the current
+    Raises ``UnknownRunError`` for an unknown ``run_id``. Feed health is the current
     state of ``source_ids`` whatever runs are chosen, because it is a running
     count rather than a per-run figure.
     """

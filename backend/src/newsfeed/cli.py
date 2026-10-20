@@ -49,8 +49,8 @@ from newsfeed.pipeline import (
 from newsfeed.ports import Fetcher
 from newsfeed.preview import PreviewDirError, generate_preview
 from newsfeed.rank.stage import DEFAULT_WINDOW_HOURS, load_rank_config
+from newsfeed.report import UnknownRunError, render_text
 from newsfeed.report import build_report as build_run_report
-from newsfeed.report import render_text
 from newsfeed.settings import Settings, load_settings
 from newsfeed.wiring import build_extractor, open_fetcher, open_services, open_storage
 
@@ -335,7 +335,7 @@ def report(
             close = getattr(repository, "close", None)  # Firestore's client needs none
             if close is not None:
                 close()
-    except (ConfigError, LookupError) as exc:
+    except (ConfigError, UnknownRunError) as exc:
         _fail(str(exc))
     typer.echo(summary.model_dump_json(indent=2) if as_json else render_text(summary))
 

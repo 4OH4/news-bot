@@ -14,7 +14,7 @@ from newsfeed.models import (
     RunStats,
     SourceState,
 )
-from newsfeed.report import build_report, render_text
+from newsfeed.report import UnknownRunError, build_report, render_text
 from tests.fakes import InMemoryRepository
 
 T0 = datetime(2026, 10, 18, 12, 0, tzinfo=UTC)
@@ -136,7 +136,7 @@ def test_since_aggregates_runs_and_adds_a_trend(repo: InMemoryRepository) -> Non
 
 
 def test_unknown_run_raises(repo: InMemoryRepository) -> None:
-    with pytest.raises(LookupError):
+    with pytest.raises(UnknownRunError):
         build_report(repo, [], run_id="nope")
 
 
