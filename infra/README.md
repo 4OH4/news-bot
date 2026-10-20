@@ -86,9 +86,19 @@ budget in your billing currency, and the alert email address.
    the background for a few more. `init` writes `.terraform.lock.hcl`: leave it
    in place, and an agent commits it.
 
-6. Build and push the first real image, and point the job at it. Until you do,
-   the job runs Google's public sample image, which writes nothing. From the
-   repo root:
+6. Pause the scheduler first. It has been live since step 5, and Cloud Run
+   lets two runs of the job overlap: once the real image is in place, a
+   scheduled run could start alongside your manual run in step 7, fetching
+   the same sites twice and both writing to Firestore. You resume it at the
+   end of step 7.
+
+   ```bash
+   gcloud scheduler jobs pause newsfeed-schedule --location=<region>
+   ```
+
+   Then build and push the first real image, and point the job at it. Until
+   you do, the job runs Google's public sample image, which writes nothing.
+   From the repo root:
 
    ```bash
    REPO="$(terraform -chdir=infra/terraform output -raw image_repository)"
@@ -107,21 +117,15 @@ budget in your billing currency, and the alert email address.
    gcloud run jobs execute newsfeed --region=<region> --wait
    ```
 
-   The scheduler has been live since step 5, and Cloud Run lets two runs of
-   the job overlap: a manual run started late in the hour would run alongside
-   the next scheduled one, fetching the same sites twice and both writing to
-   Firestore. Either start this run just after the hour, or pause the
-   scheduler before step 6 and resume it once this run has finished:
-
-   ```bash
-   gcloud scheduler jobs pause newsfeed-schedule --location=<region>
-   # steps 6 and 7
-   gcloud scheduler jobs resume newsfeed-schedule --location=<region>
-   ```
-
    It prints the execution id (`newsfeed-xxxxx`); record it on issue #74. Logs
    are in Cloud Logging under the job; `gcloud storage cat
    gs://<project-id>-content/feed.json | head` shows the feed it wrote.
+
+   Once this run has finished, resume the scheduler:
+
+   ```bash
+   gcloud scheduler jobs resume newsfeed-schedule --location=<region>
+   ```
 
 8. Check the budget exists:
 
