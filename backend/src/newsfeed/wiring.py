@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from newsfeed.adapters.localfs_blobstore import LocalBlobStore
 from newsfeed.adapters.sqlite_repository import SqliteRepository
@@ -17,6 +17,7 @@ from newsfeed.extract.chain import ExtractorChain
 from newsfeed.extract.newspaper_extractor import Newspaper4kExtractor
 from newsfeed.extract.overrides import load_extraction_config
 from newsfeed.extract.readability_extractor import ReadabilityExtractor
+from newsfeed.extract.retry import RetryPolicy
 from newsfeed.extract.trafilatura_extractor import TrafilaturaExtractor
 from newsfeed.fetching import HttpFetcher
 from newsfeed.ingest.google_news import GoogleNewsIngester
@@ -48,6 +49,7 @@ class Services:
     url_rules: UrlParamsConfig
     concurrency: int = 8
     dedupe_window_days: int = 14
+    retry: RetryPolicy = field(default_factory=RetryPolicy)
 
 
 def build_ingesters() -> dict[SourceType, SourceIngester]:
@@ -114,6 +116,7 @@ def open_services(settings: Settings) -> Iterator[Services]:
                 url_rules=load_url_params(settings.url_params_path),
                 concurrency=settings.concurrency,
                 dedupe_window_days=settings.dedupe_window_days,
+                retry=settings.retry_policy,
             )
     finally:
         close = getattr(repository, "close", None)  # Firestore's client needs none

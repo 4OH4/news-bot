@@ -69,6 +69,8 @@ def reason_category(error: str | None) -> str:
     match = _HTTP_STATUS.search(error)
     if match:
         code = int(match.group(1))
+        if code == 408:  # Request Timeout is transient, unlike the rest of the 4xx
+            return "timeout"
         if code == 403:
             return "http_403"
         if code == 429:

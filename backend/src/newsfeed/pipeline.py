@@ -27,10 +27,12 @@ from collections.abc import Callable, Collection, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from typing import TypedDict
 from urllib.parse import urlsplit
 
 from newsfeed.extract.chain import ExtractorChain
 from newsfeed.extract.overrides import Mode, url_domain
+from newsfeed.extract.retry import should_retry
 from newsfeed.ingest.canonical import canonical_from_html, normalise_url, with_canonical_url
 from newsfeed.ingest.dedupe import dedupe
 from newsfeed.logging import get_logger
@@ -536,7 +538,19 @@ def _with_changes(article: Article, **changes: object) -> Article:
     return Article.model_validate({**article.model_dump(), **changes})
 
 
-def _merge(article: Article, result: ExtractionResult, content_ref: str | None) -> Article:
+class _Attempt(TypedDict):
+    attempts: int
+    last_attempt_at: datetime
+
+
+def _attempt(article: Article, now: datetime) -> _Attempt:
+    """The ``attempts`` and ``last_attempt_at`` to record for an attempt made at ``now``."""
+    return {"attempts": article.extraction.attempts + 1, "last_attempt_at": now}
+
+
+def _merge(
+    article: Article, result: ExtractionResult, content_ref: str | None, now: datetime
+) -> Article:
     """Fold an extraction result into the article.
 
     Feed-provided fields win: the feed's ``published_at`` usually has a real
@@ -558,6 +572,7 @@ def _merge(article: Article, result: ExtractionResult, content_ref: str | None) 
             error=result.error,
             word_count=result.word_count,
             error_type=_error_type(result.status, result.error),
+            **_attempt(article, now),
         ),
     )
 
@@ -568,6 +583,7 @@ class _ExtractRun:
     tally: RunTally
     # Serialises the check-then-store in _refine_canonical across worker threads.
     refine_lock: threading.Lock = field(default_factory=threading.Lock)
+    clock: Callable[[], datetime] = _utc_now
     # Old id -> the id it now lives under, for articles re-keyed or merged by
     # canonical refinement in this run. Written under ``refine_lock``.
     rekeyed: dict[str, str] = field(default_factory=dict)
@@ -609,7 +625,9 @@ def _finish_skipped(run: _ExtractRun, article: Article, reason: str, domain: str
     run.services.repository.upsert_article(
         _with_changes(
             article,
-            extraction=ArticleExtraction(status=ExtractionStatus.SKIPPED, error=reason),
+            extraction=ArticleExtraction(
+                status=ExtractionStatus.SKIPPED, error=reason, **_attempt(article, run.clock())
+            ),
         )
     )
     run.tally.extraction(ExtractionRecord(domain, ExtractionStatus.SKIPPED, error=reason))
@@ -641,6 +659,7 @@ def _finish_failed(
                     status=ExtractionStatus.FAILED,
                     error=f"{error_type}: {error}"[:500],
                     error_type=reason_category(error),
+                    **_attempt(article, run.clock()),
                 ),
             )
         )
@@ -684,7 +703,10 @@ def _finish_paywalled(run: _ExtractRun, article: Article, reason: str, domain: s
         _with_changes(
             article,
             extraction=ArticleExtraction(
-                status=ExtractionStatus.PAYWALLED, error=reason, error_type="paywall"
+                status=ExtractionStatus.PAYWALLED,
+                error=reason,
+                error_type="paywall",
+                **_attempt(article, run.clock()),
             ),
         )
     )
@@ -740,7 +762,7 @@ def _extract_content(
             result.content_html.encode("utf-8"),
             "text/html; charset=utf-8",
         )
-    services.repository.upsert_article(_merge(article, result, content_ref))
+    services.repository.upsert_article(_merge(article, result, content_ref, run.clock()))
     run.tally.extraction(
         ExtractionRecord(domain, result.status, word_count=result.word_count, error=result.error)
     )
@@ -813,6 +835,52 @@ def _extract_safely(run: _ExtractRun, article: Article) -> None:
     _log_outcome(outcome, round((time.perf_counter() - started) * 1000))
 
 
+def _select_for_extraction(
+    services: Services,
+    now: datetime,
+    *,
+    source_ids: Collection[str] | None,
+    since: datetime | None,
+    limit: int | None,
+) -> tuple[list[Article], int]:
+    """The articles to extract: all pending ones, then failed ones due a retry.
+
+    Returns them with how many are retries. The limit applies to the total,
+    pending first, and after the source filter, so it can't be pushed down
+    when ``source_ids`` is given.
+    """
+    wanted = None if source_ids is None else set(source_ids)
+
+    def pick(status: ExtractionStatus, since_: datetime | None, max_n: int | None) -> list[Article]:
+        if wanted is None:
+            return services.repository.list_articles(status=status, since=since_, limit=max_n)
+        found = [
+            a
+            for a in services.repository.list_articles(status=status, since=since_)
+            if a.source_id in wanted
+        ]
+        return found if max_n is None else found[:max_n]
+
+    selected = pick(ExtractionStatus.PENDING, since, limit)
+    policy = services.retry
+    if not policy.backoff_hours or (limit is not None and len(selected) >= limit):
+        return selected, 0
+    window_start = now - timedelta(days=policy.window_days)
+    retry_since = max(window_start, since) if since else window_start
+    statuses = [ExtractionStatus.FAILED]
+    if policy.retry_partial:
+        statuses.append(ExtractionStatus.PARTIAL)
+    due = [
+        a
+        for status in statuses
+        for a in pick(status, retry_since, None)
+        if should_retry(a, now, policy)
+    ]
+    if limit is not None:
+        due = due[: limit - len(selected)]
+    return selected + due, len(due)
+
+
 def extract_pending(
     services: Services,
     tally: RunTally,
@@ -820,33 +888,27 @@ def extract_pending(
     source_ids: Collection[str] | None = None,
     since: datetime | None = None,
     limit: int | None = None,
+    clock: Callable[[], datetime] = _utc_now,
 ) -> None:
-    """Fetch and extract pending articles in a bounded thread pool.
+    """Fetch and extract pending articles, and retry due failures, in a bounded thread pool.
 
     ``source_ids``, when given, restricts this to those sources' articles;
     ``None`` extracts every pending article, including those of sources since
     disabled or removed and ad hoc ones. ``since`` only considers articles
-    ingested at or after it, ``limit`` at most that many. Failed articles are
-    not retried automatically.
+    ingested at or after it, ``limit`` at most that many. Failed articles
+    whose failure was transient are tried again after a backoff, up to a cap
+    (``newsfeed.extract.retry``); they are counted as ``retried`` as well as
+    ``attempted``.
     """
-    if source_ids is not None:
-        wanted = set(source_ids)
-        # The limit applies after the source filter, so it can't be pushed down.
-        pending = [
-            a
-            for a in services.repository.list_articles(status=ExtractionStatus.PENDING, since=since)
-            if a.source_id in wanted
-        ]
-        if limit is not None:
-            pending = pending[:limit]
-    else:
-        pending = services.repository.list_articles(
-            status=ExtractionStatus.PENDING, since=since, limit=limit
-        )
-    tally.count(PipelineStage.EXTRACT, "attempted", len(pending))
-    run = _ExtractRun(services, tally)
+    articles, retries = _select_for_extraction(
+        services, clock(), source_ids=source_ids, since=since, limit=limit
+    )
+    tally.count(PipelineStage.EXTRACT, "attempted", len(articles))
+    if retries:
+        tally.count(PipelineStage.EXTRACT, "retried", retries)
+    run = _ExtractRun(services, tally, clock=clock)
     with ThreadPoolExecutor(max_workers=services.concurrency) as pool:
-        for _ in pool.map(lambda a: _extract_safely(run, a), pending):
+        for _ in pool.map(lambda a: _extract_safely(run, a), articles):
             pass
 
 
@@ -890,7 +952,7 @@ def extract_saved_url(
     )
     if existing is None:
         services.repository.upsert_article(article)
-    run = _ExtractRun(services, RunTally())
+    run = _ExtractRun(services, RunTally(), clock=clock)
     _extract_safely(run, article)
     # The page may have declared another canonical URL, re-keying the article
     # or merging it into one already stored; report where it lives now.
@@ -986,7 +1048,9 @@ def run_pipeline(
         durations[PipelineStage.INGEST.value] = time.perf_counter() - began
     if extract:
         began = time.perf_counter()
-        extract_pending(services, tally, source_ids=extract_source_ids, since=since, limit=limit)
+        extract_pending(
+            services, tally, source_ids=extract_source_ids, since=since, limit=limit, clock=clock
+        )
         durations[PipelineStage.EXTRACT.value] = time.perf_counter() - began
     if rank:
         began = time.perf_counter()
