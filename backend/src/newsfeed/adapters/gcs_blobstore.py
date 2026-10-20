@@ -39,6 +39,14 @@ _CONTENT_TYPES = {
     ".json": "application/json",
 }
 
+# feed.json is overwritten at a fixed key every run, and Cloud Storage would let
+# caches keep a public object for up to an hour; a bucket has no default
+# Cache-Control, so it is set per object here. JSON keys only: the feed copies
+# are small and rarely read, and article HTML is written once.
+_CACHE_CONTROL = {
+    ".json": "no-cache",
+}
+
 
 class GcsBlobStore:
     """A ``BlobStore`` backed by one Cloud Storage bucket.
@@ -63,6 +71,7 @@ class GcsBlobStore:
         """Upload ``data`` as the object for ``key`` and return the ref ``key``."""
         validate_blob_key(key)
         blob = self._bucket.blob(self._name(key))
+        blob.cache_control = _cache_control(key)
         blob.upload_from_string(data, content_type=_content_type(key, content_type))
         return key
 
@@ -99,6 +108,14 @@ def _content_type(key: str, given: str) -> str:
         if key.endswith(suffix):
             return content_type
     return given
+
+
+def _cache_control(key: str) -> str | None:
+    """The Cache-Control header for ``key``, or None for Cloud Storage's default."""
+    for suffix, cache_control in _CACHE_CONTROL.items():
+        if key.endswith(suffix):
+            return cache_control
+    return None
 
 
 # --- Static conformance check ------------------------------------------------
