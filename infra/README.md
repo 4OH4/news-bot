@@ -107,6 +107,18 @@ budget in your billing currency, and the alert email address.
    gcloud run jobs execute newsfeed --region=<region> --wait
    ```
 
+   The scheduler has been live since step 5, and Cloud Run lets two runs of
+   the job overlap: a manual run started late in the hour would run alongside
+   the next scheduled one, fetching the same sites twice and both writing to
+   Firestore. Either start this run just after the hour, or pause the
+   scheduler before step 6 and resume it once this run has finished:
+
+   ```bash
+   gcloud scheduler jobs pause newsfeed-schedule --location=<region>
+   # steps 6 and 7
+   gcloud scheduler jobs resume newsfeed-schedule --location=<region>
+   ```
+
    It prints the execution id (`newsfeed-xxxxx`); record it on issue #74. Logs
    are in Cloud Logging under the job; `gcloud storage cat
    gs://<project-id>-content/feed.json | head` shows the feed it wrote.
