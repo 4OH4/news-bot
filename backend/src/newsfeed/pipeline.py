@@ -5,6 +5,15 @@ Stages talk to each other only through the ``Repository`` and ``BlobStore``
 them up, so either can be run alone. Errors are caught at the stage boundary
 (per source, per article), logged as structured warnings, counted in
 ``RunStats.error_count`` and never fail the run.
+
+Ingest reads per run (billed per document on Firestore): one ``list_articles``
+over the dedupe window, about one read per article fetched in the last
+``dedupe_window_days`` days (or back to ``since`` if that is older); one
+``get_source_state`` per source; and one ``get_article`` per new candidate.
+None of these grows with the total history. An unrecognised entry dated before
+the window, from a source read before, is skipped as stale without any read
+(see ``_split_stale``). That is what stops an article re-keyed by canonical
+refinement from being ingested again once it has left the window.
 """
 
 from __future__ import annotations
@@ -266,9 +275,10 @@ def _known_ids(services: Services, since: datetime) -> set[str]:
 
     Reads only that window rather than the whole history, so the read count per
     run (billed on Firestore) stays flat as the store grows: about one read per
-    article fetched in the last ``dedupe_window_days`` days. An entry older than
-    the window is treated as new; ``_store_new`` keeps that from clobbering the
-    stored article.
+    article fetched in the last ``dedupe_window_days`` days. An older entry
+    that reappears is skipped as stale if dated (``_split_stale``); otherwise it
+    is treated as new, and ``_store_new`` keeps that from clobbering the stored
+    article.
 
     Extract may refine an article's canonical URL, which changes its id. The
     feed still lists the original URL, so without the second set the same
@@ -298,6 +308,41 @@ def _store_new(services: Services, articles: Sequence[Article]) -> list[Article]
         services.repository.upsert_article(article)
         stored.append(article)
     return stored
+
+
+def _published_before(article: Article, cutoff: datetime) -> bool:
+    """True if the feed dates ``article`` before ``cutoff``; undated entries never are."""
+    return article.published_at is not None and article.published_at < cutoff
+
+
+def _split_stale(
+    unknown: Sequence[Article], state: SourceState, cutoff: datetime
+) -> tuple[list[Article], list[Article]]:
+    """Split unrecognised entries into (new, stale); stale ones are not ingested.
+
+    An entry is stale if the feed dates it before ``cutoff`` (the start of the
+    known-id lookup) and a run has kept this source's whole feed before. Such an
+    entry was most likely in the feed last time too, so it is already stored:
+    it is unrecognised only because it was fetched before the window and,
+    since extract refined its canonical URL, it lives under another id that
+    ``get_article`` can't find either. Ingesting it would store, fetch and
+    merge it again on every run while the feed lists it. Skipping it costs no
+    read, and loses nothing the reader would see: the feed only shows articles
+    published in the last ``FEED_WINDOW_HOURS``.
+
+    Undated entries can't be judged, and a source never read before has no
+    history to repeat, so neither is ever stale.
+    """
+    # ``last_fetched_at`` is saved only by a run that kept the whole feed (one
+    # that --since or --limit cut short keeps the old state), so a first run cut
+    # short doesn't count as having seen what it held back.
+    if state.last_fetched_at is None:
+        return list(unknown), []
+    fresh: list[Article] = []
+    stale: list[Article] = []
+    for article in unknown:
+        (stale if _published_before(article, cutoff) else fresh).append(article)
+    return fresh, stale
 
 
 def _canonicalise(
@@ -350,9 +395,15 @@ def _ingest_source(
     known: set[str],
     tally: RunTally,
     *,
+    cutoff: datetime,
     since: datetime | None,
     limit: int | None,
 ) -> None:
+    """Ingest one source: store its new entries as pending articles.
+
+    ``cutoff`` is where the known-id lookup starts; see ``_split_stale`` for
+    the entries dated before it.
+    """
     stage = PipelineStage.INGEST
     ingester = services.ingesters.get(source.type)
     if ingester is None:
@@ -369,8 +420,10 @@ def _ingest_source(
         entries = _canonicalise(services, articles, tally)
         in_range = entries
         if since is not None:
-            in_range = [a for a in entries if a.published_at is None or a.published_at >= since]
-        fresh = dedupe(in_range, known)
+            in_range = [a for a in entries if not _published_before(a, since)]
+        fresh, stale = _split_stale(dedupe(in_range, known), state, cutoff)
+        # Stale entries don't count as dropped: no later run wants them, so the
+        # new ETag can be kept. Only --since and --limit hold back wanted entries.
         dropped = len(in_range) < len(entries) or (limit is not None and len(fresh) > limit)
         if limit is not None:
             fresh = fresh[:limit]
@@ -411,7 +464,9 @@ def _ingest_source(
     known.update(a.id for a in fresh)
     tally.count(stage, "sources")
     tally.count(stage, "entries", len(articles))
-    tally.count(stage, "duplicates", len(entries) - len(stored))
+    tally.count(stage, "duplicates", len(entries) - len(stale) - len(stored))
+    if stale:
+        tally.count(stage, "stale", len(stale))
     tally.count(stage, "new", len(stored))
     tally.feed(
         source.id,
@@ -440,16 +495,18 @@ def ingest_sources(
     ``since`` drops entries published before it (entries without a date are
     kept); ``limit`` keeps at most that many new articles per source. The
     dedupe lookup covers articles fetched within ``services.dedupe_window_days``,
-    widened to reach back to ``since`` if that is older.
+    widened to reach back to ``since`` if that is older. Unrecognised entries
+    dated before the lookup's start may be skipped as stale (``_split_stale``).
     """
     window_start = _utc_now() - timedelta(days=services.dedupe_window_days)
-    known = _known_ids(services, min(window_start, since) if since else window_start)
+    cutoff = min(window_start, since) if since else window_start
+    known = _known_ids(services, cutoff)
     log.info(
         "known articles loaded",
         extra={"stage": PipelineStage.INGEST.value, "known_ids": len(known)},
     )
     for source in sources:
-        _ingest_source(services, source, known, tally, since=since, limit=limit)
+        _ingest_source(services, source, known, tally, cutoff=cutoff, since=since, limit=limit)
 
 
 # --- Extract ---------------------------------------------------------------------

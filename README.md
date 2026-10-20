@@ -32,7 +32,7 @@ docker run --rm newsfeed run
 | `NEWSFEED_GCS_PREFIX` | empty | Optional key prefix inside the bucket. |
 | `NEWSFEED_FIRESTORE_DATABASE` | default database | Optional Firestore database id. |
 | `NEWSFEED_GCP_PROJECT` | from credentials | Optional Google Cloud project for both clients. |
-| `NEWSFEED_DEDUPE_WINDOW_DAYS` | `14` (at least 1) | Ingest dedupes against articles fetched in this many days, which bounds the reads per run on Firestore. Keep it at least as long as any `--since` you use (a longer `--since` widens it for that run). An older entry that reappears is never allowed to overwrite a stored article. |
+| `NEWSFEED_DEDUPE_WINDOW_DAYS` | `14` (at least 1) | Ingest dedupes against articles fetched in this many days, which bounds the reads per run on Firestore. Keep it at least as long as any `--since` you use (a longer `--since` widens it for that run). An older entry that reappears is never allowed to overwrite a stored article, and one the feed dates before the window is skipped as `stale` once the source has been read in full before. |
 
 ### JavaScript rendering (optional)
 
