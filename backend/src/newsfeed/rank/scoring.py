@@ -37,7 +37,8 @@ How the components combine::
 
 ``BASE_SCORE`` keeps an article with no matching topic above zero, so that with
 an empty config the score is ``source * recency``. Breakdown values are the
-factors above, so the score can be recomputed from them.
+factors above (except the ``demote_body_only:<name>`` marker), so the score can
+be recomputed from them.
 """
 
 from __future__ import annotations
