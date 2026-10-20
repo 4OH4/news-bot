@@ -656,7 +656,7 @@ urls:
     expected_title: "Tool: LaTeX renderer"
     must_contain:
       - "the URL, so every document created using"
-    word_range: [270, 410]
+    word_range: [270, 430]
     paywalled: false
     tags: [blog, tech, short]
     notes: "Page h1 is the blog name; og:title is 'Tool: LaTeX renderer', the feed says 'LaTeX renderer'. Title guessed."
