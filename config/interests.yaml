@@ -45,11 +45,12 @@
 #     body: 1.0
 #
 #   scoring:
-#     body_only_demotion: 1.0     # share of a demotion applied when a negative
+#     body_only_demotion: 0.25    # share of a demotion applied when a negative
 #                                 # topic matches only in the body (default 1,
 #                                 # unchanged); 0 ignores such matches, 0.5
 #                                 # halves the demotion strength. The
 #                                 # breakdown then has demote_body_only:<name>
+#                                 # (a marker, not a factor)
 
 # --- How the weights were chosen --------------------------------------------
 # An unmatched article scores 1 (before source and recency). A topic of
@@ -58,15 +59,17 @@
 # brand-new unmatched story for about three and a half half-lives (~3.5 days).
 #
 # Demotion multiplies instead, by 1 / (1 + |weight| x strongest field). At -2
-# a title match gives 0.14, a summary match 0.2 and a body-only match 0.33.
+# a title match gives 0.14, a summary match 0.2 and a body-only match 0.67
+# (0.33 if scoring.body_only_demotion were left at 1, see below).
 # A sport story (sport in its title) then sinks below unmatched stories even
 # when its body mentions a liked topic (3 x 0.14 = 0.43); it only rises above
 # them when a liked topic is in its title and summary too (11 x 0.14 = 1.6).
 # At -1 the same sport story would score 0.75 and a story with a liked topic
 # in its title alone 1.75, so most demotions would barely show. Stronger than
 # -2 mostly hurts the stories that only mention a demoted keyword in passing
-# in the body (a third of their score at -2, a quarter at -3), which are
-# common: news sites' related-links and sport roundups end up in the body.
+# in the body, which are common: news sites' related-links and sport roundups
+# end up in the body. That is why scoring.body_only_demotion (set below)
+# weakens body-only matches.
 
 topics:
   # Interests, strongest first.
@@ -294,6 +297,14 @@ mute_keywords:
   - daily cartoon
   - sign up now
   - download now
+
+# Body-only matches on a demoted topic count a quarter as much: sidebars and
+# "related links" put sport or celebrity words into unrelated stories (57 of
+# 76 demoted articles in the Phase 1 run matched only in the body). At the -2
+# topics above that multiplies the score by 2/3 instead of 1/3; matches in the
+# title or summary keep their full strength. Chosen by the owner (#128).
+scoring:
+  body_only_demotion: 0.25
 
 # Per-source multipliers, replacing the weight in sources.yaml (1.0 by
 # default). The personal blogs post rarely and are close to the interests
