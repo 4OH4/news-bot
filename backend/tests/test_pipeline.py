@@ -1002,6 +1002,29 @@ def test_stale_entries_need_a_date_before_the_cutoff_and_a_source_read_before() 
     assert _split_stale([old, edge, undated], never_read, cutoff) == ([old, edge, undated], [])
 
 
+def test_short_dedupe_window_never_drops_entries_inside_the_feed_window(
+    tmp_path: Path, repository: SqliteRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Regression for PR #126's review: with a 1-day dedupe window, an entry
+    # dated ~48 h back (before the lookup, but inside the 72 h feed window)
+    # from a source read before must still be stored, not counted stale.
+    now = datetime(2026, 10, 7, 9, 0, tzinfo=UTC)
+    monkeypatch.setattr("newsfeed.pipeline._utc_now", lambda: now)
+    repository.save_source_state(
+        SourceState(source_id=SOURCE.id, last_fetched_at=now - timedelta(days=3))
+    )
+    services = _services(tmp_path, repository, _fetcher(), dedupe_window_days=1)
+    tally = RunTally()
+
+    ingest_sources(services, [SOURCE], tally)
+
+    bridge = _by_url(repository)[BRIDGE_URL]
+    assert bridge.published_at == datetime(2026, 10, 5, 8, 30, tzinfo=UTC)
+    ingest = tally.stats("run", now, now).stage_counts[PipelineStage.INGEST]
+    assert ingest.get("stale", 0) == 0
+    assert ingest["new"] == 4
+
+
 class _CountingRepository(_RecordingRepository):
     """Also counts the documents ``list_articles`` returns and the ``get_article`` calls."""
 
@@ -1041,7 +1064,7 @@ def test_ingest_reads_do_not_grow_with_history(
     assert counting.gets == 3
 
 
-# --- Paywalls (#84)------------------------------------------------------------------
+# --- Paywalls (#84) ------------------------------------------------------------------
 
 PAYWALL_CONFIG = ExtractionConfig.model_validate(
     {"domains": {"subs.example.com": {"paywall": True}}}
