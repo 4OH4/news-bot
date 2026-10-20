@@ -86,5 +86,13 @@ def test_json_objects_are_uploaded_with_no_cache() -> None:
     assert client.state.cache_control == {
         ("bkt", "prod/feed.json"): "no-cache",
         ("bkt", "prod/feeds/run-1.json"): "no-cache",
-        ("bkt", "prod/articles/a.html"): None,
     }
+
+
+def test_non_json_uploads_leave_cache_control_unset() -> None:
+    # Assigning None would send `cacheControl: null`; other objects keep the default.
+    client = FakeGcsClient()
+    store = _store(client, "prod")
+    store.put("articles/a.html", b"<p>x</p>")
+    assert ("bkt", "prod/articles/a.html") in client.state.objects
+    assert ("bkt", "prod/articles/a.html") not in client.state.cache_control

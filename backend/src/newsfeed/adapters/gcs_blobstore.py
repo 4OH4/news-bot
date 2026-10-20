@@ -71,7 +71,11 @@ class GcsBlobStore:
         """Upload ``data`` as the object for ``key`` and return the ref ``key``."""
         validate_blob_key(key)
         blob = self._bucket.blob(self._name(key))
-        blob.cache_control = _cache_control(key)
+        cache_control = _cache_control(key)
+        # Only set it when there is a value, so other uploads don't send
+        # `cacheControl: null` in their metadata.
+        if cache_control is not None:
+            blob.cache_control = cache_control
         blob.upload_from_string(data, content_type=_content_type(key, content_type))
         return key
 
