@@ -14,7 +14,7 @@ import re
 import threading
 import time
 from collections import Counter, defaultdict
-from collections.abc import Callable, Collection, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -212,13 +212,10 @@ class RunTally:
             self._counts[stage][name] += n
 
     def extraction(self, record: ExtractionRecord) -> None:
-        """Count one processed article per domain, and by failure reason when it failed."""
+        """Count one processed article per domain; failure reasons come from the records."""
         with self._lock:
             self._domains[record.domain][record.status] += 1
             self._extractions.append(record)
-            if record.status is ExtractionStatus.FAILED:
-                reason = f"failed:{reason_category(record.error)}"
-                self._counts[PipelineStage.EXTRACT][reason] += 1
 
     def feed(self, source_id: str, record: FeedRecord) -> None:
         with self._lock:
@@ -233,8 +230,16 @@ class RunTally:
         with self._lock:
             self._errors += 1
 
-    def stats(self, run_id: str, started_at: datetime, finished_at: datetime | None) -> RunStats:
+    def stats(
+        self,
+        run_id: str,
+        started_at: datetime,
+        finished_at: datetime | None,
+        durations: Mapping[str, float] | None = None,
+    ) -> RunStats:
+        """The run's ``RunStats``; ``durations`` maps stage names to seconds."""
         with self._lock:
+            summary = summarise_run(run_id, {}, list(self._extractions), dict(self._feeds))
             return RunStats(
                 run_id=run_id,
                 started_at=started_at,
@@ -242,6 +247,14 @@ class RunTally:
                 stage_counts={stage: dict(c) for stage, c in self._counts.items()},
                 extraction_by_domain={d: dict(c) for d, c in self._domains.items()},
                 error_count=self._errors,
+                stage_durations_ms={
+                    PipelineStage(stage): round(seconds * 1000)
+                    for stage, seconds in (durations or {}).items()
+                },
+                failures_by_reason=summary["failures_by_reason"],
+                median_word_count_by_domain={
+                    domain: w["median"] for domain, w in summary["words_by_domain"].items()
+                },
             )
 
 
@@ -310,6 +323,27 @@ def _canonicalise(
     return result
 
 
+def _record_feed_failure(services: Services, state: SourceState, error: str) -> None:
+    """Persist one more consecutive failure; the conditional-GET fields stay as they were."""
+    try:
+        services.repository.save_source_state(
+            state.model_copy(
+                update={
+                    "consecutive_failures": state.consecutive_failures + 1,
+                    "last_error": error[:500],
+                }
+            )
+        )
+    except Exception as exc:  # the repository itself is failing; nothing more to do
+        _warn(
+            "couldn't record the feed failure",
+            stage=PipelineStage.INGEST,
+            source_id=state.source_id,
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
+
+
 def _ingest_source(
     services: Services,
     source: Source,
@@ -344,12 +378,19 @@ def _ingest_source(
         # The state goes last: if storing the articles failed, the next run must
         # not get a 304 for entries we never kept. The same goes for entries that
         # --since or --limit dropped: the old ETag lets a later run see them.
-        if not dropped:
-            services.repository.save_source_state(new_state)
+        # Health is set here, after the ingesters' 304 check below compares the
+        # states, so it can't make a 304 look like a fresh fetch.
+        not_modified = new_state == state
+        fetched_at = _utc_now()
+        healthy = (new_state if not dropped else state).model_copy(
+            update={"consecutive_failures": 0, "last_error": None, "last_success_at": fetched_at}
+        )
+        services.repository.save_source_state(healthy)
     except Exception as exc:
         tally.error()
         tally.count(stage, "sources_failed")
         error = f"{type(exc).__name__}: {exc}"
+        _record_feed_failure(services, state, error)
         tally.feed(
             source.id,
             FeedRecord(
@@ -372,9 +413,6 @@ def _ingest_source(
     tally.count(stage, "entries", len(articles))
     tally.count(stage, "duplicates", len(entries) - len(stored))
     tally.count(stage, "new", len(stored))
-    # The ingesters hand back the old state unchanged on a 304, and a successful
-    # fetch always sets last_fetched_at, so equality means "not modified".
-    not_modified = new_state == state
     tally.feed(
         source.id,
         FeedRecord(
@@ -417,6 +455,15 @@ def ingest_sources(
 # --- Extract ---------------------------------------------------------------------
 
 
+def _error_type(status: ExtractionStatus, error: str | None) -> str | None:
+    """The ``error_type`` category stored for a result: set only for failures and paywalls."""
+    if status is ExtractionStatus.FAILED:
+        return reason_category(error)
+    if status is ExtractionStatus.PAYWALLED:
+        return "paywall"
+    return None
+
+
 def _with_changes(article: Article, **changes: object) -> Article:
     """Rebuild ``article`` with ``changes``, validated (``model_copy`` would skip validation)."""
     return Article.model_validate({**article.model_dump(), **changes})
@@ -443,6 +490,7 @@ def _merge(article: Article, result: ExtractionResult, content_ref: str | None) 
             method=result.method,
             error=result.error,
             word_count=result.word_count,
+            error_type=_error_type(result.status, result.error),
         ),
     )
 
@@ -523,7 +571,9 @@ def _finish_failed(
             _with_changes(
                 article,
                 extraction=ArticleExtraction(
-                    status=ExtractionStatus.FAILED, error=f"{error_type}: {error}"[:500]
+                    status=ExtractionStatus.FAILED,
+                    error=f"{error_type}: {error}"[:500],
+                    error_type=reason_category(error),
                 ),
             )
         )
@@ -566,7 +616,9 @@ def _finish_paywalled(run: _ExtractRun, article: Article, reason: str, domain: s
     run.services.repository.upsert_article(
         _with_changes(
             article,
-            extraction=ArticleExtraction(status=ExtractionStatus.PAYWALLED, error=reason),
+            extraction=ArticleExtraction(
+                status=ExtractionStatus.PAYWALLED, error=reason, error_type="paywall"
+            ),
         )
     )
     run.tally.extraction(ExtractionRecord(domain, ExtractionStatus.PAYWALLED, error=reason))
@@ -895,7 +947,7 @@ def run_pipeline(
             window_hours=min(FEED_WINDOW_HOURS, rank_window_hours),
         )
         durations[PipelineStage.PUBLISH.value] = time.perf_counter() - began
-    stats = tally.stats(run_id, started, clock())
+    stats = tally.stats(run_id, started, clock(), durations)
     services.repository.save_run_stats(stats)
     log.info(
         "run finished",

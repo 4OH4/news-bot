@@ -22,6 +22,7 @@ from newsfeed.models import (
     ExtractionStatus,
     PipelineStage,
     Source,
+    SourceState,
     SourceType,
 )
 from newsfeed.pipeline import (
@@ -286,7 +287,12 @@ def test_failing_source_is_logged_counted_and_does_not_stop_others(
     assert stats.error_count == 1
     assert stats.stage_counts[PipelineStage.INGEST]["sources_failed"] == 1
     assert repository.get_article(good.id) is not None
-    assert repository.get_source_state("bad") is None
+    bad_state = repository.get_source_state("bad")
+    assert bad_state is not None
+    assert (bad_state.consecutive_failures, bad_state.last_error) == (
+        1,
+        "ValueError: feed is broken",
+    )
     (record,) = [r for r in log_records if r.levelno == logging.WARNING]
     assert record.stage == "ingest"  # type: ignore[attr-defined]
     assert record.source_id == "bad"  # type: ignore[attr-defined]
@@ -386,7 +392,8 @@ def test_run_finished_carries_metrics_and_failure_reasons_are_counted(
 
     stats = run_pipeline(services, [SOURCE])
 
-    assert stats.stage_counts[PipelineStage.EXTRACT]["failed:http_4xx"] == 1
+    assert "failed:http_4xx" not in stats.stage_counts[PipelineStage.EXTRACT]
+    assert stats.failures_by_reason == {"http_4xx": 1}
     (record,) = [r for r in log_records if r.getMessage() == "run finished"]
     metrics = record.metrics  # type: ignore[attr-defined]
     assert metrics["run_id"] == stats.run_id
@@ -641,7 +648,10 @@ def test_dropped_entries_keep_the_old_source_state(
 
     run_pipeline(services, [SOURCE], extract=False, **option)  # type: ignore[arg-type]
 
-    assert repository.get_source_state(SOURCE.id) is None
+    kept = repository.get_source_state(SOURCE.id)
+    assert kept is not None
+    assert kept.etag is None  # only the health is recorded, not the conditional-GET state
+    assert kept.last_success_at is not None
     # Without the option the next run still sees the whole feed (no 304).
     run_pipeline(services, [SOURCE], extract=False)
     assert len(repository.list_articles()) == 4
@@ -1134,3 +1144,115 @@ def test_failed_publish_is_counted_and_keeps_the_previous_feed(
     assert stats.stage_counts[PipelineStage.PUBLISH] == {"failed": 1}
     assert stats.error_count == 1
     assert any(r.getMessage().startswith("publish failed") for r in log_records)
+
+
+# --- Stored feed health, failure categories and run metrics (#99) -----------------
+
+
+class _ScriptedIngester:
+    """Fails, succeeds, or answers 304 (the old state untouched) as scripted per call."""
+
+    source_type = SourceType.RSS
+
+    def __init__(self, script: list[str]) -> None:
+        self._script = list(script)
+
+    def ingest(
+        self, source: Source, fetcher: object, state: SourceState
+    ) -> tuple[list[Article], SourceState]:
+        step = self._script.pop(0)
+        if step == "fail":
+            raise ValueError("feed is broken")
+        if step == "304":
+            return [], state
+        return [], state.model_copy(
+            update={"last_fetched_at": datetime.now(UTC), "last_status": 200}
+        )
+
+
+def test_feed_health_follows_failures_success_and_not_modified(
+    tmp_path: Path, repository: SqliteRepository, log_records: list[logging.LogRecord]
+) -> None:
+    ingester = _ScriptedIngester(["fail", "fail", "ok", "fail", "304"])
+    services = _services(tmp_path, repository, FakeFetcher(), ingesters={SourceType.RSS: ingester})
+
+    def state_after_run() -> SourceState:
+        run_pipeline(services, [SOURCE], extract=False, rank=False, publish=False)
+        state = repository.get_source_state("gazette")
+        assert state is not None
+        return state
+
+    first = state_after_run()
+    assert (first.consecutive_failures, first.last_error) == (1, "ValueError: feed is broken")
+    assert first.last_success_at is None
+    assert state_after_run().consecutive_failures == 2
+
+    ok = state_after_run()
+    assert (ok.consecutive_failures, ok.last_error) == (0, None)
+    assert ok.last_success_at is not None
+
+    failed_again = state_after_run()
+    assert failed_again.consecutive_failures == 1
+    assert failed_again.last_success_at == ok.last_success_at  # a failure keeps the last success
+    assert failed_again.last_status == 200
+
+    not_modified = state_after_run()
+    assert (not_modified.consecutive_failures, not_modified.last_error) == (0, None)
+    assert not_modified.last_success_at is not None
+    assert not_modified.last_success_at >= ok.last_success_at
+    # The 304 is still reported as such, not as a fresh fetch.
+    last = [r for r in log_records if r.getMessage() == "run finished"][-1]
+    assert last.metrics["feeds"]["gazette"]["outcome"] == "not_modified"  # type: ignore[attr-defined]
+
+
+def test_failed_and_paywalled_articles_store_error_type(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    services = _services(tmp_path, repository, _fetcher())
+
+    run_pipeline(services, [SOURCE], rank=False, publish=False)
+
+    by_url = _by_url(repository)
+    failed = by_url["https://news.example.com/2026/10/missing"]
+    assert failed.extraction.status is ExtractionStatus.FAILED
+    assert failed.extraction.error_type == "http_4xx"
+    others = [a for a in by_url.values() if a is not failed]
+    assert others
+    assert all(a.extraction.error_type is None for a in others)
+
+
+def test_paywalled_article_stores_paywall_error_type(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    stored, _, _ = _paywall_run(
+        tmp_path,
+        repository,
+        "https://news.example.com/a/1",
+        FakeResponse(b"Subscription required", status=402),
+    )
+
+    assert stored.extraction.status is ExtractionStatus.PAYWALLED
+    assert stored.extraction.error_type == "paywall"
+
+
+def test_stored_run_stats_hold_durations_failures_and_medians(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    services = _services(tmp_path, repository, _fetcher())
+
+    stats = run_pipeline(services, [SOURCE])
+
+    stored = repository.get_run_stats(stats.run_id)
+    assert stored is not None
+    assert stored == stats
+    assert set(stored.stage_durations_ms) == set(PipelineStage)
+    assert stored.failures_by_reason == {"http_4xx": 1}
+    assert stored.median_word_count_by_domain["news.example.com"] > 0
+
+
+def test_skipped_stages_have_no_duration(tmp_path: Path, repository: SqliteRepository) -> None:
+    services = _services(tmp_path, repository, _fetcher())
+
+    stats = run_pipeline(services, [SOURCE], extract=False, rank=False, publish=False)
+
+    assert set(stats.stage_durations_ms) == {PipelineStage.INGEST}
