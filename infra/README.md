@@ -21,7 +21,7 @@ resources.
 | `terraform/apis.tf` | The remaining APIs. |
 | `terraform/budget.tf` | A monthly budget on the project, emailing at 50%, 90% and 100% of actual spend. |
 | `terraform/registry.tf` | The Artifact Registry Docker repository, with a cleanup policy (keep the 10 newest images; delete others after 30 days). |
-| `terraform/run_job.tf` | The Cloud Run Job (1 vCPU, 1 GiB, 30-minute timeout, no retries) and its runtime service account, which may use Firestore. |
+| `terraform/run_job.tf` | The Cloud Run Job (1 vCPU, 1 GiB, 50-minute timeout, no retries) and its runtime service account, which may use Firestore. |
 | `terraform/scheduler.tf` | The hourly Cloud Scheduler job and its service account, which may only start the job (`roles/run.invoker`). |
 | `terraform/firestore.tf` | The `(default)` Firestore database (Native mode, delete-protected) and the four composite indexes the repository adapter needs. |
 | `terraform/storage.tf` | The private content bucket: `articles/` expires after 30 days and `feeds/` after 7 (ADR-0005); the runtime account may read and write its objects. |

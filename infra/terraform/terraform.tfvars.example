@@ -12,4 +12,4 @@ alert_email     = "alerts@example.com"
 # firestore_location     = "eur3"
 # content_retention_days = 30
 # job_memory             = "1Gi"
-# job_timeout_seconds    = 1800
+# job_timeout_seconds    = 3000
