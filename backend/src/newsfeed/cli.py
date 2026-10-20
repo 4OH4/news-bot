@@ -49,8 +49,10 @@ from newsfeed.pipeline import (
 from newsfeed.ports import Fetcher
 from newsfeed.preview import PreviewDirError, generate_preview
 from newsfeed.rank.stage import DEFAULT_WINDOW_HOURS, load_rank_config
+from newsfeed.report import build_report as build_run_report
+from newsfeed.report import render_text
 from newsfeed.settings import Settings, load_settings
-from newsfeed.wiring import build_extractor, open_fetcher, open_services
+from newsfeed.wiring import build_extractor, open_fetcher, open_services, open_storage
 
 app = typer.Typer(help="Personal news feed pipeline.", no_args_is_help=True)
 log = get_logger(__name__)
@@ -302,6 +304,40 @@ def preview(
         f"({summary.pending} pending, not shown)"
     )
     typer.echo(f"open {(target / 'index.html').resolve().as_uri()}")
+
+
+@app.command()
+def report(
+    run: Annotated[
+        str | None,
+        typer.Option("--run", metavar="ID", help="Report on this run (default: the latest)."),
+    ] = None,
+    since: Annotated[
+        datetime | None,
+        typer.Option(
+            "--since",
+            formats=["%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S%z"],
+            help="Report on every run started since this date (UTC if no offset), with a trend.",
+        ),
+    ] = None,
+    as_json: Annotated[bool, typer.Option("--json", help="Print JSON instead of text.")] = False,
+) -> None:
+    """Summarise stored runs: success rate per site, failing feeds, failed articles."""
+    if run is not None and since is not None:
+        raise typer.BadParameter("--run can't be combined with --since")
+    settings = load_settings()
+    try:
+        source_ids = [s.id for s in load_sources(settings.sources_path)]
+        repository, _ = open_storage(settings)
+        try:
+            summary = build_run_report(repository, source_ids, run_id=run, since=_aware(since))
+        finally:
+            close = getattr(repository, "close", None)  # Firestore's client needs none
+            if close is not None:
+                close()
+    except (ConfigError, LookupError) as exc:
+        _fail(str(exc))
+    typer.echo(summary.model_dump_json(indent=2) if as_json else render_text(summary))
 
 
 # --- eval ----------------------------------------------------------------------
