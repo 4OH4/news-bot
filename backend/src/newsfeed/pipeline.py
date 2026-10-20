@@ -320,15 +320,18 @@ def _split_stale(
 ) -> tuple[list[Article], list[Article]]:
     """Split unrecognised entries into (new, stale); stale ones are not ingested.
 
-    An entry is stale if the feed dates it before ``cutoff`` (the start of the
-    known-id lookup) and a run has kept this source's whole feed before. Such an
+    An entry is stale if the feed dates it before ``cutoff`` and a run has kept
+    this source's whole feed before. The caller passes the earlier of the
+    known-id lookup's start and the feed window's start, so the entry is both
+    outside the lookup and too old for the feed. Such an
     entry was most likely in the feed last time too, so it is already stored:
     it is unrecognised only because it was fetched before the window and,
     since extract refined its canonical URL, it lives under another id that
     ``get_article`` can't find either. Ingesting it would store, fetch and
     merge it again on every run while the feed lists it. Skipping it costs no
     read, and loses nothing the reader would see: the feed only shows articles
-    published in the last ``FEED_WINDOW_HOURS``.
+    published in the last ``FEED_WINDOW_HOURS``, which ``cutoff`` never falls
+    inside, even with a dedupe window shorter than that.
 
     Undated entries can't be judged, and a source never read before has no
     history to repeat, so neither is ever stale.
@@ -395,14 +398,14 @@ def _ingest_source(
     known: set[str],
     tally: RunTally,
     *,
-    cutoff: datetime,
+    stale_before: datetime,
     since: datetime | None,
     limit: int | None,
 ) -> None:
     """Ingest one source: store its new entries as pending articles.
 
-    ``cutoff`` is where the known-id lookup starts; see ``_split_stale`` for
-    the entries dated before it.
+    ``stale_before`` is the earlier of the known-id lookup's start and the feed
+    window's start; see ``_split_stale`` for the entries dated before it.
     """
     stage = PipelineStage.INGEST
     ingester = services.ingesters.get(source.type)
@@ -421,7 +424,7 @@ def _ingest_source(
         in_range = entries
         if since is not None:
             in_range = [a for a in entries if not _published_before(a, since)]
-        fresh, stale = _split_stale(dedupe(in_range, known), state, cutoff)
+        fresh, stale = _split_stale(dedupe(in_range, known), state, stale_before)
         # Stale entries don't count as dropped: no later run wants them, so the
         # new ETag can be kept. Only --since and --limit hold back wanted entries.
         dropped = len(in_range) < len(entries) or (limit is not None and len(fresh) > limit)
@@ -496,17 +499,24 @@ def ingest_sources(
     kept); ``limit`` keeps at most that many new articles per source. The
     dedupe lookup covers articles fetched within ``services.dedupe_window_days``,
     widened to reach back to ``since`` if that is older. Unrecognised entries
-    dated before the lookup's start may be skipped as stale (``_split_stale``).
+    dated before both the lookup's start and the feed window may be skipped as
+    stale (``_split_stale``).
     """
-    window_start = _utc_now() - timedelta(days=services.dedupe_window_days)
+    now = _utc_now()
+    window_start = now - timedelta(days=services.dedupe_window_days)
     cutoff = min(window_start, since) if since else window_start
     known = _known_ids(services, cutoff)
+    # A dedupe window shorter than the feed window must not drop entries the
+    # feed would still show, so staleness never starts inside the feed window.
+    stale_before = min(cutoff, now - timedelta(hours=FEED_WINDOW_HOURS))
     log.info(
         "known articles loaded",
         extra={"stage": PipelineStage.INGEST.value, "known_ids": len(known)},
     )
     for source in sources:
-        _ingest_source(services, source, known, tally, cutoff=cutoff, since=since, limit=limit)
+        _ingest_source(
+            services, source, known, tally, stale_before=stale_before, since=since, limit=limit
+        )
 
 
 # --- Extract ---------------------------------------------------------------------
