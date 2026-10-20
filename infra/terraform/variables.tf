@@ -93,7 +93,7 @@ variable "job_memory" {
 variable "job_timeout_seconds" {
   description = "Maximum length of one run. Kept under the hourly interval so runs don't overlap."
   type        = number
-  default     = 1800
+  default     = 3000
 }
 
 variable "schedule" {
