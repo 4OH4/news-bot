@@ -20,6 +20,9 @@ How the components combine::
   over fields). With the default field weights, weight -1 matched only in the
   body gives 0.5 and in the title 0.25. The factor never reaches 0, so demoted
   articles keep their relative order (e.g. by recency).
+  With ``scoring.body_only_demotion`` below 1, a match in the body alone
+  uses ``scale * body weight`` as ``w`` (so 0 skips it) and adds the marker
+  ``demote_body_only:<name>`` = scale; the marker is not a factor.
 * ``mute_keyword_in_body``: 0.5 when a mute keyword matches only in the body.
   A passing mention in the body halves the score instead of muting.
 * ``source``: the multiplier for the article's source: the reader's weight in
@@ -87,15 +90,25 @@ def score_article(
     relevance = BASE_SCORE
     multiplier = 1.0
     for topic in config.topics:
-        matched = [
-            weight for text, weight in fields.values() if text and _matches(topic.keywords, text)
-        ]
-        if not matched:
+        hits = {
+            name: weight
+            for name, (text, weight) in fields.items()
+            if text and _matches(topic.keywords, text)
+        }
+        if not hits:
             continue
+        matched = list(hits.values())
         if topic.weight < 0:
+            strength = max(matched)
+            scale = config.scoring.body_only_demotion
+            if scale < 1.0 and set(hits) == {"body"}:
+                # A body-only match is often a sidebar or related link, so the
+                # reader may weaken it; the marker shows that it was.
+                strength *= scale
+                breakdown[f"demote_body_only:{topic.name}"] = scale
             # Demote by a factor rather than subtracting points, so a demoted
             # article never reaches 0 and keeps its order among the others.
-            factor = 1.0 / (1.0 + abs(topic.weight) * max(matched))
+            factor = 1.0 / (1.0 + abs(topic.weight) * strength)
             if factor < 1.0:
                 breakdown[f"demote:{topic.name}"] = factor
                 multiplier *= factor

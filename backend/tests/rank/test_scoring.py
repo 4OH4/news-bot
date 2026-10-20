@@ -174,3 +174,38 @@ def test_does_not_modify_the_config() -> None:
     before = cfg.model_dump()
     score_article(article(title="AI"), "text", cfg, None, NOW)
     assert cfg.model_dump() == before
+
+
+@pytest.mark.parametrize(
+    ("scale", "title", "summary", "body", "expected"),
+    [
+        (0.0, "Celebrity wedding", None, None, 0.25),  # title still demotes fully
+        (0.0, "Quiet", "celebrity guests", None, 1 / 3),  # summary too
+        (0.0, "Quiet", None, "celebrity guests", 1.0),  # body only: ignored
+        (0.5, "Quiet", None, "celebrity guests", 1 / 1.5),  # body only: half strength
+        (1.0, "Quiet", None, "celebrity guests", 0.5),  # default
+    ],
+)
+def test_body_only_demotion_scale(
+    scale: float, title: str, summary: str | None, body: str, expected: float
+) -> None:
+    cfg = config(topics=[CELEBS], scoring={"body_only_demotion": scale})
+
+    score, breakdown = score_article(article(title=title, summary=summary), body, cfg, None, NOW)
+
+    assert score == pytest.approx(expected)
+    body_only = title == "Quiet" and summary is None
+    assert ("demote_body_only:celebs" in breakdown) == (body_only and scale < 1.0)
+    assert ("demote:celebs" in breakdown) == (expected < 1.0)
+
+
+def test_default_scoring_leaves_body_only_demotion_unmarked() -> None:
+    _, breakdown = score_article(article(), "celebrity guests", config(topics=[CELEBS]), None, NOW)
+
+    assert breakdown["demote:celebs"] == pytest.approx(0.5)
+    assert not any(key.startswith("demote_body_only") for key in breakdown)
+
+
+def test_body_only_demotion_must_be_between_0_and_1() -> None:
+    with pytest.raises(ValueError):
+        config(scoring={"body_only_demotion": 1.5})
