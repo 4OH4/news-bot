@@ -33,6 +33,13 @@ docker run --rm newsfeed run
 | `NEWSFEED_FIRESTORE_DATABASE` | default database | Optional Firestore database id. |
 | `NEWSFEED_GCP_PROJECT` | from credentials | Optional Google Cloud project for both clients. |
 | `NEWSFEED_DEDUPE_WINDOW_DAYS` | `14` (at least 1) | Ingest dedupes against articles fetched in this many days, which bounds the reads per run on Firestore. Keep it at least as long as any `--since` you use (a longer `--since` widens it for that run). An older entry that reappears is never allowed to overwrite a stored article. |
+| `NEWSFEED_RETRY_BACKOFF_HOURS` | `[1, 6, 24]` (JSON list) | Hours to wait after the 1st, 2nd... extraction attempt before retrying a transient failure. Its length is the cap (three retries by default); `[]` turns retries off. |
+| `NEWSFEED_RETRY_WINDOW_DAYS` | `3` | Failed articles are only retried within this many days of being fetched. |
+| `NEWSFEED_RETRY_PARTIAL` | `false` | Also retry `partial` extractions (usually a short page). |
+
+### Retrying failed extractions
+
+Each run's extract stage also retries failed articles whose failure looks temporary: timeouts (including HTTP 408), connection errors, HTTP 5xx and HTTP 429. It never retries robots.txt refusals, other 4xx errors (401, 403, 404, 410...), "no content" failures, or `paywalled` and `skipped` articles. A retry happens once the backoff for the attempt count has passed since `extraction.last_attempt_at`, up to the cap, and only while the article is inside the retry window. Every extraction attempt increments `extraction.attempts`, and retries are counted as `retried` in the run's extract stage counts. The policy is `should_retry` in `backend/src/newsfeed/extract/retry.py`.
 
 ### JavaScript rendering (optional)
 

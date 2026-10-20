@@ -15,12 +15,15 @@ from newsfeed.adapters.sqlite_repository import SqliteRepository
 from newsfeed.config import UrlParamsConfig
 from newsfeed.extract.chain import ExtractorChain
 from newsfeed.extract.overrides import ExtractionConfig
+from newsfeed.extract.retry import RetryPolicy
 from newsfeed.extract.trafilatura_extractor import TrafilaturaExtractor
 from newsfeed.models import (
     Article,
+    ArticleExtraction,
     ExtractionResult,
     ExtractionStatus,
     PipelineStage,
+    RunStats,
     Source,
     SourceState,
     SourceType,
@@ -1256,3 +1259,117 @@ def test_skipped_stages_have_no_duration(tmp_path: Path, repository: SqliteRepos
     stats = run_pipeline(services, [SOURCE], extract=False, rank=False, publish=False)
 
     assert set(stats.stage_durations_ms) == {PipelineStage.INGEST}
+
+
+# --- Retries -----------------------------------------------------------------------
+
+RETRY_URLS = {
+    "due": "https://r.example.com/a/1",  # transient failure, backoff elapsed
+    "recent": "https://r.example.com/a/2",  # transient failure, tried minutes ago
+    "gone": "https://r.example.com/a/3",  # permanent failure
+    "capped": "https://r.example.com/a/4",  # transient, but out of retries
+}
+RETRY_NOW = datetime(2026, 10, 20, 12, 0, tzinfo=UTC)
+
+
+def _failed(url: str, error_type: str, *, attempts: int, minutes_ago: int) -> Article:
+    return _article_for(url).model_copy(
+        update={
+            "fetched_at": RETRY_NOW - timedelta(hours=10),
+            "extraction": ArticleExtraction(
+                status=ExtractionStatus.FAILED,
+                error=f"PageUnavailableError: {error_type}",
+                error_type=error_type,
+                attempts=attempts,
+                last_attempt_at=RETRY_NOW - timedelta(minutes=minutes_ago),
+            ),
+        }
+    )
+
+
+def _retry_run(tmp_path: Path, repository: SqliteRepository, **settings: object) -> RunStats:
+    for article in (
+        _failed(RETRY_URLS["due"], "http_5xx", attempts=1, minutes_ago=90),
+        _failed(RETRY_URLS["recent"], "timeout", attempts=1, minutes_ago=5),
+        _failed(RETRY_URLS["gone"], "http_4xx", attempts=1, minutes_ago=5000),
+        _failed(RETRY_URLS["capped"], "timeout", attempts=4, minutes_ago=5000),
+    ):
+        repository.upsert_article(article)
+    fetcher = FakeFetcher()
+    for url in RETRY_URLS.values():
+        fetcher.add(url, "<html><body><p>Invented.</p></body></html>", headers=HTML)
+    services = _services(tmp_path, repository, fetcher, FakeExtractor(default=_ok()), **settings)
+    return run_pipeline(
+        services, [], ingest=False, rank=False, publish=False, clock=lambda: RETRY_NOW
+    )
+
+
+def test_extract_retries_only_eligible_failed_articles(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    stats = _retry_run(tmp_path, repository)
+
+    by_url = _by_url(repository)
+    due = by_url[RETRY_URLS["due"]].extraction
+    assert due.status is ExtractionStatus.OK
+    assert due.attempts == 2
+    assert due.last_attempt_at == RETRY_NOW
+    for name in ("recent", "gone", "capped"):
+        untouched = by_url[RETRY_URLS[name]].extraction
+        assert untouched.status is ExtractionStatus.FAILED
+        assert untouched.last_attempt_at != RETRY_NOW
+    counts = stats.stage_counts[PipelineStage.EXTRACT]
+    assert counts["attempted"] == 1
+    assert counts["retried"] == 1
+
+
+def test_retries_can_be_disabled(tmp_path: Path, repository: SqliteRepository) -> None:
+    stats = _retry_run(tmp_path, repository, retry=RetryPolicy(backoff_hours=()))
+
+    assert stats.stage_counts[PipelineStage.EXTRACT] == {"attempted": 0}
+
+
+def test_a_retry_that_fails_again_counts_the_attempt(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    url = RETRY_URLS["due"]
+    repository.upsert_article(_failed(url, "http_5xx", attempts=1, minutes_ago=90))
+    fetcher = FakeFetcher()
+    fetcher.add(url, b"", status=503)
+    services = _services(tmp_path, repository, fetcher)
+
+    run_pipeline(services, [], ingest=False, rank=False, publish=False, clock=lambda: RETRY_NOW)
+
+    stored = _by_url(repository)[url].extraction
+    assert stored.status is ExtractionStatus.FAILED
+    assert (stored.attempts, stored.last_attempt_at) == (2, RETRY_NOW)
+
+
+@pytest.mark.parametrize("failing", [False, True])
+def test_every_first_attempt_records_attempts_and_time(
+    tmp_path: Path, repository: SqliteRepository, failing: bool
+) -> None:
+    url = "https://r.example.com/a/9"
+    repository.upsert_article(_article_for(url))
+    fetcher = FakeFetcher()
+    fetcher.add(url, b"" if failing else "<html><p>x</p></html>", status=503 if failing else 200)
+    services = _services(tmp_path, repository, fetcher, FakeExtractor(default=_ok()))
+
+    run_pipeline(services, [], ingest=False, rank=False, publish=False, clock=lambda: RETRY_NOW)
+
+    stored = _by_url(repository)[url].extraction
+    assert (stored.attempts, stored.last_attempt_at) == (1, RETRY_NOW)
+
+
+def test_skipped_attempts_are_counted(tmp_path: Path, repository: SqliteRepository) -> None:
+    pdf = "https://r.example.com/files/report.pdf"
+    repository.upsert_article(_article_for(pdf))
+    fetcher = FakeFetcher()
+    fetcher.add(pdf, b"%PDF-1.7", headers={"content-type": "application/pdf"})
+    services = _services(tmp_path, repository, fetcher)
+
+    run_pipeline(services, [], ingest=False, rank=False, publish=False, clock=lambda: RETRY_NOW)
+
+    stored = _by_url(repository)[pdf].extraction
+    assert stored.status is ExtractionStatus.SKIPPED
+    assert (stored.attempts, stored.last_attempt_at) == (1, RETRY_NOW)
