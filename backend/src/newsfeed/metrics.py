@@ -3,8 +3,8 @@
 Pure functions only: the pipeline records one ``ExtractionRecord`` per article and
 one ``FeedRecord`` per source, and ``summarise_run`` folds them into the dict
 that is logged (and that ``newsfeed report`` will reuse for its categories).
-Anything ``RunStats`` can't hold yet is logged only, until the contract change
-adds fields for it.
+``RunTally`` stores the failure reasons and per-domain medians in ``RunStats``;
+the rest of the summary is logged only.
 """
 
 from __future__ import annotations
