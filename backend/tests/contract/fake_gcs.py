@@ -1,9 +1,9 @@
 """A minimal in-process stand-in for ``google.cloud.storage.Client``.
 
 Implements only the calls ``GcsBlobStore`` makes (``bucket``, ``blob``,
-``upload_from_string``, ``download_as_bytes``, ``exists``) over a shared dict, so
-the adapter's key, prefix and error handling run in the default test suite
-without Docker or network. Real-service behaviour is covered by the emulator run.
+``cache_control``, ``upload_from_string``, ``download_as_bytes``, ``exists``) over
+shared dicts, so the adapter's key, prefix and error handling run in the default
+test suite without Docker or network. Real-service behaviour is covered by the emulator run.
 """
 
 from __future__ import annotations
@@ -18,6 +18,8 @@ class FakeGcsState:
 
     def __init__(self) -> None:
         self.objects: dict[tuple[str, str], tuple[bytes, str]] = {}
+        # Cache-Control of each object as uploaded; None is the service default.
+        self.cache_control: dict[tuple[str, str], str | None] = {}
         self.lock = threading.Lock()
 
 
@@ -27,10 +29,12 @@ class FakeBlob:
     def __init__(self, state: FakeGcsState, bucket: str, name: str) -> None:
         self._state = state
         self._key = (bucket, name)
+        self.cache_control: str | None = None
 
     def upload_from_string(self, data: bytes, content_type: str = "text/plain") -> None:
         with self._state.lock:
             self._state.objects[self._key] = (bytes(data), content_type)
+            self._state.cache_control[self._key] = self.cache_control
 
     def download_as_bytes(self) -> bytes:
         with self._state.lock:
