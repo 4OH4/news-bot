@@ -1,0 +1,15 @@
+# Copy to terraform.tfvars (git-ignored) and replace every value.
+# Placeholders only: never commit real values.
+
+project_id      = "my-newsfeed-project"
+billing_account = "000000-000000-000000"
+region          = "europe-west2"
+budget_amount   = 10
+alert_email     = "alerts@example.com"
+
+# Optional overrides (defaults in variables.tf):
+# budget_thresholds      = [0.5, 0.9, 1.0]
+# firestore_location     = "eur3"
+# content_retention_days = 30
+# job_memory             = "1Gi"
+# job_timeout_seconds    = 1800

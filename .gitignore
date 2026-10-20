@@ -230,3 +230,11 @@ eval/logs/
 # Claude Code: agent worktrees and personal settings (shared .claude/settings.json is committed)
 .claude/worktrees/
 .claude/settings.local.json
+# Terraform (ADR-0004): provider cache, state, real variable values and saved plans.
+# terraform.tfvars.example holds placeholders and is committed; crash.log is covered by *.log.
+infra/**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+tfplan
