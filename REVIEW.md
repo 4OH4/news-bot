@@ -27,6 +27,7 @@ Failure patterns taken from real defects in this repo. Test authors and workers 
 ## Agent briefs
 
 - A command in an agent brief must be checked under the isolation that agent runs with. In #133, briefs ran git against a sibling worktree, by `git -C` and by `cd`, which the harness refuses for an isolated agent, so the hand-off between agents could not work.
+- A step that reads something later must name where it is stored, because agent reports and lead sessions don't persist. In #138, the milestone review read friction notes that existed in no file, issue or comment.
 
 ## Tests that can fail
 
