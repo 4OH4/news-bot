@@ -86,6 +86,7 @@ Keep one issue titled "Phase <n> decisions" open for the phase. Create it the fi
    - **What was built:** a short summary, with links to the PRs agents merged (`label:agent-merged`).
    - **Risks and parked work:** anything unresolved, any PR the review process could not clear, and any cloud resources still running.
    - **Process measures:** the numbers in `AUTOMATION.md` §10.
+   - **Process review:** those numbers against the previous milestone, the top three friction points from the batch reports' "Friction" sections (evidence and a proposed change each), how the last milestone's changes turned out, and the human's own friction notes. Update `AUTOMATION.md` §15, including what didn't work. Accepted changes become `process` issues, at most three per phase.
    - **Next phase:** proposed goal, and anything found this phase that changes the plan.
 3. Open it as a normal PR on `issue-<n>-phase-<n>-milestone`, closing the decisions issue. It is Tier C.
 4. Tell the human the milestone is ready, with the link and the "Try it" line.
