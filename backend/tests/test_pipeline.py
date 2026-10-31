@@ -1395,7 +1395,7 @@ def test_skipped_stages_have_no_duration(tmp_path: Path, repository: SqliteRepos
 def test_report_lists_a_failed_article_from_a_real_run(
     tmp_path: Path, repository: SqliteRepository
 ) -> None:
-    """Regression: nothing sets last_attempt_at yet, so matching falls back to fetched_at."""
+    """Regression: a failed article from a real run appears in the report."""
     run_pipeline(_services(tmp_path, repository, _fetcher()), [SOURCE])
 
     report = build_report(repository, [SOURCE.id])
