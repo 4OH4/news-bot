@@ -89,6 +89,7 @@ def test_tier_a_spans_packages_and_needs_no_title_type() -> None:
         "config/interests.yaml",
         "config/sources.yaml",
         "eval/urls.yaml",
+        "eval/boilerplate.txt",
         "backend/src/newsfeed/eval/scorer.py",
         "backend/tests/conftest.py",
         "backend/tests/fakes.py",
@@ -162,13 +163,25 @@ def test_infra_without_iam_or_billing_is_tier_b() -> None:
         "+gcloud iam service-accounts create deploy",
         "+  amount = var.budget_gbp",
         '+resource "google_service_account_key" "deploy" {',
+        '+resource "google_service_account" "runner" {',
+        "+    service_account = var.runner_email",
+        '+data "google_iam_policy" "open" {',
+        "+  members = var.readers",
+        '+  member  = "allUsers"',
+        "+  policy_data = data.google_iam_policy.open.policy_data",
+        '+  permissions = ["storage.objects.get"]',
+        "+  binding {",
+        '+  predefined_acl = "publicRead"',
+        '+resource "google_storage_bucket_acl" "open" {',
+        '+  public_access_prevention = "inherited"',
+        "+  uniform_bucket_level_access = false",
     ],
 )
 def test_iam_or_billing_lines_in_any_infra_file_are_tier_c(line: str) -> None:
     result = classify(F("infra/terraform/deploy.tf", 1, patch=f"@@ -1 +1 @@\n{line}"))
     assert result.tier == "C"
     assert (
-        "infra/terraform/deploy.tf changes IAM, billing, budgets or service account keys"
+        "infra/terraform/deploy.tf changes IAM, access, billing, budgets or service accounts"
         in result.reasons
     )
 
@@ -181,19 +194,114 @@ def test_iam_or_billing_lines_in_any_infra_file_are_tier_c(line: str) -> None:
         # Only the age changes: the rule shows in the patch's context lines.
         '@@ -1,3 +1,3 @@\n   lifecycle_rule {\n     action { type = "Delete" }\n'
         "-    condition { age = 90 }\n+    condition { age = 7 }",
+        # Only the action shows: `lifecycle_rule` is outside the hunk's context.
+        '@@ -8,3 +8,3 @@\n     action {\n-      type = "SetStorageClass"\n'
+        '+      type = "Delete"\n     }',
+        # The same rule as JSON, for `gsutil lifecycle set`.
+        '@@ -1 +1 @@\n-  "action": {"type": "SetStorageClass"}\n+  "action": {"type": "Delete"}',
+        # Firestore's rule for deleting documents by age.
+        '@@ -1 +1,2 @@\n+  ttl_config {}\n resource "google_firestore_field" "seen" {',
     ],
 )
-def test_a_lifecycle_delete_rule_is_tier_c(patch: str) -> None:
+def test_a_delete_rule_is_tier_c(patch: str) -> None:
     result = classify(F("infra/terraform/storage.tf", 2, patch=patch))
     assert result.tier == "C"
     assert result.reasons == [
-        "infra/terraform/storage.tf changes a lifecycle rule, which can delete content"
+        "infra/terraform/storage.tf changes a delete rule, which can delete content"
     ]
 
 
-def test_iam_in_unchanged_context_lines_does_not_count() -> None:
+@pytest.mark.parametrize(
+    "patch",
+    [
+        "@@ -1 +1 @@\n-  force_destroy = false\n+  force_destroy = true",
+        "@@ -1 +1,2 @@\n name = var.bucket\n+  force_destroy = true",
+        "@@ -1 +1,2 @@\n name = var.bucket\n+  force_destroy = var.allow_destroy",
+        "@@ -1 +1 @@\n-  deletion_protection = true\n+  deletion_protection = false",
+        '@@ -1,2 +1 @@\n name = var.db\n-  delete_protection_state = "DELETE_PROTECTION_ENABLED"',
+        '@@ -1 +1,2 @@\n name = var.db\n+  deletion_policy = "DELETE"',
+        "@@ -1,2 +1 @@\n name = var.bucket\n-  lifecycle { prevent_destroy = true }",
+        "@@ -1,2 +1 @@\n name = var.bucket\n-  retention_policy { retention_period = 90 }",
+        "@@ -1,2 +1 @@\n name = var.bucket\n-  soft_delete_policy { retention = 9 }",
+        # Removing a store, whether the file stays or goes.
+        '@@ -1,4 +1 @@\n a = 1\n-resource "google_storage_bucket" "articles" {\n-  name = "a"\n-}',
+        '@@ -1,2 +0,0 @@\n-resource "google_firestore_database" "main" {\n-}',
+        '@@ -1,2 +0,0 @@\n-resource "google_firestore_index" "by_date" {\n-}',
+        '@@ -1,2 +0,0 @@\n-resource "google_project" "dev" {\n-}',
+        '@@ -1,2 +0,0 @@\n-module "storage" {\n-}',
+        # A new label replaces the resource, and these take it away without removing it.
+        '@@ -1 +1 @@\n-resource "google_storage_bucket" "a"\n+resource "google_storage_bucket" "b"',
+        '@@ -1,2 +1,3 @@\n resource "google_storage_bucket" "a" {\n+  count = 0\n   name = "a"',
+        '@@ -1,2 +1,2 @@\n resource "google_firestore_database" "a"\n+  for_each = b',
+        "@@ -1 +1,2 @@\n a = 1\n+removed {\n",
+        # The same, from a shell script.
+        "@@ -1 +1,2 @@\n set -e\n+gsutil -m rm -r gs://news-bot-articles",
+        "@@ -1 +1,2 @@\n set -e\n+gcloud storage rm --recursive gs://news-bot-articles",
+        "@@ -1 +1,2 @@\n set -e\n+gcloud firestore databases delete --database=main",
+        "@@ -1 +1,2 @@\n set -e\n+terraform destroy -auto-approve",
+    ],
+)
+def test_a_change_that_can_destroy_stored_data_is_tier_c(patch: str) -> None:
+    result = classify(F("infra/terraform/storage.tf", 2, patch=patch))
+    assert result.tier == "C"
+    assert result.reasons == ["infra/terraform/storage.tf can destroy stored data or the project"]
+
+
+@pytest.mark.parametrize(
+    "patch",
+    [
+        "@@ -1 +1,2 @@\n name = var.bucket\n+  force_destroy = false",
+        # A protection flag that doesn't change isn't a reason to involve the human.
+        "@@ -1,3 +1,3 @@\n  deletion_protection = true\n-  labels = {}\n+  labels = { a = 1 }",
+        "@@ -1,3 +1,3 @@\n  force_destroy = true\n-  labels = {}\n+  labels = { a = 1 }",
+        # Another bucket setting, a new store, and resources that hold no data.
+        '@@ -1,2 +1,2 @@\n resource "google_storage_bucket" "a"\n-  location = "EU"',
+        '@@ -0,0 +1,2 @@\n+resource "google_storage_bucket" "articles" {\n+}',
+        '@@ -1,2 +0,0 @@\n-resource "google_cloud_run_v2_job" "ingest" {\n-}',
+        '@@ -1,2 +0,0 @@\n-resource "google_storage_bucket_object" "seed" {\n-}',
+        '@@ -1,2 +1,2 @@\n resource "google_cloud_run_v2_job" "ingest"\n-  count = 1\n+  count = 2',
+    ],
+)
+def test_changes_that_destroy_no_data_stay_tier_b(patch: str) -> None:
+    assert classify(F("infra/terraform/storage.tf", 2, patch=patch)).tier == "B"
+
+
+def test_a_member_change_inside_an_iam_resource_is_tier_c() -> None:
+    patch = (
+        '@@ -1,4 +1,4 @@\n resource "google_cloud_run_v2_job_iam_member" "deploy_update" {\n'
+        '   role     = "roles/run.developer"\n'
+        '-  member   = "serviceAccount:${google_service_account.deploy.email}"\n'
+        '+  member   = "allUsers"\n }'
+    )
+    assert classify(F("infra/terraform/deploy.tf", 2, patch=patch)).tier == "C"
+
+
+def test_a_member_change_with_no_iam_in_its_context_is_tier_c() -> None:
+    # The resource line and role are further up than the patch's three lines of context.
+    patch = '@@ -9,3 +9,3 @@\n   name = "x"\n-  member = "a"\n+  member = "b"\n }'
+    assert classify(F("infra/terraform/deploy.tf", 2, patch=patch)).tier == "C"
+
+
+def test_any_change_next_to_iam_counts() -> None:
     patch = '@@ -1,2 +1,2 @@\n role = "roles/run.admin"\n-a = 1\n+a = 2'
+    assert classify(F("infra/terraform/run_job.tf", 2, patch=patch)).tier == "C"
+
+
+@pytest.mark.parametrize("word", ["miami", "liam", "diagram", "oracle", "miracle"])
+def test_words_containing_iam_or_acl_do_not_count(word: str) -> None:
+    patch = f'@@ -1 +1 @@\n-  region = "a"\n+  region = "{word}"'
     assert classify(F("infra/terraform/run_job.tf", 2, patch=patch)).tier == "B"
+
+
+@pytest.mark.parametrize("path", ["deploy/run.tf", "backend/job.tf.json", "ops/dev.tfvars"])
+def test_terraform_outside_infra_gets_the_same_checks(path: str) -> None:
+    assert classify(F(path, 1, patch='@@ -1 +1 @@\n-a = 1\n+a = "2"')).tier == "B"
+    assert classify(F(path, 1, patch='@@ -1 +1 @@\n+role = "roles/owner"')).tier == "C"
+
+
+def test_moving_a_file_out_of_infra_keeps_its_checks() -> None:
+    moved = F("docs/old.txt", 1, previous_path="infra/terraform/deploy.tf", patch="+roles/owner")
+    assert classify(moved).tier == "C"
 
 
 def test_infra_change_with_no_readable_diff_is_tier_c() -> None:
@@ -242,7 +350,10 @@ def test_generated_files_do_not_count_towards_the_limits() -> None:
     assert result.blocks == []
 
 
-@pytest.mark.parametrize("path", ["eval/urls.yaml", "backend/src/newsfeed/eval/scorer.py"])
+@pytest.mark.parametrize(
+    "path",
+    ["eval/urls.yaml", "eval/boilerplate.txt", "backend/src/newsfeed/eval/scorer.py"],
+)
 def test_evaluation_rules_cannot_change_with_extraction_code(path: str) -> None:
     result = classify(F(EXTRACT_FILE, 1), F(path, 1))
     assert result.blocks == ["changes the evaluation expectations or scorer alongside extract/"]
@@ -975,5 +1086,5 @@ def test_patches_reach_the_classifier(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(tier, "gh_api", gh_api)
     result = tier.classify_pr(pr(number=80, body="Closes #71"))
     assert result.reasons == [
-        "infra/terraform/deploy.tf changes IAM, billing, budgets or service account keys"
+        "infra/terraform/deploy.tf changes IAM, access, billing, budgets or service accounts"
     ]
