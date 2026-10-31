@@ -144,12 +144,22 @@ def test_request_sends_the_token_only_in_the_header(monkeypatch: pytest.MonkeyPa
             return None
 
     def urlopen(request: Any, timeout: float) -> Reply:
-        seen.update(url=request.full_url, auth=request.get_header("Authorization"), t=timeout)
+        seen.update(
+            url=request.full_url,
+            auth=request.get_header("Authorization"),
+            beta=request.get_header("Anthropic-beta"),
+            t=timeout,
+        )
         return Reply(json.dumps(REPLY).encode())
 
     monkeypatch.setattr(usage.urllib.request, "urlopen", urlopen)
     assert usage.request_usage(TOKEN) == REPLY
-    assert seen == {"url": usage.USAGE_URL, "auth": f"Bearer {TOKEN}", "t": usage.TIMEOUT}
+    assert seen == {
+        "url": usage.USAGE_URL,
+        "auth": f"Bearer {TOKEN}",
+        "beta": "oauth-2025-04-20",
+        "t": usage.TIMEOUT,
+    }
     assert TOKEN not in seen["url"]
 
 
