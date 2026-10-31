@@ -30,6 +30,7 @@ from newsfeed.pipeline import (
     PageUnavailableError,
     RunTally,
     _known_ids,
+    _split_stale,
     decode_html,
     extract_saved_url,
     fetch_page,
@@ -933,6 +934,135 @@ def test_old_article_that_reappears_keeps_its_stored_state(
     assert len(repository.list_articles()) == 4  # the other entries are new
     stats = tally.stats("run", fetched, fetched)
     assert stats.stage_counts[PipelineStage.INGEST]["new"] == 3
+
+
+def _age_everything(repository: SqliteRepository, days: int) -> None:
+    """Move every stored article's ``fetched_at`` ``days`` into the past."""
+    for article in repository.list_articles():
+        repository.upsert_article(
+            article.model_copy(update={"fetched_at": article.fetched_at - timedelta(days=days)})
+        )
+
+
+def test_rekeyed_article_older_than_the_window_is_not_ingested_again(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    # The probe from PR #106's review: the bridge entry was re-keyed by its
+    # page's rel=canonical, then everything aged past the 14-day window while
+    # the feed still lists the entry.
+    fetcher = _fetcher()
+    services = _services(tmp_path, repository, fetcher)
+    run_pipeline(services, [SOURCE])
+    bridge = _by_url(repository)[BRIDGE_URL]
+    assert bridge.canonical_url == BRIDGE_CANONICAL  # re-keyed away from the feed URL
+    assert bridge.published_at is not None
+    assert bridge.published_at < datetime.now(UTC) - timedelta(days=14)
+    _age_everything(repository, 30)
+    before = _unranked(repository)
+    calls = len(fetcher.calls)
+
+    stats = run_pipeline(services, [SOURCE])
+
+    ingest = stats.stage_counts[PipelineStage.INGEST]
+    assert (ingest["new"], ingest.get("stale", 0), ingest["duplicates"]) == (0, 1, 3)
+    assert stats.stage_counts.get(PipelineStage.EXTRACT, {}).get("merged", 0) == 0
+    assert [call.url for call in fetcher.calls[calls:]] == [FEED_URL]  # no page fetched
+    assert _unranked(repository) == before
+
+
+def test_without_the_stale_check_the_probe_refetches_the_page(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    # The same probe on a source never read in full before: the entry can't be
+    # judged stale, so it is ingested, fetched and merged (the #106 behaviour).
+    fetcher = _fetcher()
+    services = _services(tmp_path, repository, fetcher)
+    run_pipeline(services, [SOURCE])
+    _age_everything(repository, 30)
+    repository.save_source_state(SourceState(source_id=SOURCE.id))
+    calls = len(fetcher.calls)
+
+    stats = run_pipeline(services, [SOURCE])
+
+    assert stats.stage_counts[PipelineStage.INGEST]["new"] == 1
+    assert stats.stage_counts[PipelineStage.EXTRACT]["merged"] == 1
+    assert [call.url for call in fetcher.calls[calls:]] == [FEED_URL, BRIDGE_URL]
+
+
+def test_stale_entries_need_a_date_before_the_cutoff_and_a_source_read_before() -> None:
+    cutoff = datetime(2026, 10, 6, tzinfo=UTC)
+    read_before = SourceState(source_id="gazette", last_fetched_at=cutoff)
+    old = _article_for("https://e.example.com/old").model_copy(
+        update={"published_at": cutoff - timedelta(seconds=1)}
+    )
+    edge = _article_for("https://e.example.com/edge").model_copy(update={"published_at": cutoff})
+    undated = _article_for("https://e.example.com/undated")
+
+    assert _split_stale([old, edge, undated], read_before, cutoff) == ([edge, undated], [old])
+    never_read = SourceState(source_id="gazette")
+    assert _split_stale([old, edge, undated], never_read, cutoff) == ([old, edge, undated], [])
+
+
+def test_short_dedupe_window_never_drops_entries_inside_the_feed_window(
+    tmp_path: Path, repository: SqliteRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Regression for PR #126's review: with a 1-day dedupe window, an entry
+    # dated ~48 h back (before the lookup, but inside the 72 h feed window)
+    # from a source read before must still be stored, not counted stale.
+    now = datetime(2026, 10, 7, 9, 0, tzinfo=UTC)
+    monkeypatch.setattr("newsfeed.pipeline._utc_now", lambda: now)
+    repository.save_source_state(
+        SourceState(source_id=SOURCE.id, last_fetched_at=now - timedelta(days=3))
+    )
+    services = _services(tmp_path, repository, _fetcher(), dedupe_window_days=1)
+    tally = RunTally()
+
+    ingest_sources(services, [SOURCE], tally)
+
+    bridge = _by_url(repository)[BRIDGE_URL]
+    assert bridge.published_at == datetime(2026, 10, 5, 8, 30, tzinfo=UTC)
+    ingest = tally.stats("run", now, now).stage_counts[PipelineStage.INGEST]
+    assert ingest.get("stale", 0) == 0
+    assert ingest["new"] == 4
+
+
+class _CountingRepository(_RecordingRepository):
+    """Also counts the documents ``list_articles`` returns and the ``get_article`` calls."""
+
+    def __init__(self, inner: SqliteRepository) -> None:
+        super().__init__(inner)
+        self.listed = 0
+        self.gets = 0
+
+    def list_articles(self, **kwargs: object) -> list[Article]:
+        articles = super().list_articles(**kwargs)
+        self.listed += len(articles)
+        return articles
+
+    def get_article(self, article_id: str) -> Article | None:
+        self.gets += 1
+        return self._inner.get_article(article_id)
+
+
+@pytest.mark.parametrize("history", [0, 200])
+def test_ingest_reads_do_not_grow_with_history(
+    tmp_path: Path, repository: SqliteRepository, history: int
+) -> None:
+    # The probe again, with ``history`` older articles stored: reads stay the same.
+    services = _services(tmp_path, repository, _fetcher())
+    run_pipeline(services, [SOURCE])
+    _age_everything(repository, 30)
+    for n in range(history):
+        _stored(repository, f"https://e.example.com/{n}", datetime.now(UTC) - timedelta(days=60))
+    counting = _CountingRepository(repository)
+    services = _services(tmp_path, counting, _fetcher())  # type: ignore[arg-type]
+
+    ingest_sources(services, [SOURCE], RunTally())
+
+    assert len(counting.since_args) == 1  # one windowed listing
+    assert counting.listed == 0  # nothing was fetched inside the window
+    # One get_article per undated entry left after dedupe; the stale one costs nothing.
+    assert counting.gets == 3
 
 
 # --- Paywalls (#84) ------------------------------------------------------------------
