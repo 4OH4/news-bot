@@ -64,7 +64,11 @@ class Settings(BaseSettings):
         ),
     )
     retry_window_days: float = Field(
-        default=3, ge=0, description="Only retry articles fetched within this many days."
+        default=3,
+        ge=0,
+        le=36500,  # finite and small enough for timedelta; NaN and infinity are rejected
+        allow_inf_nan=False,
+        description="Only retry articles fetched within this many days.",
     )
     retry_partial: bool = Field(
         default=False, description="Also retry partial extractions (usually a short page)."

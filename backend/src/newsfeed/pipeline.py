@@ -584,8 +584,12 @@ def _is_better(new: ExtractionStatus, new_words: int, old: ArticleExtraction) ->
     """Whether a retry's result should replace a stored ``partial`` one.
 
     ``ok`` beats ``partial`` beats anything else; between two partials the
-    longer wins, and a tie keeps the earlier one.
+    longer wins, and a tie keeps the earlier one. A ``paywalled`` result
+    replaces a partial too: partials include paywall previews, which ADR-0003
+    keeps out of the reader, so this retry is a correction.
     """
+    if new is ExtractionStatus.PAYWALLED and old.status is ExtractionStatus.PARTIAL:
+        return True
     new_q, old_q = _QUALITY.get(new, 0), _QUALITY.get(old.status, 0)
     if new_q != old_q:
         return new_q > old_q
@@ -775,22 +779,36 @@ def _extract_article(run: _ExtractRun, article: Article) -> _Outcome:
     # After redirects the domain may differ; per-domain behaviour (overrides,
     # stats) follows the page we actually got.
     domain = url_domain(page.final_url) or domain
-    refined = _refine_canonical(run, article, page)
-    if refined is None:
-        return _Outcome(article, domain, "merged", error="duplicate of a stored canonical URL")
-
+    # A stored partial must survive a worse retry, so re-keying or merging it
+    # waits until the result is known to be better.
+    stored_partial = article.extraction.status is ExtractionStatus.PARTIAL
+    current = article
     try:
-        return _extract_content(run, refined, page, domain)
+        if not stored_partial:
+            refined = _refine_canonical(run, article, page)
+            if refined is None:
+                return _merged_outcome(article, domain)
+            current = refined
+        result = services.extractor.extract(page.html, page.final_url)
+        if stored_partial and _is_better(result.status, result.word_count, article.extraction):
+            refined = _refine_canonical(run, article, page)
+            if refined is None:
+                return _merged_outcome(article, domain)
+            current = refined
+        return _extract_content(run, current, result, domain)
     except Exception as exc:
         # Report against the refined article: the original id is already retired.
-        return _finish_failed(run, refined, type(exc).__name__, str(exc), domain)
+        return _finish_failed(run, current, type(exc).__name__, str(exc), domain)
+
+
+def _merged_outcome(article: Article, domain: str) -> _Outcome:
+    return _Outcome(article, domain, "merged", error="duplicate of a stored canonical URL")
 
 
 def _extract_content(
-    run: _ExtractRun, article: Article, page: FetchedPage, domain: str
+    run: _ExtractRun, article: Article, result: ExtractionResult, domain: str
 ) -> _Outcome:
     services = run.services
-    result = services.extractor.extract(page.html, page.final_url)
     content_ref = None
     keep_earlier = article.extraction.status is ExtractionStatus.PARTIAL and not _is_better(
         result.status, result.word_count, article.extraction
