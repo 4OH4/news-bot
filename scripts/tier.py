@@ -10,8 +10,8 @@
 Tiers (AUTOMATION.md §9):
 
 * Tier C: the human merges. The automation itself (.claude/, .github/, scripts/ and
-  their tests, AUTOMATION.md, CLAUDE.md, and the build and lint files in TIER_C_PATHS),
-  fetching/, milestone reports, infrastructure that touches IAM or other access,
+  their tests, AUTOMATION.md, CLAUDE.md, the build files in TIER_C_PATHS), the files that
+  define the checks (CHECK_CONFIG_NAMES, and [tool.*] tables in pyproject.toml), fetching/, milestone reports, infrastructure that touches IAM or other access,
   billing, budgets, service accounts or delete rules, or that can destroy stored data,
   and any needs-human PR or issue.
 * Tier B: the delivery manager merges, with a `Confirm later` entry. Decide-and-record
@@ -39,6 +39,7 @@ Requirements: Python 3.10+ (standard library only), gh.
 from __future__ import annotations
 
 import argparse
+import base64
 import fnmatch
 import json
 import re
@@ -64,9 +65,7 @@ TIER_C_PATHS = (
     ".github/*",
     "scripts/*",
     "backend/tests/scripts/*",  # the tests of this gate
-    # What CI runs, and what goes into the image: `make lint` and `make test` are the checks.
-    "Makefile",
-    ".pre-commit-config.yaml",
+    # What goes into the image and the repo. The checks themselves are CHECK_CONFIG_NAMES.
     ".gitignore",
     ".dockerignore",
     "backend/Dockerfile",
@@ -78,6 +77,44 @@ TIER_C_PATHS = (
     "infra/*billing*",
     "infra/*budget*",
 )
+# The files that define the checks, by name in any directory, because each tool takes the
+# nearest one it finds: a two-line pytest.ini replaces the settings in pyproject.toml, and a
+# ruff.toml or pyproject.toml lower down replaces the lint rules for that directory.
+CHECK_CONFIG_NAMES = (
+    "Makefile",
+    "makefile",
+    "GNUmakefile",
+    ".pre-commit-config.yaml",
+    "conftest.py",
+    "pyproject.toml",
+    "pytest.ini",
+    ".pytest.ini",
+    "pytest.toml",
+    ".pytest.toml",
+    "tox.ini",
+    "setup.cfg",
+    "ruff.toml",
+    ".ruff.toml",
+    "mypy.ini",
+    ".mypy.ini",
+    "pyrightconfig.json",
+    ".coveragerc",
+    # The client's equivalents, for Phase 3.
+    "tsconfig*.json",
+    ".eslintrc*",
+    "eslint.config.*",
+    ".prettierrc*",
+    "prettier.config.*",
+    "jest.config.*",
+    "vitest.config.*",
+    "playwright.config.*",
+)
+# The two of those that aren't Tier C. Test infrastructure is Tier B, and most of
+# backend/pyproject.toml is too, so that dependencies can be: `tool_settings_changed`
+# picks out the parts of it that define the checks.
+PYPROJECT = "backend/pyproject.toml"
+TESTS_PREFIX = "backend/tests/"
+
 # Terraform is infrastructure wherever the file sits.
 INFRA_PATHS = ("infra/*", "*.tf", "*.tfvars", "*.tf.json")
 # Who can reach what, and who pays, can sit in any infra file, and a one-line change often
@@ -127,7 +164,9 @@ TIER_B_PATHS = (
     *EVAL_DECISION_PATHS,
     # Test infrastructure keeps every other test honest.
     "backend/tests/conftest.py",
+    "backend/tests/*/conftest.py",
     "backend/tests/fakes.py",
+    "backend/tests/*/fakes.py",
     "backend/tests/test_network_guard.py",
     "backend/tests/contract/*",
     "REVIEW.md",
@@ -142,6 +181,12 @@ SRC_PATHS = ("backend/src/*", "client/*")
 # Generated, often thousands of lines: they don't count towards the limits.
 GENERATED_PATHS = ("eval/results/*", "backend/uv.lock", "client/package-lock.json")
 EXTRACT_PREFIX = "backend/src/newsfeed/extract/"
+
+HUNK_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)")
+TOML_TABLE_RE = re.compile(r"^\s*\[")
+TOML_TOOL_TABLE_RE = re.compile(r"""^\s*\[\[?\s*["']?tool\b""")
+# The same settings without a [tool.*] header: `tool.ruff.line-length = 100`.
+TOML_TOOL_KEY_RE = re.compile(r"""^\s*["']?tool["']?\s*[.=]""")
 
 TEST_PATHS = (
     "backend/tests/*",
@@ -232,6 +277,8 @@ class ChangedFile:
     changes: int  # additions + deletions
     previous_path: str | None = None
     patch: str | None = None  # GitHub omits it for binary, renamed-only and huge files
+    text: str | None = None  # the file at the head, fetched only for backend/pyproject.toml
+    removed: bool = False  # the PR deletes the file
 
 
 @dataclass
@@ -278,6 +325,58 @@ def infra_risk(f: ChangedFile) -> str | None:
     return None
 
 
+def defines_checks(path: str) -> bool:
+    """True if this path is a check configuration file reserved for Tier C."""
+    name = path.rsplit("/", 1)[-1]
+    if path == PYPROJECT or (name == "conftest.py" and path.startswith(TESTS_PREFIX)):
+        return False
+    return matches(name, CHECK_CONFIG_NAMES)
+
+
+def tool_settings_changed(patch: str, text: str) -> bool:
+    """True if a patch to a TOML file changes its tables or anything in a [tool.*] table.
+
+    `text` is the file after the patch. The patch alone can't tell: `addopts` can sit too far
+    below its header for the context lines to show it, and a dependency at the end of a list
+    shows a [tool.*] header it doesn't change. Any header that changes counts, as a new one
+    can move the settings below it out of their table.
+    """
+    in_tool = []
+    current = False
+    for line in text.splitlines():
+        if TOML_TABLE_RE.search(line):
+            current = bool(TOML_TOOL_TABLE_RE.search(line))
+        in_tool.append(current)
+
+    next_line = 1  # the line in `text` that the patch has reached, counted from 1
+    for line in patch.splitlines():
+        if hunk := HUNK_RE.search(line):
+            next_line = int(hunk.group(1))
+        elif line.startswith(("+", "-")):
+            content = line[1:]
+            if TOML_TABLE_RE.search(content) or TOML_TOOL_KEY_RE.search(content):
+                return True
+            # A removed line sat in the same table as the line before it.
+            index = next_line - 1 if line.startswith("+") else next_line - 2
+            if 0 <= index < len(in_tool) and in_tool[index]:
+                return True
+            next_line += line.startswith("+")
+        elif line.startswith(" "):
+            next_line += 1
+    return False
+
+
+def pyproject_risk(f: ChangedFile) -> str | None:
+    """Why this change to backend/pyproject.toml is Tier C, if it is."""
+    if PYPROJECT not in (f.path, f.previous_path) or f.changes == 0:
+        return None
+    if f.patch is None or f.text is None:
+        return f"{PYPROJECT}: file not readable, so no way to check its [tool.*] tables"
+    if tool_settings_changed(f.patch, f.text):
+        return f"{PYPROJECT} changes a [tool.*] table, which defines the checks"
+    return None
+
+
 def size_blocks(files: list[ChangedFile]) -> list[str]:
     counted = [f for f in files if not matches(f.path, GENERATED_PATHS)]
     src_lines = sum(f.changes for f in counted if matches(f.path, SRC_PATHS))
@@ -300,8 +399,10 @@ def classify(files: list[ChangedFile], needs_human: bool) -> Classification:
         # AUTOMATION.md §6: a score could otherwise be improved by moving the goalposts.
         blocks.append("changes the evaluation expectations or scorer alongside extract/")
 
-    c_reasons = [f"touches {p}" for p in paths if matches(p, TIER_C_PATHS)]
-    c_reasons += [risk for f in files if (risk := infra_risk(f))]
+    c_reasons = [
+        f"touches {p}" for p in paths if matches(p, TIER_C_PATHS) or defines_checks(p)
+    ]
+    c_reasons += [risk for f in files if (risk := infra_risk(f) or pyproject_risk(f))]
     if needs_human:
         c_reasons.insert(0, "needs-human PR or issue")
     if c_reasons:
@@ -580,9 +681,18 @@ def fetch_files(number: int) -> list[ChangedFile]:
             f["additions"] + f["deletions"],
             f.get("previous_filename"),
             f.get("patch"),
+            removed=f.get("status") == "removed",
         )
         for f in gh_api(f"pulls/{number}/files?per_page=100", paginate=True)
     ]
+
+
+def fetch_text(path: str, sha: str) -> str | None:
+    """A file's text at a commit, or None if GitHub doesn't send it inline."""
+    data = gh_api(f"contents/{path}?ref={sha}")
+    if not isinstance(data, dict) or data.get("encoding") != "base64":
+        return None
+    return base64.b64decode(data["content"]).decode("utf-8", errors="replace")
 
 
 def linked_issue_labels(body: str) -> list[set[str]]:
@@ -597,7 +707,11 @@ def classify_pr(pr: dict[str, Any]) -> Classification:
     labels = {label["name"] for label in pr["labels"]}
     issues = linked_issue_labels(pr.get("body") or "")
     needs_human = NEEDS_HUMAN_LABEL in labels or any(NEEDS_HUMAN_LABEL in i for i in issues)
-    return classify(fetch_files(pr["number"]), needs_human)
+    files = fetch_files(pr["number"])
+    for f in files:
+        if f.path == PYPROJECT and not f.removed:
+            f.text = fetch_text(PYPROJECT, pr["head"]["sha"])
+    return classify(files, needs_human)
 
 
 def fetch_checks(sha: str) -> dict[str, str]:

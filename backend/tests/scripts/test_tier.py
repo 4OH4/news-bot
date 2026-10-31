@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import importlib.util
 import sys
 from pathlib import Path
@@ -10,7 +11,9 @@ from typing import Any
 
 import pytest
 
-SCRIPTS = Path(__file__).resolve().parents[3] / "scripts"
+ROOT = Path(__file__).resolve().parents[3]
+SCRIPTS = ROOT / "scripts"
+BACKEND = ROOT / "backend"
 
 
 def load(name: str) -> ModuleType:
@@ -82,7 +85,6 @@ def test_tier_a_spans_packages_and_needs_no_title_type() -> None:
         "docs/adr/0003-ranking.md",
         "docs/feed.schema.json",
         "docs/feed.example.json",
-        "backend/pyproject.toml",
         "backend/uv.lock",
         "client/package.json",
         "client/package-lock.json",
@@ -92,7 +94,10 @@ def test_tier_a_spans_packages_and_needs_no_title_type() -> None:
         "eval/boilerplate.txt",
         "backend/src/newsfeed/eval/scorer.py",
         "backend/tests/conftest.py",
+        "backend/tests/extract/conftest.py",
+        "backend/tests/contract/conftest.py",
         "backend/tests/fakes.py",
+        "backend/tests/rank/fakes.py",
         "backend/tests/test_network_guard.py",
         "backend/tests/contract/test_repository_contract.py",
         "REVIEW.md",
@@ -114,7 +119,10 @@ def test_decide_and_record_paths_are_tier_b(path: str) -> None:
         "scripts/tier.py",
         "backend/tests/scripts/test_tier.py",
         "Makefile",
+        "GNUmakefile",
+        "backend/Makefile",
         ".pre-commit-config.yaml",
+        "backend/.pre-commit-config.yaml",
         ".gitignore",
         ".dockerignore",
         "backend/Dockerfile",
@@ -131,6 +139,80 @@ def test_reserved_paths_are_tier_c(path: str) -> None:
     result = classify(F(path, 1))
     assert result.tier == "C"
     assert f"touches {path}" in result.reasons
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "pytest.ini",
+        ".pytest.ini",
+        "pytest.toml",
+        ".pytest.toml",
+        "tox.ini",
+        "setup.cfg",
+        "ruff.toml",
+        ".ruff.toml",
+        "mypy.ini",
+        ".mypy.ini",
+        "pyrightconfig.json",
+        ".coveragerc",
+    ],
+)
+@pytest.mark.parametrize("folder", ["", "backend/", "backend/tests/", "backend/src/newsfeed/rank/"])
+def test_check_configuration_is_tier_c_anywhere(folder: str, name: str) -> None:
+    path = f"{folder}{name}"
+    result = classify(F(path, 2))
+    assert result.tier == "C"
+    assert result.reasons == [f"touches {path}"]
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "conftest.py",
+        "backend/conftest.py",
+        "backend/src/conftest.py",
+        "backend/src/newsfeed/rank/conftest.py",
+        "client/conftest.py",
+        # A nearer pyproject.toml replaces the lint rules for its directory.
+        "pyproject.toml",
+        "backend/tests/pyproject.toml",
+        "backend/src/newsfeed/rank/pyproject.toml",
+    ],
+)
+def test_conftest_and_pyproject_outside_their_places_are_tier_c(path: str) -> None:
+    assert classify(F(path, 1)).tier == "C"
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "client/tsconfig.json",
+        "client/tsconfig.app.json",
+        "client/.eslintrc.cjs",
+        "client/eslint.config.js",
+        "client/.prettierrc",
+        "client/prettier.config.mjs",
+        "client/jest.config.ts",
+        "client/vitest.config.ts",
+        "client/playwright.config.ts",
+    ],
+)
+def test_the_clients_check_configuration_is_tier_c(path: str) -> None:
+    assert classify(F(path, 1)).tier == "C"
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "backend/tests/rank/test_conftest.py",
+        "backend/src/newsfeed/rank/not_conftest.py",
+        "docs/pytest.ini.md",
+        "backend/src/newsfeed/ruff.py",
+    ],
+)
+def test_names_that_only_look_like_check_configuration_are_tier_a(path: str) -> None:
+    assert classify(F(path, 1)).tier == "A"
 
 
 def test_tier_c_outranks_tier_b() -> None:
@@ -314,6 +396,128 @@ def test_pure_infra_rename_has_no_patch_and_stays_tier_b() -> None:
 
 def test_empty_diff_is_tier_b() -> None:
     assert tier.classify([], False).reasons == ["no changed files"]
+
+
+# --- backend/pyproject.toml --------------------------------------------------------
+
+PYPROJECT = "backend/pyproject.toml"
+PYPROJECT_TEXT = """[project]
+name = "newsfeed"
+dependencies = [
+    "feedparser>=6.0.14",
+    "typer>=0.27.3",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "ruff>=0.17.0",
+]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F"]
+
+[[tool.mypy.overrides]]
+module = ["feedparser"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "live: touches the real network",
+    "emulator: needs an emulator",
+]
+addopts = '-m "not live" --disable-socket'
+"""
+
+
+def pyproject_tier(patch: str | None, text: str | None = PYPROJECT_TEXT) -> Any:
+    return classify(F(PYPROJECT, 2, patch=patch, text=text))
+
+
+@pytest.mark.parametrize(
+    "patch",
+    [
+        # A new dependency, in both lists, with the next table's header in the context.
+        '@@ -3,2 +3,3 @@\n dependencies = [\n+    "httpx>=0.28.1",\n     "feedparser>=6.0.14",',
+        '@@ -10,3 +10,4 @@\n     "pytest>=9.1.1",\n     "ruff>=0.17.0",\n+    "mypy>=2.4.0",\n ]'
+        "\n\n [tool.ruff]",
+        # A bumped and a removed dependency.
+        '@@ -4 +4 @@\n-    "feedparser>=6.0.14",\n+    "feedparser>=6.1",',
+        '@@ -4,2 +4 @@\n-    "feedparser>=6.0.14",\n     "typer>=0.27.3",',
+        # The project's name.
+        '@@ -2 +2 @@\n-name = "newsfeed"\n+name = "news"',
+    ],
+)
+def test_pyproject_dependency_changes_stay_tier_b(patch: str) -> None:
+    result = pyproject_tier(patch)
+    assert result.tier == "B"
+    assert result.reasons == [f"touches {PYPROJECT}"]
+
+
+@pytest.mark.parametrize(
+    "patch",
+    [
+        # `addopts` is too far below its header for the context to show the table.
+        '@@ -29,2 +29,2 @@\n ]\n-addopts = \'-m "not live" --disable-socket\'\n+addopts = ""',
+        # Removed with nothing added, and at the end of a table.
+        '@@ -28,3 +28,2 @@\n     "emulator: needs an emulator",\n ]\n-addopts = "x"',
+        '@@ -15,2 +15 @@\n line-length = 100\n-select = ["E"]',
+        # In a list, looking just like a dependency.
+        '@@ -21,2 +21,3 @@\n module = ["feedparser"]\n+    "playwright",\n ignore = true',
+        "@@ -15 +15 @@\n-line-length = 100\n+line-length = 200",
+        '@@ -18 +18 @@\n-select = ["E", "F"]\n+select = ["F"]',
+        "@@ -20 +20,2 @@\n [[tool.mypy.overrides]]\n+ignore_errors = true",
+        # A table header added, removed, or moving what's below it out of its table.
+        "@@ -0,0 +1,2 @@\n+[tool.coverage.run]\n+branch = false",
+        "@@ -17,2 +17 @@\n-[tool.ruff.lint]\n select = []",
+        "@@ -14,2 +14,3 @@\n+[other]\n [tool.ruff]\n line-length = 100",
+        # The same settings without a [tool.*] header.
+        '@@ -1,2 +1,3 @@\n+tool.ruff.line-length = 200\n [project]\n name = "newsfeed"',
+    ],
+)
+def test_pyproject_tool_changes_are_tier_c(patch: str) -> None:
+    result = pyproject_tier(patch)
+    assert result.tier == "C"
+    assert result.reasons == [f"{PYPROJECT} changes a [tool.*] table, which defines the checks"]
+
+
+def test_a_removed_line_belongs_to_the_table_above_it() -> None:
+    patch = "@@ -1,4 +1,3 @@\n [a]\n x = 1\n-z = 2\n [b]"
+    assert not tier.tool_settings_changed(patch, "[a]\nx = 1\n[tool.b]\ny = 1\n")
+    assert tier.tool_settings_changed(patch, "[tool.a]\nx = 1\n[b]\ny = 1\n")
+
+
+def test_pyproject_with_no_diff_or_text_is_tier_c() -> None:
+    reason = f"{PYPROJECT}: file not readable, so no way to check its [tool.*] tables"
+    assert pyproject_tier(None).reasons == [reason]
+    assert pyproject_tier("@@ -1 +1 @@\n-a\n+b", text=None).reasons == [reason]
+
+
+def test_pyproject_rename_with_no_change_stays_tier_b() -> None:
+    assert classify(F(PYPROJECT, 0)).tier == "B"
+
+
+def test_moving_pyproject_away_is_tier_c() -> None:
+    moved = F("backend/project.toml", 2, previous_path=PYPROJECT, patch="@@ -1 +1 @@\n-a\n+b")
+    assert classify(moved).tier == "C"
+
+
+def test_the_real_pyproject_has_its_check_settings_in_tool_tables() -> None:
+    # Every line of the real file from the first [tool.*] header on must count.
+    text = (BACKEND / "pyproject.toml").read_text(encoding="utf-8")
+    lines = text.splitlines()
+    first = next(i for i, ln in enumerate(lines) if ln.startswith("[tool."))
+    addopts = next(i for i, ln in enumerate(lines) if ln.startswith("addopts"))
+    assert first < addopts
+    patch = f"@@ -{addopts + 1} +{addopts + 1} @@\n-{lines[addopts]}\n+addopts = ''"
+    assert tier.tool_settings_changed(patch, text)
+    dep = next(i for i, ln in enumerate(lines) if ln.strip().startswith('"pytest-socket'))
+    patch = f'@@ -{dep + 1} +{dep + 1} @@\n-{lines[dep]}\n+    "pytest-socket>=1",'
+    assert not tier.tool_settings_changed(patch, text)
 
 
 # --- size limit and other blocks ---------------------------------------------------
@@ -1068,6 +1272,50 @@ def test_a_closed_needs_human_issue_makes_the_pr_tier_c(monkeypatch: pytest.Monk
 
     monkeypatch.setattr(tier, "gh_api", gh_api)
     assert tier.classify_pr(pr(number=80, body="Closes #71")).tier == "C"
+
+
+def github_with_pyproject(monkeypatch: pytest.MonkeyPatch, status: str, contents: Any) -> list[str]:
+    calls: list[str] = []
+
+    def gh_api(path: str, *extra: str, paginate: bool = False) -> Any:
+        calls.append(path)
+        if path.startswith("pulls/80/files"):
+            return [
+                {
+                    "filename": PYPROJECT,
+                    "status": status,
+                    "additions": 1,
+                    "deletions": 1,
+                    "patch": '@@ -2 +2 @@\n-name = "a"\n+name = "b"',
+                }
+            ]
+        if path.startswith("contents/"):
+            return contents
+        return {"labels": []}
+
+    monkeypatch.setattr(tier, "gh_api", gh_api)
+    return calls
+
+
+def test_pyproject_text_is_read_at_the_head(monkeypatch: pytest.MonkeyPatch) -> None:
+    text = base64.b64encode(b"[project]\nname = 'b'\n").decode()
+    calls = github_with_pyproject(monkeypatch, "modified", {"encoding": "base64", "content": text})
+    assert tier.classify_pr(pr(number=80, body="Closes #71")).tier == "B"
+    assert f"contents/{PYPROJECT}?ref={HEAD}" in calls
+
+
+@pytest.mark.parametrize("contents", [{}, {"encoding": "none", "content": ""}, None])
+def test_pyproject_github_will_not_send_is_tier_c(
+    monkeypatch: pytest.MonkeyPatch, contents: Any
+) -> None:
+    github_with_pyproject(monkeypatch, "modified", contents)
+    assert tier.classify_pr(pr(number=80, body="Closes #71")).tier == "C"
+
+
+def test_deleted_pyproject_is_not_fetched_and_is_tier_c(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = github_with_pyproject(monkeypatch, "removed", None)
+    assert tier.classify_pr(pr(number=80, body="Closes #71")).tier == "C"
+    assert not any(c.startswith("contents/") for c in calls)
 
 
 def test_patches_reach_the_classifier(monkeypatch: pytest.MonkeyPatch) -> None:
