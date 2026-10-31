@@ -79,3 +79,5 @@ If you're told this is a `needs-human` issue, prepare it as a complete, non-draf
 ## Report back
 
 Give the PR URL, the commit SHAs, the result of each verification command, and every judgement call you made.
+
+If something wasted effort, you may add one line to your report: `**Friction:** <what happened>`.
