@@ -339,6 +339,6 @@ Once 6 and 7 are merged, issues 8–10, 12 and 13 can run in parallel. 11, 14, 1
 | Occasional commits from Windows introducing CRLF line endings | `.gitattributes` enforces LF; development itself happens on Ubuntu |
 | Agents colliding on shared files | Contracts first; area-scoped issues; serialised contract changes |
 | **Open:** PWA framework choice | Decide at the start of Phase 3 (ADR) |
-| **Decided:** Terraform vs scripted gcloud | Terraform, after a one-off `gcloud` bootstrap of the project and state bucket; only I apply changes ([ADR-0004](docs/adr/0004-infrastructure-as-code.md)) |
+| **Decided:** Terraform vs scripted gcloud | Terraform, after a one-off `gcloud` bootstrap of the project and state bucket ([ADR-0004](docs/adr/0004-infrastructure-as-code.md)); agents apply changes inside a limited development scope, and production is out of scope for now ([ADR-0007](docs/adr/0007-agent-infrastructure-scope.md)) |
 | **Decided:** content retention period | Metadata and run stats kept indefinitely; article content deleted after 30 days by a Cloud Storage lifecycle rule, then shown as headline and link ([ADR-0005](docs/adr/0005-content-retention.md)) |
 | **Open:** embedding provider (Vertex AI vs local) | Decide in Phase 4 based on cost and quality |
