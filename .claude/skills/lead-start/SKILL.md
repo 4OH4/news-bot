@@ -47,8 +47,9 @@ Group the Ready issues into a batch of about 5 to 8, in dependency order, with n
 
 If `usage.py` prints `pause:`, don't start a batch: go to "Usage pauses" below.
 
-Start `subagent_type: delivery-manager` with `isolation: worktree` and `run_in_background: true`, using the task message below. Use `model: opus` only if Sonnet has fallen short on an earlier batch. Then wait for messages from it:
+Start `subagent_type: delivery-manager` with `isolation: worktree` and `run_in_background: true`, using the task message below. Use `model: opus` only if Sonnet has fallen short on an earlier batch. The delivery manager is isolated, so the harness refuses its git commands against another agent's worktree. It frees a test author's worktree with plain `git worktree remove <path>`, which refuses a dirty tree, and takes the SHA from the test author's report. If that's refused it sends you the path: you aren't isolated, so look in that worktree and decide. Then wait for messages from it:
 
+- **Usage unavailable:** pacing is off, because the delivery manager can't see either limit. Run `python3 scripts/usage.py` yourself, watch usage until it's readable again, and mention it in your report to the human.
 - **Design problem:** decide it, or call in the architect.
 - **Evaluation request** for PR `<P>`: subagents can't run `make eval`, so you do. In a checkout of the PR's branch, run `make eval`, commit the generated `eval/results/` file to the branch, push, then post this comment. Before is the "Headline clean" figure from `main`'s latest results, and After is the new one. A fall needs a `Reason:` line, which also goes in the decisions issue. If an entry is "not snapshotted", say so in the comment.
 
@@ -101,7 +102,7 @@ Sign-off is the human merging the report PR. Nothing moves on automatically, and
 - **Weekly limit:** start no new batches. Flag the pause and the reset time for the human, leaving the remaining allowance for their use, and wait for their word. Note it in the handoff.
 - **Human override:** the human can tell you to pause, or to carry on past 90%.
 
-If usage can't be read, work continues as normal. A scheduled check only fires while your session is open. Otherwise the next `/lead-start` picks the work up, so a pause always goes in the handoff note. A pause isn't idle: stay open, and don't start the idle check for it.
+If usage can't be read, work continues as normal, and the delivery manager tells you, so that pacing doesn't turn off unnoticed. A scheduled check only fires while your session is open. Otherwise the next `/lead-start` picks the work up, so a pause always goes in the handoff note. A pause isn't idle: stay open, and don't start the idle check for it.
 
 ## Report to the human
 

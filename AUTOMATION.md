@@ -128,11 +128,11 @@ All its state is on GitHub and the board. If a batch stops, a new delivery manag
 
 ### 5.4 Test author
 
-The test author works from the issue and the existing code, before any fix or implementation exists. It sets the card to In progress and creates `issue-<n>-<slug>` from up-to-date `origin/main`. It writes tests for the acceptance examples, including one test through the real pipeline for any feature that crosses stages. It confirms the tests fail, commits them to the issue branch as `test:`, pushes and reports. CI doesn't run on a branch without a PR, so red commits don't affect it.
+The test author works from the issue and the existing code, before any fix or implementation exists. It sets the card to In progress and creates `issue-<n>-<slug>` from up-to-date `origin/main`. It writes tests for the acceptance examples, including one test through the real pipeline for any feature that crosses stages. It confirms the tests fail, commits them to the issue branch as `test:` with a `Test-Author:` trailer, which is how the test change report tells its commits from a worker's, pushes and reports its branch, SHA and worktree path. CI doesn't run on a branch without a PR, so red commits don't affect it.
 
 ### 5.5 Worker
 
-The delivery manager frees the test author's worktree, as a branch can only be checked out in one, and the worker takes the same branch. Where an issue has no test author (§7.2), the worker creates the branch and sets the card. The worker implements the issue until the tests pass, and rebases on `main` before opening the PR. It can add tests of its own. If it believes a test author's test is wrong, it may change it only with a reason in the PR, and the reviewer judges that change. It then opens the PR, with any `Confirm later` items in the header.
+The delivery manager frees the test author's worktree with `git worktree remove`, as a branch can only be checked out in one, and the worker takes the same branch. It can't inspect that worktree, because isolated agents are refused git commands aimed at another worktree, so it relies on git refusing a dirty tree and on the SHA in the test author's report. Where an issue has no test author (§7.2), the worker creates the branch and sets the card. The worker implements the issue until the tests pass, and rebases on `main` before opening the PR. It can add tests of its own. If it believes a test author's test is wrong, it may change it only with a reason in the PR, and the reviewer judges that change. It then opens the PR, with any `Confirm later` items in the header.
 
 ### 5.6 Reviewer
 
@@ -174,7 +174,7 @@ Chosen dependencies also state the licence and why that package was picked. The 
 
 ### Cloud resources
 
-Agents need to create, change and destroy cloud resources during development, so they get a controlled scope:
+Agents need to create, change and destroy cloud resources during development, so they get a controlled scope (ADR-0007, which supersedes that part of ADR-0004):
 
 - The human sets up the scope once: a separate development project, a service account limited to it, and short-lived credentials. No long-lived keys are stored on disk.
 - Inside that scope, agents can run `terraform apply`, `terraform destroy` and `gcloud` commands that change resources.
@@ -212,7 +212,7 @@ In addition to the current review, the reviewer:
 
 - **confirms the red:** new tests must fail against the code from before the change. Tests for a new module fail on import, which proves little, so the next check matters more there;
 - **runs a mutation spot-check:** breaks the key changed lines in a scratch copy and confirms that a test fails;
-- **reads the test change report:** `tier.py` lists deleted or changed assertions and any edits to the test author's tests. Each needs a good reason;
+- **reads the test change report:** `tier.py` lists deleted or changed assertions, added skips and `live` markers, and any edits to the test author's tests. Each needs a good reason;
 - **checks against `REVIEW.md`:** a list of failure patterns taken from real defects in this repo.
 
 ### 7.4 `REVIEW.md`
@@ -250,8 +250,8 @@ A chain of small dependent issues in one area can still go to one test author an
 | Tier | Contents | Who merges |
 |---|---|---|
 | **A** | Everything not listed in B or C, including all backend code, `client/`, tests and docs | Delivery manager |
-| **B** | Decide-and-record changes: `models.py`, `ports.py`, ADRs, new dependencies, `config/interests.yaml`, `config/sources.yaml`, `eval/urls.yaml`, the eval scorer, test infrastructure (`conftest.py`, `fakes.py`, the network guard, the contract suites), `REVIEW.md`, `PROJECT_PLAN.md`, `infra/` outside Tier C | Delivery manager, with a `Confirm later` entry |
-| **C** | `.claude/`, `.github/`, `scripts/`, `AUTOMATION.md`, `CLAUDE.md`, `fetching/`, `docs/milestones/`, the `infra/` files for IAM, billing and budgets, and any `needs-human` PR | Human |
+| **B** | Decide-and-record changes: `models.py`, `ports.py`, ADRs, new dependencies, `config/interests.yaml`, `config/sources.yaml`, `eval/urls.yaml`, the eval scorer, test infrastructure (`conftest.py`, `fakes.py`, the network guard, the contract suites), `docs/feed.schema.json`, `docs/feed.example.json`, `REVIEW.md`, `PROJECT_PLAN.md`, `infra/` outside Tier C | Delivery manager, with a `Confirm later` entry |
+| **C** | `.claude/`, `.github/`, `scripts/`, `backend/tests/scripts/`, `Makefile`, `.pre-commit-config.yaml`, `.gitignore`, `.dockerignore`, `backend/Dockerfile`, `AUTOMATION.md`, `CLAUDE.md`, `fetching/`, `docs/milestones/`, `infra/` changes to IAM, billing, budgets, service account keys or delete lifecycle rules, and any `needs-human` PR | Human |
 
 `tier.py merge` refuses unless all of these hold:
 
@@ -298,7 +298,7 @@ Two limits apply: a 5-hour window and a weekly one. Agents are cut off when eith
 
 `scripts/usage.py` reads both limits and their reset times from the usage endpoint, which has proved reliable.
 
-- **Delivery manager:** checks `usage.py` before starting each issue. When either limit is at about 90%, it avoids starting a new issue, and tells the lead which limit it is and when it resets. Agents already running carry on, then it reports and ends.
+- **Delivery manager:** checks `usage.py` before starting each issue. When either limit is at about 90%, it avoids starting a new issue, and tells the lead which limit it is and when it resets. Agents already running carry on, then it reports and ends. If it prints `usage unavailable`, it carries on and tells the lead, so that pacing can't turn off unnoticed.
 - **Lead:** for a 5-hour pause, schedules a one-shot check for shortly after the reset, then starts a new delivery manager, which picks up from the board. For a weekly pause, it starts no new batches and flags the pause and reset time for the human, leaving the remaining allowance for the human's use.
 - **Workers and test authors:** commit and push regularly, so a cut-off loses little.
 - **Human:** shares both limits, and can tell the lead to pause or to carry on past 90%.
@@ -389,7 +389,7 @@ Some things are deliberately kept out of the repo:
 | 2026-10-31 | Code review, including test results, stays the acceptance gate | Passing tests missed more than 40 defects that review caught |
 | 2026-10-31 | No red tests on `main` | They would fail required CI for every other PR |
 | 2026-10-31 | Building stops at a milestone until the human's positive sign-off, with no time-based decision, and the architect may draft the next phase | Nothing is built on unconfirmed decisions |
-| 2026-10-31 | Agents manage cloud resources inside a limited scope | Development needs cloud changes |
+| 2026-10-31 | Agents manage cloud resources inside a limited scope (ADR-0007) | Development needs cloud changes |
 | 2026-10-31 | Production is out of scope until decided later, and starts when a user is not also a developer | Nobody but the developer is affected until then |
 | 2026-10-31 | The human follows the project through the lead chat and GitHub | Either is enough, so push notifications aren't needed yet |
 | 2026-10-31 | Agents run and assess evaluations, with expectation changes reviewed at milestones | Keeps development moving, and the milestone review guards against agents marking their own work |
@@ -400,6 +400,7 @@ Some things are deliberately kept out of the repo:
 | 2026-10-31 | Retire the usage hook in favour of light pacing and automatic resume | Reaching the limit costs nothing but some repeated work, so a hard stop is out of proportion |
 | 2026-10-31 | Respect the weekly limit too, and pause at about 90% until the human decides | Reaching it can stop development and the human's own use for days |
 | 2026-10-31 | No restart from outside the lead's session for now | It needs a safe headless setup, and pauses aren't yet a proven problem |
+| 2026-10-31 | The files that define the checks, and the tests of the merge gate, are Tier C | Otherwise an agent could weaken `make lint` or `tier.py`'s tests without the human, against principle 6 |
 
 ## 15. Open questions
 

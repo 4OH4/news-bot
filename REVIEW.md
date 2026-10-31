@@ -12,12 +12,17 @@ Failure patterns taken from real defects in this repo. Test authors and workers 
 
 - Code that promises never to raise must handle malformed input, including non-ASCII digits and malformed URLs.
 - One bad article or feed must not fail a run: failures are caught at the stage boundary and recorded on the item.
+- A regex that reads one line must not use `\W` or `\s`, which match a newline: an empty field would take its text from the next line. In #133 an empty `Reason:` passed the merge gate this way. Use `[^\w\n]` and `[^\S\n]`.
 
 ## Polite fetching and safety
 
 - Every hop of a redirect must pass the robots.txt check.
 - A destructive operation must be limited to files the code created.
 - Nothing may bypass a paywall or an access control, and third-party article text must not reach the public repo.
+
+## Agent briefs
+
+- A command in an agent brief must be checked under the isolation that agent runs with. In #133, briefs ran git against a sibling worktree, by `git -C` and by `cd`, which the harness refuses for an isolated agent, so the hand-off between agents could not work.
 
 ## Tests that can fail
 
