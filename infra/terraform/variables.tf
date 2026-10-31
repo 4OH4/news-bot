@@ -68,8 +68,8 @@ variable "image" {
     sets. The default is Google's public sample job image, so the first apply
     works before any image has been pushed.
   EOT
-  type    = string
-  default = "us-docker.pkg.dev/cloudrun/container/job:latest"
+  type        = string
+  default     = "us-docker.pkg.dev/cloudrun/container/job:latest"
 }
 
 variable "job_name" {

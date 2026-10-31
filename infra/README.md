@@ -33,6 +33,9 @@ read-only roles let it refresh them, but never read secret values.
 | `terraform/secrets.tf` | Secret Manager secrets, none yet. Terraform never holds secret values. |
 | `terraform/deploy.tf` | The deploy service account for GitHub Actions (#75): push to the registry, update the job, act as the runtime account. #75 adds `wif.tf`. |
 | `terraform/outputs.tf` | Names the deploy workflow and the steps below need. |
+| `terraform/.terraform.lock.hcl` | The provider versions, so CI and you use the same ones. Update it with `terraform init -upgrade`. |
+
+The `Infra` workflow (`.github/workflows/infra.yml`) runs `terraform fmt -check`, `init -backend=false` and `validate` on every PR that touches `infra/`. It is offline, needs no credentials and never plans or applies.
 
 Firestore and the content bucket hold the data, so both have `prevent_destroy`:
 a plan that would delete them fails instead. The content bucket is private;
