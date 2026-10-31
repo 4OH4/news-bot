@@ -13,6 +13,7 @@ from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from newsfeed.eval.snapshot import default_fixtures_dir
+from newsfeed.extract.retry import RetryPolicy
 from newsfeed.fetching import DEFAULT_USER_AGENT
 from newsfeed.fetching.http_fetcher import DEFAULT_MIN_INTERVAL
 
@@ -53,6 +54,19 @@ class Settings(BaseSettings):
         ge=1,
         description="Ingest dedupes against articles fetched this many days back (bounds reads).",
     )
+    retry_backoff_hours: tuple[float, ...] = Field(
+        default=(1, 6, 24),
+        description=(
+            "Hours to wait after the 1st, 2nd... extraction attempt before retrying a transient "
+            "failure; its length is the retry cap. Empty disables retries. JSON list in the env."
+        ),
+    )
+    retry_window_days: float = Field(
+        default=3, ge=0, description="Only retry articles fetched within this many days."
+    )
+    retry_partial: bool = Field(
+        default=False, description="Also retry partial extractions (usually a short page)."
+    )
     host_interval: float = Field(
         default=DEFAULT_MIN_INTERVAL,
         ge=0,
@@ -64,6 +78,15 @@ class Settings(BaseSettings):
         if self.storage == "gcp" and not (self.gcs_bucket or "").strip():
             raise ValueError("NEWSFEED_STORAGE=gcp requires NEWSFEED_GCS_BUCKET")
         return self
+
+    @property
+    def retry_policy(self) -> RetryPolicy:
+        """The extract stage's retry policy."""
+        return RetryPolicy(
+            backoff_hours=self.retry_backoff_hours,
+            window_days=self.retry_window_days,
+            retry_partial=self.retry_partial,
+        )
 
     @property
     def database_path(self) -> Path:

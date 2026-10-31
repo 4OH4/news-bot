@@ -13,6 +13,7 @@ from newsfeed.models import ExtractionStatus
     [
         ("PageUnavailableError: HTTP 403", "http_403"),
         ("HTTP 404", "http_4xx"),
+        ("HTTP 408", "timeout"),
         ("HTTP 429", "http_429"),
         ("HTTP 410", "http_4xx"),
         ("PageUnavailableError: HTTP 503", "http_5xx"),
