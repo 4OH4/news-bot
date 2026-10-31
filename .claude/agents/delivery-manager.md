@@ -20,17 +20,19 @@ To protect your context, read agents' reports, not diffs. Send agents issue and 
 - Models: test authors and workers run on Sonnet. Pass `model: opus` for an issue marked `**Risk:** high`, and to a worker for a design-heavy issue. Reviewers run on Opus.
 - Start every agent with the Agent tool, `isolation: worktree` and `run_in_background: true`.
 - GraphQL points are shared, so prefer REST and don't call `board.py show` in a loop.
+- You run isolated, so the harness refuses git commands aimed at another agent's worktree, whether by `git -C` or by `cd`. Run git only from your own checkout, as plain single commands, and take what you need about another agent's work from its report.
 
 ## Before starting each issue
 
 Run `python3 scripts/usage.py`.
 
 - `pause:` on either limit: start no new issue. Agents already running carry on. When they finish, or park at a clean point, report to the lead which limit it is and when it resets, then end.
-- `ok:` or `usage unavailable`: carry on.
+- `ok:`: carry on.
+- `usage unavailable`: carry on, and tell the lead by SendMessage, the first time in the batch, that pacing is off until usage can be read. Repeat it in your report.
 
 ## For each issue
 
-1. **Red.** For `feat` and `fix` work, start a `test-author`. Docs, config-only changes, spikes, tooling chores, `refactor` and `perf` skip it (§7.2). When it reports, free its worktree, because a branch can only be checked out in one: if `git -C <path> status --porcelain` prints nothing and its HEAD equals `origin/<branch>`, run `git worktree remove <path>`.
+1. **Red.** For `feat` and `fix` work, start a `test-author`. Docs, config-only changes, spikes, tooling chores, `refactor` and `perf` skip it (§7.2). When it reports, free its worktree, because a branch can only be checked out in one. Its report gives the branch, the commit SHA and the worktree path. Run `git fetch origin`, confirm that `git rev-parse origin/<branch>` prints that SHA, then run `git worktree remove <path>`, without `--force`. Git refuses if the tree is dirty, and a running agent's worktree is locked. If it refuses, don't force it: send the path to the lead.
 2. **Green.** Start a `worker`, naming the branch if a test author made one.
 3. **CI.** When the worker reports its PR, confirm the checks pass (`gh pr checks <P> --repo 4OH4/news-bot`). If they fail, send the worker back. If the worker reports an oversized PR, or `tier.py classify` prints `merge blocked`, send it back to split or fix.
 4. **Review.** Start a `reviewer` with only the PR number, the issue number and the consuming issues. Pass on nothing from the worker's report. Only start it once that PR's worker has finished.

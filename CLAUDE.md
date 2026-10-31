@@ -128,7 +128,7 @@ The Project board (https://github.com/users/4OH4/projects/1) is the source of tr
 ## Things agents must not do
 
 - Handle credentials, service account keys or secrets directly. Agents use only the short-lived, limited identity in `AUTOMATION.md` §6. Never commit secrets; use `.env` locally (git-ignored) and Secret Manager in the cloud.
-- Change IAM, billing or budgets, or delete the project. `terraform` and `gcloud` are for resources inside the development scope only.
+- Change IAM, billing or budgets, or delete the project. `terraform` and `gcloud` are for resources inside the development scope only (ADR-0007).
 - Touch production. Production starts when a user is not also a developer, and agents must stop and ask before that point.
 - Change `eval/urls.yaml` or the scorer in the same PR as extraction code, or without a `Confirm later` entry showing why.
 - Commit third-party article content: page snapshots, extracted article text or full feed dumps. This is a public repo; short quoted snippets in `eval/urls.yaml` are the only exception.
