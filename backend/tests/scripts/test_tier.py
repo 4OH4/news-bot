@@ -1,4 +1,4 @@
-"""Tests for scripts/tier.py: tier classification and the lead's merge gate (no network)."""
+"""Tests for scripts/tier.py: tiers, the merge gate and the test change report (no network)."""
 
 from __future__ import annotations
 
@@ -25,6 +25,7 @@ def load(name: str) -> ModuleType:
 tier = load("tier")
 F = tier.ChangedFile
 HEAD = "abc1234def5678"
+EXTRACT_FILE = "backend/src/newsfeed/extract/a.py"
 
 CLEAN_BODY = """Closes #70 · Tier A
 
@@ -36,34 +37,43 @@ Fixes the thing.
 """
 
 
-def classify(title: str, *files: Any, needs_human: bool = False) -> Any:
-    return tier.classify(title, list(files), needs_human)
+def classify(*files: Any, needs_human: bool = False) -> Any:
+    return tier.classify(list(files), needs_human)
 
 
 # --- classify --------------------------------------------------------------------
 
 
-def test_small_fix_in_one_stage_package_is_tier_a() -> None:
-    result = classify(
-        "fix(extract): strip zero-width characters",
-        F("backend/src/newsfeed/extract/sanitize.py", 12),
-        F("backend/tests/extract/test_sanitize.py", 40),
-    )
-    assert result.tier == "A"
-
-
 @pytest.mark.parametrize(
-    "title",
-    ["docs: record blocked publishers", "test: cover Atom dates", "chore(eval): add results"],
+    "path",
+    [
+        "backend/src/newsfeed/extract/sanitize.py",
+        "backend/src/newsfeed/rank/score.py",
+        "backend/src/newsfeed/adapters/firestore.py",
+        "backend/src/newsfeed/cli.py",
+        "backend/src/newsfeed/wiring.py",
+        "backend/tests/rank/test_score.py",
+        "backend/Dockerfile",
+        "client/src/app.ts",
+        "config/extraction.yaml",
+        "docs/phases/phase-2.md",
+        "docs/feed.schema.json",
+        "eval/results/x.json",
+        "README.md",
+    ],
 )
-def test_docs_tests_and_results_only_are_tier_a(title: str) -> None:
+def test_everything_not_listed_is_tier_a(path: str) -> None:
+    assert classify(F(path, 1)).tier == "A"
+
+
+def test_tier_a_spans_packages_and_needs_no_title_type() -> None:
     result = classify(
-        title,
-        F("docs/blocked-publishers.md", 70),
-        F("backend/tests/ingest/test_rss.py", 30),
-        F("eval/results/x.json", 5),
+        F("backend/src/newsfeed/extract/a.py", 5),
+        F("backend/src/newsfeed/rank/b.py", 5),
+        F("backend/src/newsfeed/cli.py", 5),
     )
     assert result.tier == "A"
+    assert result.blocks == []
 
 
 @pytest.mark.parametrize(
@@ -71,152 +81,150 @@ def test_docs_tests_and_results_only_are_tier_a(title: str) -> None:
     [
         "backend/src/newsfeed/models.py",
         "backend/src/newsfeed/ports.py",
-        "backend/src/newsfeed/fetching/http.py",
         "docs/adr/0003-ranking.md",
-        "eval/urls.yaml",
-        "config/sources.yaml",
-        "config/interests.yaml",
-        "infra/main.tf",
-        ".github/workflows/ci.yml",
-        ".claude/settings.json",
-        "scripts/tier.py",
-    ],
-)
-def test_reserved_paths_are_tier_c(path: str) -> None:
-    result = classify("fix: tweak", F(path, 1))
-    assert result.tier == "C"
-    assert f"touches {path}" in result.reasons
-
-
-def test_rename_out_of_a_reserved_path_is_tier_c() -> None:
-    result = classify("refactor: move", F("docs/old.md", 0, previous_path="docs/adr/0001.md"))
-    assert result.tier == "C"
-
-
-def test_needs_human_is_tier_c_whatever_the_diff() -> None:
-    result = classify("docs: typo", F("docs/x.md", 1), needs_human=True)
-    assert result.tier == "C"
-    assert result.reasons[0] == "needs-human PR or issue"
-
-
-def test_feat_without_small_agent_ready_issues_is_tier_b() -> None:
-    result = classify("feat(rank): boost", F("backend/src/newsfeed/rank/score.py", 10))
-    assert result.tier == "B"
-    assert result.reasons == [
-        "feat, but not every closed issue is agent-ready and size:S or size:M"
-    ]
-
-
-def feature(*files: Any) -> Any:
-    return tier.classify("feat(rank): recency boost", list(files), False, feature_ready=True)
-
-
-def test_small_feature_is_tier_a_and_flagged_for_the_feature_gate() -> None:
-    result = feature(
-        F("backend/src/newsfeed/rank/recency.py", tier.MAX_FEATURE_SRC_LINES - 20),
-        F("backend/src/newsfeed/cli.py", 20),
-        F("backend/tests/rank/test_recency.py", 900),
-    )
-    assert result.tier == "A"
-    assert result.feature
-
-
-def test_cli_is_allowed_only_for_features() -> None:
-    assert classify("fix: flag", F("backend/src/newsfeed/cli.py", 3)).tier == "B"
-    assert feature(F("backend/src/newsfeed/cli.py", 3)).tier == "A"
-
-
-def test_feature_limits() -> None:
-    big_src = feature(F("backend/src/newsfeed/rank/a.py", tier.MAX_FEATURE_SRC_LINES + 1))
-    assert big_src.tier == "B"
-    big_total = feature(F("backend/tests/a.py", tier.MAX_FEATURE_TOTAL_LINES + 1))
-    assert big_total.tier == "B"
-
-
-@pytest.mark.parametrize(
-    "path",
-    [
-        "backend/src/newsfeed/wiring.py",
         "backend/pyproject.toml",
-        "CLAUDE.md",
-        "config/extraction.yaml",
-        "backend/src/newsfeed/eval/scorer.py",
-    ],
-)
-def test_features_keep_the_other_tier_b_paths(path: str) -> None:
-    assert feature(F("backend/src/newsfeed/rank/a.py", 10), F(path, 1)).tier == "B"
-
-
-def test_feature_in_two_packages_is_tier_b() -> None:
-    result = feature(
-        F("backend/src/newsfeed/rank/a.py", 10), F("backend/src/newsfeed/publish/b.py", 10)
-    )
-    assert result.tier == "B"
-
-
-def test_generated_eval_results_do_not_count_towards_the_limits() -> None:
-    result = classify(
-        "chore(eval): add results",
-        F("eval/results/2026-10-17.json", 4000),
-        F("eval/results/2026-10-17.md", 200),
-    )
-    assert result.tier == "A"
-
-
-@pytest.mark.parametrize(
-    "path",
-    [
-        "backend/src/newsfeed/cli.py",
-        "backend/src/newsfeed/adapters/firestore.py",
+        "backend/uv.lock",
+        "client/package.json",
+        "client/package-lock.json",
+        "config/interests.yaml",
+        "config/sources.yaml",
+        "eval/urls.yaml",
         "backend/src/newsfeed/eval/scorer.py",
         "backend/tests/conftest.py",
         "backend/tests/fakes.py",
         "backend/tests/test_network_guard.py",
         "backend/tests/contract/test_repository_contract.py",
-        "backend/pyproject.toml",
-        "backend/uv.lock",
-        "backend/Dockerfile",
-        "CLAUDE.md",
+        "REVIEW.md",
         "PROJECT_PLAN.md",
-        "config/extraction.yaml",
     ],
 )
-def test_paths_outside_tier_a_make_it_tier_b(path: str) -> None:
-    assert classify("fix: tweak", F(path, 1)).tier == "B"
-
-
-def test_source_in_two_packages_is_tier_b() -> None:
-    result = classify(
-        "fix: both",
-        F("backend/src/newsfeed/extract/a.py", 5),
-        F("backend/src/newsfeed/ingest/b.py", 5),
-    )
+def test_decide_and_record_paths_are_tier_b(path: str) -> None:
+    result = classify(F("docs/x.md", 1), F(path, 1))
     assert result.tier == "B"
-    assert "source spans 2 packages: extract, ingest" in result.reasons
+    assert result.reasons == [f"touches {path}"]
 
 
-def test_size_limits() -> None:
-    src = classify("fix: big", F("backend/src/newsfeed/extract/a.py", tier.MAX_SRC_LINES + 1))
-    assert src.tier == "B"
-    total = classify("test: big", F("backend/tests/a.py", tier.MAX_TOTAL_LINES + 1))
-    assert total.tier == "B"
-    at_limit = classify(
-        "fix: ok",
-        F("backend/src/newsfeed/extract/a.py", tier.MAX_SRC_LINES),
+@pytest.mark.parametrize(
+    "path",
+    [
+        ".claude/settings.json",
+        ".claude/agents/worker.md",
+        ".github/workflows/ci.yml",
+        "scripts/tier.py",
+        "AUTOMATION.md",
+        "CLAUDE.md",
+        "backend/src/newsfeed/fetching/http.py",
+        "docs/milestones/phase-2.md",
+        "infra/terraform/iam.tf",
+        "infra/terraform/billing.tf",
+        "infra/terraform/budget.tf",
+    ],
+)
+def test_reserved_paths_are_tier_c(path: str) -> None:
+    result = classify(F(path, 1))
+    assert result.tier == "C"
+    assert f"touches {path}" in result.reasons
+
+
+def test_tier_c_outranks_tier_b() -> None:
+    assert classify(F("PROJECT_PLAN.md", 1), F("scripts/board.py", 1)).tier == "C"
+
+
+def test_rename_out_of_a_reserved_path_keeps_its_tier() -> None:
+    assert classify(F("docs/old.md", 0, previous_path="scripts/x.py")).tier == "C"
+    assert classify(F("docs/old.md", 0, previous_path="docs/adr/0001.md")).tier == "B"
+
+
+def test_needs_human_is_tier_c_whatever_the_diff() -> None:
+    result = classify(F("docs/x.md", 1), needs_human=True)
+    assert result.tier == "C"
+    assert result.reasons[0] == "needs-human PR or issue"
+
+
+def test_infra_without_iam_or_billing_is_tier_b() -> None:
+    patch = '@@ -1 +1 @@\n-  schedule = "0 * * * *"\n+  schedule = "30 * * * *"'
+    result = classify(F("infra/terraform/scheduler.tf", 2, patch=patch))
+    assert result.tier == "B"
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        '+resource "google_project_iam_member" "deploy" {',
+        '+  role = "roles/run.admin"',
+        '-resource "google_billing_budget" "cap" {',
+        "+gcloud iam service-accounts create deploy",
+        "+  amount = var.budget_gbp",
+    ],
+)
+def test_iam_or_billing_lines_in_any_infra_file_are_tier_c(line: str) -> None:
+    result = classify(F("infra/terraform/deploy.tf", 1, patch=f"@@ -1 +1 @@\n{line}"))
+    assert result.tier == "C"
+    assert "infra/terraform/deploy.tf changes IAM, billing or budgets" in result.reasons
+
+
+def test_iam_in_unchanged_context_lines_does_not_count() -> None:
+    patch = '@@ -1,2 +1,2 @@\n role = "roles/run.admin"\n-a = 1\n+a = 2'
+    assert classify(F("infra/terraform/run_job.tf", 2, patch=patch)).tier == "B"
+
+
+def test_infra_change_with_no_readable_diff_is_tier_c() -> None:
+    assert classify(F("infra/terraform/large.tf", 5000)).tier == "C"
+
+
+def test_pure_infra_rename_has_no_patch_and_stays_tier_b() -> None:
+    assert classify(F("infra/b.tf", 0, previous_path="infra/a.tf")).tier == "B"
+
+
+def test_empty_diff_is_tier_b() -> None:
+    assert tier.classify([], False).reasons == ["no changed files"]
+
+
+# --- size limit and other blocks ---------------------------------------------------
+
+
+def test_one_size_limit_applies_to_every_tier() -> None:
+    for path in (EXTRACT_FILE, "backend/src/newsfeed/models.py"):
+        assert classify(F(path, tier.MAX_SRC_LINES + 1)).blocks == [
+            f"{tier.MAX_SRC_LINES + 1} source lines changed (limit 400): split it"
+        ]
+    assert classify(F("backend/tests/a.py", tier.MAX_TOTAL_LINES + 1)).blocks == [
+        f"{tier.MAX_TOTAL_LINES + 1} lines changed in total (limit 1500): split it"
+    ]
+
+
+def test_size_at_the_limit_is_fine() -> None:
+    result = classify(
+        F(EXTRACT_FILE, tier.MAX_SRC_LINES),
         F("backend/tests/a.py", tier.MAX_TOTAL_LINES - tier.MAX_SRC_LINES),
     )
-    assert at_limit.tier == "A"
+    assert result.blocks == []
 
 
-def test_breaking_change_title_is_tier_b() -> None:
+def test_client_source_counts_towards_the_source_limit() -> None:
+    assert classify(F("client/src/app.ts", tier.MAX_SRC_LINES + 1)).blocks
+
+
+def test_generated_files_do_not_count_towards_the_limits() -> None:
     result = classify(
-        "fix(extract)!: drop the old field", F("backend/src/newsfeed/extract/a.py", 3)
+        F("eval/results/2026-10-17.json", 4000),
+        F("backend/uv.lock", 3000),
+        F("client/package-lock.json", 3000),
     )
-    assert result.reasons == ["title marks a breaking change ('!')"]
+    assert result.blocks == []
 
 
-def test_untyped_title_is_tier_b() -> None:
-    assert classify("Update docs", F("docs/x.md", 1)).tier == "B"
+@pytest.mark.parametrize("path", ["eval/urls.yaml", "backend/src/newsfeed/eval/scorer.py"])
+def test_evaluation_rules_cannot_change_with_extraction_code(path: str) -> None:
+    result = classify(F(EXTRACT_FILE, 1), F(path, 1))
+    assert result.blocks == ["changes the evaluation expectations or scorer alongside extract/"]
+    assert classify(F(path, 1)).blocks == []
+
+
+def test_touching_extract_is_noted_for_the_gate() -> None:
+    assert classify(F(EXTRACT_FILE, 1)).touches_extract
+    assert classify(F("docs/x.py", 1, previous_path=EXTRACT_FILE)).touches_extract
+    assert not classify(F("backend/src/newsfeed/rank/a.py", 1)).touches_extract
 
 
 # --- gate_failures ---------------------------------------------------------------
@@ -240,6 +248,7 @@ def pr(**overrides: Any) -> dict[str, Any]:
 
 
 GREEN = {"lint": "success", "test": "success", "docker": "success"}
+CHECKS_LINE = "Checks done: red confirmed, mutation, test change report, REVIEW.md"
 
 
 def owned(*bodies: str, association: str = "OWNER") -> list[dict[str, Any]]:
@@ -247,14 +256,23 @@ def owned(*bodies: str, association: str = "OWNER") -> list[dict[str, Any]]:
 
 
 REVIEWED = owned(
-    "## Independent review\nNo defects.",
-    f"**Lead review**\n**Verdict:** merge (Tier A). Checked at {HEAD[:7]}.",
+    f"## Independent review\nNo defects.\n{CHECKS_LINE}",
+    f"**Delivery review**\n**Verdict:** merge. Checked at {HEAD[:7]}.",
 )
 TIER_A = tier.Classification("A")
+TIER_B = tier.Classification("B")
+TIER_B_BODY = CLEAN_BODY.replace(
+    "Closes #70 · Tier A\n",
+    "Closes #70 · Tier B\n**Confirm later:** Weight 0.25. Reason: x. To undo: change y.\n",
+)
 
 
 def test_gate_passes_when_everything_holds() -> None:
     assert tier.gate_failures(pr(), TIER_A, GREEN, REVIEWED) == []
+
+
+def test_gate_passes_tier_b_with_a_confirm_later_entry() -> None:
+    assert tier.gate_failures(pr(body=TIER_B_BODY), TIER_B, GREEN, REVIEWED) == []
 
 
 @pytest.mark.parametrize(
@@ -277,9 +295,16 @@ def test_gate_refuses(overrides: dict[str, Any], expected: str) -> None:
     assert expected in tier.gate_failures(pr(**overrides), TIER_A, GREEN, REVIEWED)
 
 
-def test_gate_refuses_other_tiers() -> None:
-    failures = tier.gate_failures(pr(), tier.Classification("B"), GREEN, REVIEWED)
-    assert failures == ["Tier B, not A"]
+def test_gate_refuses_tier_c() -> None:
+    failures = tier.gate_failures(pr(), tier.Classification("C"), GREEN, REVIEWED)
+    assert failures == ["Tier C: the human merges it"]
+
+
+def test_gate_refuses_anything_classify_blocked() -> None:
+    blocked = tier.Classification(
+        "A", blocks=["1600 lines changed in total (limit 1500): split it"]
+    )
+    assert tier.gate_failures(pr(), blocked, GREEN, REVIEWED) == blocked.blocks
 
 
 def test_gate_needs_every_required_check_green() -> None:
@@ -298,32 +323,48 @@ def test_unresolved_defect_blocks_but_resolved_one_does_not() -> None:
     ]
 
 
+def test_a_feature_with_only_resolved_defects_can_merge() -> None:
+    body = CLEAN_BODY.replace("- Judgement call", "- **Resolved** in 1a2b3c4: **Defect:** x\n- J")
+    comments = [*REVIEWED, *owned(f"## Independent review (second)\nClean.\n{CHECKS_LINE}")]
+    data = pr(title="feat(rank): x", body=body)
+    assert tier.gate_failures(data, TIER_A, GREEN, comments) == []
+
+
 def test_defect_outside_the_section_is_ignored() -> None:
     body = CLEAN_BODY + "\n## Design notes\n- **Defect:** an example in prose\n"
     assert tier.gate_failures(pr(body=body), TIER_A, GREEN, REVIEWED) == []
 
 
-def test_reviewer_can_send_a_tier_a_pr_to_the_human() -> None:
+def test_reviewer_can_stop_a_pr_with_needs_human() -> None:
     body = CLEAN_BODY.replace("- Judgement call", "- **Needs human:** changes ranking.\n- J")
     assert tier.gate_failures(pr(body=body), TIER_A, GREEN, REVIEWED) == [
         "reviewer marked an item **Needs human:**"
     ]
 
 
-LEAD_MISSING = f"no 'Lead review' with 'Verdict: merge' naming the head SHA {HEAD[:7]}"
+def test_needs_human_the_lead_decided_and_resolved_does_not_block() -> None:
+    body = CLEAN_BODY.replace(
+        "- Judgement call",
+        "- **Resolved** in 1a2b3c4: **Needs human:** decided, see Confirm later.\n- J",
+    )
+    assert tier.gate_failures(pr(body=body), TIER_A, GREEN, REVIEWED) == []
+
+
+DELIVERY_MISSING = f"no 'Delivery review' with 'Verdict: merge' naming the head SHA {HEAD[:7]}"
 
 
 @pytest.mark.parametrize(
-    "lead",
+    "delivery",
     [
-        "Lead review: Verdict: merge. Checked at 9999999",  # an older head
-        f"Lead review: Verdict: not ready. Checked at {HEAD[:7]}",
-        f"Lead review: checked {HEAD[:7]}",  # no verdict
+        "Delivery review: Verdict: merge. Checked at 9999999",  # an older head
+        f"Delivery review: Verdict: not ready. Checked at {HEAD[:7]}",
+        f"Delivery review: checked {HEAD[:7]}",  # no verdict
+        f"Lead review\nVerdict: merge. Checked at {HEAD[:7]}",  # the old heading
     ],
 )
-def test_lead_review_must_say_merge_at_the_current_head(lead: str) -> None:
-    comments = owned("Independent review: fine", lead)
-    assert tier.gate_failures(pr(), TIER_A, GREEN, comments) == [LEAD_MISSING]
+def test_delivery_review_must_say_merge_at_the_current_head(delivery: str) -> None:
+    comments = owned(REVIEWED[0]["body"], delivery)
+    assert tier.gate_failures(pr(), TIER_A, GREEN, comments) == [DELIVERY_MISSING]
 
 
 def test_independent_review_comment_is_required() -> None:
@@ -336,7 +377,7 @@ def test_review_comments_from_other_accounts_do_not_count() -> None:
     comments = [{**c, "author_association": "NONE"} for c in REVIEWED]
     assert tier.gate_failures(pr(), TIER_A, GREEN, comments) == [
         "no 'Independent review' comment from the owner account",
-        LEAD_MISSING,
+        DELIVERY_MISSING,
     ]
 
 
@@ -377,140 +418,284 @@ def test_a_second_human_review_section_is_refused() -> None:
     )
 
 
-# --- gate_failures: Tier A features -----------------------------------------------
+# --- gate_failures: statement of the review checks ---------------------------------
 
-FEATURE = tier.Classification("A", feature=True)
-FEATURE_BODY = CLEAN_BODY.replace(
-    "Closes #70 · Tier A", "Closes #70 · Tier A · **Deviations:** none"
+
+@pytest.mark.parametrize(
+    ("line", "expected"),
+    [
+        ("", "the latest Independent review has no 'Checks done:' line"),
+        (
+            "Checks done: yes",
+            "'Checks done:' doesn't mention red, mutation, test change report, REVIEW.md",
+        ),
+        (
+            "Checks done: red, test change report, REVIEW.md",
+            "'Checks done:' doesn't mention mutation",
+        ),
+        (
+            "Checks done: red, mutation, test change report",
+            "'Checks done:' doesn't mention REVIEW.md",
+        ),
+        (
+            "Checks done: red, mutation not done, test change report, REVIEW.md",
+            "'Checks done:' says a check was not done",
+        ),
+        (
+            "Checks done: red, mutation skipped, test change report, REVIEW.md",
+            "'Checks done:' says a check was not done",
+        ),
+    ],
 )
-FEATURE_BODY = FEATURE_BODY.replace(
-    "- Judgement call: kept the old name as an alias. Recommend merging as is.", "None"
-)
-CONFIRMED = owned(
-    f"## Independent review\nNo findings.\n\nTier A feature: confirmed at {HEAD[:7]}",
-    f"Lead review\nVerdict: merge. Checked at {HEAD[:7]}",
-)
+def test_review_must_state_the_checks(line: str, expected: str) -> None:
+    comments = owned(f"## Independent review\nFine.\n{line}", REVIEWED[1]["body"])
+    assert tier.gate_failures(pr(), TIER_A, GREEN, comments) == [expected]
 
 
-NO_CONFIRMATION = (
-    f"feature: no 'Tier A feature: confirmed at {HEAD[:7]}' line in the Independent review"
-)
+def test_checks_that_do_not_apply_can_say_so() -> None:
+    line = "**Checks done:** red n/a (docs only), mutation n/a, test change report, REVIEW.md"
+    comments = owned(f"## Independent review\n{line}", REVIEWED[1]["body"])
+    assert tier.gate_failures(pr(), TIER_A, GREEN, comments) == []
 
 
-def test_feature_gate_passes_with_every_attestation() -> None:
-    assert tier.gate_failures(pr(body=FEATURE_BODY), FEATURE, GREEN, CONFIRMED) == []
-
-
-def test_feature_needs_deviations_none() -> None:
-    body = FEATURE_BODY.replace("**Deviations:** none", "**Deviations:** renamed the flag")
-    assert tier.gate_failures(pr(body=body), FEATURE, GREEN, CONFIRMED) == [
-        "feature: the header doesn't say **Deviations:** none"
+def test_checks_must_be_on_the_latest_review() -> None:
+    comments = [*REVIEWED, *owned("## Independent review (second)\nFine.")]
+    assert tier.gate_failures(pr(), TIER_A, GREEN, comments) == [
+        "the latest Independent review has no 'Checks done:' line"
     ]
 
 
-def test_feature_needs_the_reviewers_confirmation() -> None:
-    assert tier.gate_failures(pr(body=FEATURE_BODY), FEATURE, GREEN, REVIEWED) == [NO_CONFIRMATION]
+# --- gate_failures: Confirm later ---------------------------------------------------
 
-
-def test_feature_reviewed_twice_goes_to_the_human() -> None:
-    comments = [*CONFIRMED, *owned("## Second review\nTier A feature: confirmed at abc1234")]
-    assert tier.gate_failures(pr(body=FEATURE_BODY), FEATURE, GREEN, comments) == [
-        "feature: reviewed more than once"
-    ]
-
-
-def test_feature_with_any_open_item_goes_to_the_human() -> None:
-    assert tier.gate_failures(
-        pr(body=CLEAN_BODY.replace("Closes #70 · Tier A", "Closes #70 · **Deviations:** none")),
-        FEATURE,
-        GREEN,
-        CONFIRMED,
-    ) == ["feature: 'For human review' has items for the human"]
-
-
-def test_feature_with_a_resolved_defect_still_goes_to_the_human() -> None:
-    body = FEATURE_BODY.replace(
-        "## For human review\nNone", "## For human review\n- **Resolved** in 1a2b3c4: **Defect:** x"
-    )
-    assert tier.gate_failures(pr(body=body), FEATURE, GREEN, CONFIRMED) == [
-        "feature: the review found a defect"
-    ]
-
-
-def test_feature_with_only_resolved_non_defect_items_passes() -> None:
-    body = FEATURE_BODY.replace(
-        "## For human review\nNone", "## For human review\n- **Resolved** in 1a2b3c4: stale text"
-    )
-    assert tier.gate_failures(pr(body=body), FEATURE, GREEN, CONFIRMED) == []
+NO_CONFIRM = "Tier B, but the header has no **Confirm later:** entry"
 
 
 @pytest.mark.parametrize(
     "header",
     [
-        "Closes #70 · **Deviations:** none of substance; renamed the --since flag",
-        "Closes #70 · **Deviations:** renamed the flag",
+        "Closes #70 · Tier B",
+        "Closes #70 · Tier B\n**Confirm later:** none",
+        "Closes #70 · Tier B\n**Confirm later:**",
+        "Closes #70 · Tier B\n**Confirm later:** <!-- each decision: what, reason, how to undo -->",
     ],
 )
-def test_deviations_none_must_be_the_whole_field_in_the_header(header: str) -> None:
-    # The second case also has "**Deviations:** none" further down the body.
-    body = FEATURE_BODY.replace("Closes #70 · Tier A · **Deviations:** none", header)
-    body += "\nAn example header: `**Deviations:** none`\n"
-    assert tier.gate_failures(pr(body=body), FEATURE, GREEN, CONFIRMED) == [
-        "feature: the header doesn't say **Deviations:** none"
-    ]
+def test_tier_b_needs_a_real_confirm_later_entry(header: str) -> None:
+    body = CLEAN_BODY.replace("Closes #70 · Tier A", header)
+    assert tier.gate_failures(pr(body=body), TIER_B, GREEN, REVIEWED) == [NO_CONFIRM]
 
 
-def test_deviations_none_may_be_followed_by_another_field() -> None:
-    body = FEATURE_BODY.replace("**Deviations:** none", "**Deviations:** none · **Merge after:** x")
-    assert tier.gate_failures(pr(body=body), FEATURE, GREEN, CONFIRMED) == []
+def test_confirm_later_below_the_header_does_not_count() -> None:
+    body = CLEAN_BODY + "\n## Notes\n**Confirm later:** an example in prose\n"
+    assert tier.gate_failures(pr(body=body), TIER_B, GREEN, REVIEWED) == [NO_CONFIRM]
 
 
-@pytest.mark.parametrize(
-    "review",
-    [
-        "One judgement call, so I did not write Tier A feature: confirmed.",
-        "Tier A feature: confirmed? No: it renames a flag.",
-        f"Not ready.\n`Tier A feature: confirmed at {HEAD[:7]}` would need a clean review.",
-        "Tier A feature: confirmed at 9999999",  # an older head
-    ],
-)
-def test_confirmation_must_be_its_own_line_at_the_head(review: str) -> None:
-    comments = owned(f"## Independent review\n{review}", CONFIRMED[1]["body"])
-    assert tier.gate_failures(pr(body=FEATURE_BODY), FEATURE, GREEN, comments) == [NO_CONFIRMATION]
-
-
-@pytest.mark.parametrize(
-    "section",
-    [
-        "1. Judgement call: renamed the flag. Recommend the human decide.",
-        "The flag name is a judgement call.",
-        "None\n- Risk: slow on big feeds.",
-    ],
-)
-def test_feature_section_must_say_only_none(section: str) -> None:
-    body = FEATURE_BODY.replace("## For human review\nNone", f"## For human review\n{section}")
-    assert tier.gate_failures(pr(body=body), FEATURE, GREEN, CONFIRMED) == [
-        "feature: 'For human review' has items for the human"
-    ]
-
-
-@pytest.mark.parametrize("title", ["## Second independent review", "**Re-review**", "Review 2"])
-def test_any_second_review_comment_counts(title: str) -> None:
-    comments = [*CONFIRMED, *owned(f"{title}\nLooks fine.")]
-    assert tier.gate_failures(pr(body=FEATURE_BODY), FEATURE, GREEN, comments) == [
-        "feature: reviewed more than once"
-    ]
-
-
-def test_non_features_do_not_need_the_feature_attestations() -> None:
+def test_tier_a_needs_no_confirm_later_entry() -> None:
     assert tier.gate_failures(pr(), TIER_A, GREEN, REVIEWED) == []
+
+
+# --- gate_failures: evaluation scores ------------------------------------------------
+
+EXTRACT = tier.Classification("A", touches_extract=True)
+
+
+def scores(before: str = "98.9", after: str = "99.0", extra: str = "") -> str:
+    return f"## Evaluation scores\nBefore: {before}%\nAfter: {after}%\n{extra}\nAt {HEAD[:7]}"
+
+
+def test_extract_pr_with_a_steady_or_better_score_passes() -> None:
+    for comment in (scores(), scores(after="98.9")):
+        comments = [*REVIEWED, *owned(comment)]
+        assert tier.gate_failures(pr(), EXTRACT, GREEN, comments) == []
+
+
+def test_extract_pr_needs_scores() -> None:
+    assert tier.gate_failures(pr(), EXTRACT, GREEN, REVIEWED) == [
+        f"touches extract/, but no 'Evaluation scores' comment names the head SHA {HEAD[:7]}"
+    ]
+
+
+def test_scores_must_name_the_head() -> None:
+    comments = [*REVIEWED, *owned(scores().replace(HEAD[:7], "9999999"))]
+    assert tier.gate_failures(pr(), EXTRACT, GREEN, comments) == [
+        f"touches extract/, but no 'Evaluation scores' comment names the head SHA {HEAD[:7]}"
+    ]
+
+
+def test_scores_from_other_accounts_do_not_count() -> None:
+    comments = [*REVIEWED, *owned(scores(), association="NONE")]
+    assert tier.gate_failures(pr(), EXTRACT, GREEN, comments)
+
+
+def test_score_drop_blocks_unless_a_reason_is_given() -> None:
+    dropped = [*REVIEWED, *owned(scores(after="97.8"))]
+    assert tier.gate_failures(pr(), EXTRACT, GREEN, dropped) == [
+        "overall score fell from 98.9 to 97.8 with no 'Reason:'"
+    ]
+    explained = [*REVIEWED, *owned(scores(after="97.8", extra="Reason: a site changed layout"))]
+    assert tier.gate_failures(pr(), EXTRACT, GREEN, explained) == []
+
+
+def test_latest_scores_at_the_head_win() -> None:
+    comments = [*REVIEWED, *owned(scores(), scores(after="90"))]
+    assert tier.gate_failures(pr(), EXTRACT, GREEN, comments) == [
+        "overall score fell from 98.9 to 90 with no 'Reason:'"
+    ]
+
+
+def test_scores_need_both_numbers() -> None:
+    comments = [*REVIEWED, *owned(f"## Evaluation scores\nFine at {HEAD[:7]}")]
+    assert tier.gate_failures(pr(), EXTRACT, GREEN, comments) == [
+        "'Evaluation scores' has no 'Before:' and 'After:' lines"
+    ]
+
+
+# --- test change report --------------------------------------------------------------
+
+
+def test_deleted_assertion_is_reported() -> None:
+    patch = "@@ -1,3 +1,2 @@\n def test_x():\n-    assert total == 3\n     run()"
+    assert tier.assertion_changes("t.py", patch) == ["t.py: deleted: assert total == 3"]
+
+
+def test_changed_assertion_is_reported() -> None:
+    patch = "@@ -1 +1 @@\n-    assert total == 3\n+    assert total >= 1"
+    assert tier.assertion_changes("t.py", patch) == ["t.py: changed: assert total == 3"]
+
+
+def test_new_tests_report_nothing() -> None:
+    patch = "@@ -0,0 +1,2 @@\n+def test_x():\n+    assert total == 3"
+    assert tier.assertion_changes("t.py", patch) == []
+
+
+def test_reindented_assertion_reports_nothing() -> None:
+    patch = "@@ -1,2 +1,2 @@\n-assert a\n+    assert a"
+    assert tier.assertion_changes("t.py", patch) == []
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "with pytest.raises(ValueError):",
+        "fake.assert_called_once_with(1)",
+        "def test_old_behaviour() -> None:",
+        "async def test_old() -> None:",
+    ],
+)
+def test_other_kinds_of_check_count_as_assertions(line: str) -> None:
+    assert tier.assertion_changes("t.py", f"@@ -1 +0,0 @@\n-    {line}")
+
+
+@pytest.mark.parametrize("line", ["@pytest.mark.skip", '@pytest.mark.xfail(reason="x")'])
+def test_added_skip_is_reported(line: str) -> None:
+    patch = f"@@ -1 +1,2 @@\n+{line}\n def test_x(): ..."
+    assert tier.assertion_changes("t.py", patch) == [f"t.py: skip added: {line}"]
+
+
+def test_diff_findings_only_read_test_files_and_flag_missing_diffs() -> None:
+    assert tier.diff_findings(
+        [
+            F("backend/src/newsfeed/rank/a.py", 1, patch="@@ -1 +0,0 @@\n-assert x"),
+            F("backend/tests/a.py", 1, patch="@@ -1 +0,0 @@\n-assert x"),
+            F("backend/tests/big.py", 9000),
+            F("backend/tests/renamed.py", 0, previous_path="backend/tests/old.py"),
+        ]
+    ) == [
+        "backend/tests/a.py: deleted: assert x",
+        "backend/tests/big.py: no diff available, so check it by hand",
+    ]
+
+
+def commit(sha: str, subject: str, *files: dict[str, Any]) -> dict[str, Any]:
+    return {"sha": sha, "commit": {"message": f"{subject}\n\nBody."}, "files": list(files)}
+
+
+def touched(name: str, deletions: int = 0, patch: str | None = None) -> dict[str, Any]:
+    data: dict[str, Any] = {"filename": name, "deletions": deletions}
+    if patch is not None:
+        data["patch"] = patch
+    return data
+
+
+def test_worker_edit_of_a_test_authors_test_is_reported() -> None:
+    commits = [
+        commit("a" * 40, "test(rank): add failing tests", touched("t.py")),
+        commit("b" * 40, "feat(rank): boost", touched("t.py", 1, "@@ -1 +1 @@\n-x = 1\n+x = 2")),
+    ]
+    assert tier.test_author_edits(commits) == ["bbbbbbb t.py: x = 1"]
+
+
+def test_additions_and_other_files_are_not_edits() -> None:
+    commits = [
+        commit("a" * 40, "test: add failing tests", touched("t.py")),
+        commit("b" * 40, "feat: x", touched("t.py", 0, "@@ -1 +1,2 @@\n+x = 1")),
+        commit("c" * 40, "fix: y", touched("other.py", 1, "@@ -1 +0,0 @@\n-x = 1")),
+    ]
+    assert tier.test_author_edits(commits) == []
+
+
+def test_only_leading_test_commits_are_the_test_authors() -> None:
+    commits = [
+        commit("a" * 40, "feat: x", touched("t.py")),
+        commit("b" * 40, "test: more", touched("t.py", 1, "@@ -1 +0,0 @@\n-x = 1")),
+    ]
+    assert tier.test_author_edits(commits) == []
+
+
+def test_later_test_commit_editing_their_file_is_reported() -> None:
+    commits = [
+        commit("a" * 40, "test: add failing tests", touched("t.py")),
+        commit("b" * 40, "feat: x"),
+        commit("c" * 40, "test: relax it", touched("t.py", 1, "@@ -1 +0,0 @@\n-x = 1")),
+    ]
+    assert tier.test_author_edits(commits) == ["ccccccc t.py: x = 1"]
+
+
+def test_edit_with_no_diff_is_flagged() -> None:
+    commits = [
+        commit("a" * 40, "test: add", touched("t.py")),
+        commit("b" * 40, "feat: x", touched("t.py", 9)),
+    ]
+    assert tier.test_author_edits(commits) == [
+        "bbbbbbb t.py: no diff available, so check it by hand"
+    ]
+
+
+def test_tests_command_prints_both_parts(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def gh_api(path: str, *extra: str, paginate: bool = False) -> Any:
+        if path.startswith("pulls/70/files"):
+            return [
+                {
+                    "filename": "backend/tests/a.py",
+                    "additions": 0,
+                    "deletions": 1,
+                    "patch": "@@ -1 +0,0 @@\n-assert x",
+                }
+            ]
+        if path.startswith("pulls/70/commits"):
+            return [{"sha": "a" * 40}, {"sha": "b" * 40}]
+        if path == f"commits/{'a' * 40}":
+            return commit("a" * 40, "test: add", touched("backend/tests/a.py"))
+        return commit(
+            "b" * 40, "feat: x", touched("backend/tests/a.py", 1, "@@ -1 +0,0 @@\n-assert x")
+        )
+
+    monkeypatch.setattr(tier, "gh_api", gh_api)
+    tier.cmd_tests(70)
+    out = capsys.readouterr().out
+    assert "  - backend/tests/a.py: deleted: assert x" in out
+    assert "  - bbbbbbb backend/tests/a.py: assert x" in out
 
 
 # --- merge command ---------------------------------------------------------------
 
 
 def fake_github(
-    monkeypatch: pytest.MonkeyPatch, pr_data: dict[str, Any], comments: list[dict[str, Any]]
+    monkeypatch: pytest.MonkeyPatch,
+    pr_data: dict[str, Any],
+    comments: list[dict[str, Any]],
+    filename: str = "docs/x.md",
 ) -> list[tuple[str, tuple[str, ...]]]:
     calls: list[tuple[str, tuple[str, ...]]] = []
 
@@ -519,7 +704,7 @@ def fake_github(
         if path == "pulls/70":
             return pr_data
         if path.startswith("pulls/70/files"):
-            return [{"filename": "docs/x.md", "additions": 3, "deletions": 1}]
+            return [{"filename": filename, "additions": 3, "deletions": 1}]
         if path == "issues/70":
             return {"labels": []}
         if path.startswith(f"commits/{HEAD}/check-runs"):
@@ -542,7 +727,13 @@ def test_merge_pins_the_checked_head_sha_and_labels(monkeypatch: pytest.MonkeyPa
     tier.cmd_merge(70, dry_run=False)
     merge = [extra for path, extra in calls if path == "pulls/70/merge"]
     assert merge == [("-X", "PUT", "-f", "merge_method=merge", "-f", f"sha={HEAD}")]
-    assert ("issues/70/labels", ("-X", "POST", "-f", "labels[]=lead-merged")) in calls
+    assert ("issues/70/labels", ("-X", "POST", "-f", "labels[]=agent-merged")) in calls
+
+
+def test_merge_merges_tier_b_with_its_entry(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = fake_github(monkeypatch, pr(body=TIER_B_BODY), REVIEWED, filename="PROJECT_PLAN.md")
+    tier.cmd_merge(70, dry_run=False)
+    assert [p for p, _ in calls if p == "pulls/70/merge"]
 
 
 def test_merge_dry_run_merges_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -554,11 +745,11 @@ def test_merge_dry_run_merges_nothing(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_merge_refuses_and_exits_non_zero(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    calls = fake_github(monkeypatch, pr(title="feat: x"), REVIEWED)
+    calls = fake_github(monkeypatch, pr(title="feat: x"), REVIEWED, filename="scripts/x.py")
     with pytest.raises(SystemExit) as exit_info:
         tier.cmd_merge(70, dry_run=False)
     assert exit_info.value.code == 1
-    assert "Tier B, not A" in capsys.readouterr().out
+    assert "Tier C: the human merges it" in capsys.readouterr().out
     assert not [p for p, _ in calls if p.endswith("/merge")]
 
 
@@ -572,26 +763,29 @@ def test_latest_check_run_wins(monkeypatch: pytest.MonkeyPatch) -> None:
     assert tier.fetch_checks(HEAD) == {"test": "success", "lint": "in_progress"}
 
 
-@pytest.mark.parametrize(
-    ("issue_labels", "expected"),
-    [
-        ({71: ["agent-ready", "size:M"], 72: ["agent-ready", "size:S"]}, "A"),
-        ({71: ["agent-ready", "size:M"], 72: ["agent-ready"]}, "B"),  # one unsized
-        ({71: ["size:S"]}, "B"),  # not agent-ready
-        ({}, "B"),  # closes no issue
-        ({71: ["agent-ready", "size:S", "size:L"]}, "B"),  # conflicting sizes
-    ],
-)
-def test_feature_readiness_comes_from_every_closed_issue(
-    monkeypatch: pytest.MonkeyPatch, issue_labels: dict[int, list[str]], expected: str
-) -> None:
+def test_a_closed_needs_human_issue_makes_the_pr_tier_c(monkeypatch: pytest.MonkeyPatch) -> None:
     def gh_api(path: str, *extra: str, paginate: bool = False) -> Any:
         if path.startswith("pulls/80/files"):
-            return [{"filename": "backend/src/newsfeed/rank/a.py", "additions": 9, "deletions": 0}]
-        number = int(path.removeprefix("issues/"))
-        return {"labels": [{"name": n} for n in issue_labels[number]]}
+            return [{"filename": "docs/x.md", "additions": 9, "deletions": 0}]
+        return {"labels": [{"name": "needs-human"}]}
 
     monkeypatch.setattr(tier, "gh_api", gh_api)
-    body = "\n".join(f"Closes #{n}" for n in issue_labels)
-    data = pr(number=80, title="feat(rank): x", body=body)
-    assert tier.classify_pr(data).tier == expected
+    assert tier.classify_pr(pr(number=80, body="Closes #71")).tier == "C"
+
+
+def test_patches_reach_the_classifier(monkeypatch: pytest.MonkeyPatch) -> None:
+    def gh_api(path: str, *extra: str, paginate: bool = False) -> Any:
+        if path.startswith("pulls/80/files"):
+            return [
+                {
+                    "filename": "infra/terraform/deploy.tf",
+                    "additions": 1,
+                    "deletions": 0,
+                    "patch": '@@ -0,0 +1 @@\n+role = "roles/owner"',
+                }
+            ]
+        return {"labels": []}
+
+    monkeypatch.setattr(tier, "gh_api", gh_api)
+    result = tier.classify_pr(pr(number=80, body="Closes #71"))
+    assert result.reasons == ["infra/terraform/deploy.tf changes IAM, billing or budgets"]
