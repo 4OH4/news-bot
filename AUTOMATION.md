@@ -177,6 +177,7 @@ Chosen dependencies also state the licence and why that package was picked. The 
 Agents need to create, change and destroy cloud resources during development, so they get a controlled scope (ADR-0007, which supersedes that part of ADR-0004):
 
 - The human sets up the scope once: a separate development project, a service account limited to it, and short-lived credentials. No long-lived keys are stored on disk.
+- The human does the first `terraform apply`, because it creates IAM members, budgets and secrets, which the service account can't. Those stay the human's after that.
 - Inside that scope, agents can run `terraform apply`, `terraform destroy` and `gcloud` commands that change resources.
 - `terraform apply` runs only after a change is merged, from up-to-date `main`, so nothing reaches the cloud before its review.
 - Agents can't change IAM, billing or budgets, or delete the project. The service account's roles enforce this, so it doesn't rely on instructions.
@@ -255,14 +256,17 @@ A chain of small dependent issues in one area can still go to one test author an
 | **B** | Decide-and-record changes: `models.py`, `ports.py`, ADRs, new dependencies, `config/interests.yaml`, `config/sources.yaml`, `backend/pyproject.toml` outside its `[tool.*]` tables, `eval/urls.yaml`, `eval/boilerplate.txt`, the eval scorer, test infrastructure (any `conftest.py` or `fakes.py` under `backend/tests/`, the network guard, the contract suites), `docs/feed.schema.json`, `docs/feed.example.json`, `REVIEW.md`, `PROJECT_PLAN.md`, `infra/` and Terraform files outside Tier C | Delivery manager, with a `Confirm later` entry |
 | **C** | `.claude/`, `.github/`, `scripts/`, `backend/tests/scripts/`, `.gitignore`, `.dockerignore`, `backend/Dockerfile`, `AUTOMATION.md`, `CLAUDE.md`, `fetching/`, `docs/milestones/`; the files that define the checks (below); infrastructure changes that touch IAM or other access, billing, budgets, service accounts or delete rules, or that can destroy stored data (below); and any `needs-human` PR | Human |
 
-**Files that define the checks.** Each tool takes the nearest configuration it finds, so these are Tier C by name in any directory: `Makefile`, `.pre-commit-config.yaml`, `pytest.ini`, `pytest.toml`, `tox.ini`, `setup.cfg`, `ruff.toml`, `mypy.ini`, `.coveragerc`, their dotted forms, any `pyproject.toml` other than `backend/pyproject.toml`, any `conftest.py` outside `backend/tests/`, and the client's equivalents (`tsconfig*.json`, ESLint, Prettier, Jest, Vitest and Playwright configuration). In `backend/pyproject.toml`, any change inside a `[tool.*]` table, or to a table header, is Tier C. `tier.py` reads the file at the head to tell, because a patch's context lines don't show which table a line is in. Dependency changes there stay Tier B, unless they need a `[[tool.mypy.overrides]]` entry.
+**Files that define the checks.** Each tool takes the nearest configuration it finds, so these are Tier C by name in any directory: `Makefile`, `.pre-commit-config.yaml`, `pytest.ini`, `pytest.toml`, `tox.ini`, `setup.cfg`, `ruff.toml`, `mypy.ini`, `.coveragerc`, their dotted forms, any `pyproject.toml` other than `backend/pyproject.toml`, any `conftest.py` outside `backend/tests/`, and the client's equivalents (`tsconfig*.json`, ESLint, Prettier, Jest, Vitest and Playwright configuration). In `backend/pyproject.toml`, any change inside a `[tool.*]` table, or to a table header, is Tier C. `tier.py` reads the file at the head to tell, because a patch's context lines don't show which table a line is in. Renaming the file to or from that path is Tier C too. Dependency changes there stay Tier B, unless they need a `[[tool.mypy.overrides]]` entry.
 
 **Infrastructure.** These rules cover `infra/` and any `*.tf`, `*.tfvars` or `*.tf.json` file, including a file moved out of `infra/`. A change is Tier C if:
 
-- its whole patch, context lines included, mentions IAM, roles, `member` or `members`, policies, bindings, permissions, ACLs, public access, service accounts, billing or budgets, as a one-line `member` change names none of these on the changed line;
+- its whole patch, context lines included, mentions IAM, roles, `member` or `members`, policies, bindings, permissions, ACLs (including `google_storage_*_access_control`), public access, service accounts, billing or budgets, as a one-line `member` change names none of these on the changed line;
 - its whole patch mentions a delete rule: `lifecycle_rule`, a `Delete` action or a Firestore `ttl_config`;
-- a changed line sets `force_destroy` to anything but `false`, changes a protection or retention setting (`deletion_protection`, `delete_protection_state`, `deletion_policy`, `prevent_destroy`, `retention_policy`, `soft_delete_policy`), adds a `removed` block, or runs a delete command;
-- it removes or relabels a `google_storage_bucket`, a `google_firestore_*` resource, `google_project` or a `module`, or changes the `count` or `for_each` of one.
+- a changed line sets `force_destroy` to anything but `false`, changes a protection or retention setting (`deletion_protection`, `delete_protection_state`, `deletion_policy`, `prevent_destroy`, `soft_delete_policy`, or anything naming `retention`, such as `content_retention_days`), adds a `removed` block, or runs a delete command;
+- it removes or relabels a `google_storage_bucket`, a `google_firestore_*` resource, `google_project` or a `module`, or changes the `count` or `for_each` of one;
+- it renames a `*.tf` or `*.tf.json` file, because Terraform reads files by name and stops seeing what the old name defined, or renames any other of these files with no readable diff.
+
+Bucket `name` and `location` changes stay Tier B: Terraform replaces the bucket, but refuses to destroy a non-empty one without `force_destroy`, which is Tier C. These checks read Terraform's own syntax, so in a `*.tf.json` file the `force_destroy`, `member`, `members` and store removal rules don't match: that file type gets the name-based rules only (IAM and role names, delete rules, protection and retention settings). The repo has no such file.
 
 `tier.py merge` refuses unless all of these hold:
 
@@ -275,7 +279,7 @@ A chain of small dependent issues in one area can still go to one test author an
 
 A feature with resolved defects can now merge after a clean second review, and one size limit applies to every PR: 400 source lines and 1,500 lines in total. The old feature conditions, including `Deviations: none` and `Tier A feature: confirmed`, are removed. The human can still revert any merge, or add `hold` to stop one.
 
-The delivery manager sends an oversized PR back to a worker to split. On the 25 tiered PRs, these rules would have allowed 20 agent merges (80%) and left 5 for the human: three that set up the workflow itself, #125, which includes billing and IAM, and #109, which added a `mypy` override. #108 counts as an agent merge on the assumption that it would have been split.
+The delivery manager sends an oversized PR back to a worker to split. On the 25 tiered PRs, these rules would have allowed 19 agent merges (76%) and left 6 for the human: three that set up the workflow itself, #125, which includes billing and IAM, #109, which added a `mypy` override, and #103, which edited a comment in one. #108 counts as an agent merge on the assumption that it would have been split. #110, #117 and #124 carried the old `needs-human` label, and count as agent merges because their files are Tier B and such changes are now decide-and-record.
 
 ## 10. Measuring it
 
