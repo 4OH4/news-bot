@@ -61,3 +61,22 @@ def test_dedupe_window_days(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("NEWSFEED_DEDUPE_WINDOW_DAYS", "0")
     with pytest.raises(ValidationError):
         load_settings()
+
+
+def test_retry_backoff_hours_accepts_positive_numbers_and_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("NEWSFEED_RETRY_BACKOFF_HOURS", "[0.5, 6, 24]")
+    assert load_settings().retry_backoff_hours == (0.5, 6, 24)
+    monkeypatch.setenv("NEWSFEED_RETRY_BACKOFF_HOURS", "[]")
+    assert load_settings().retry_backoff_hours == ()
+
+
+@pytest.mark.parametrize("value", ["[0]", "[-1]", "[1, -6]", "[1, 0, 24]"])
+def test_retry_backoff_hours_rejects_non_positive_values(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    monkeypatch.setenv("NEWSFEED_RETRY_BACKOFF_HOURS", value)
+
+    with pytest.raises(ValidationError, match="positive"):
+        load_settings()
