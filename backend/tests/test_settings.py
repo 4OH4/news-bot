@@ -80,3 +80,13 @@ def test_retry_backoff_hours_rejects_non_positive_values(
 
     with pytest.raises(ValidationError, match="positive"):
         load_settings()
+
+
+@pytest.mark.parametrize("value", ["[NaN]", "[Infinity]", "[-Infinity]", "[1e300]", "[1, NaN]"])
+def test_retry_backoff_hours_rejects_non_finite_and_overflowing_values(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    monkeypatch.setenv("NEWSFEED_RETRY_BACKOFF_HOURS", value)
+
+    with pytest.raises(ValidationError, match="positive"):
+        load_settings()
