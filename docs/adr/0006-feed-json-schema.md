@@ -39,7 +39,7 @@ The JSON Schema in `docs/feed.schema.json` (draft 2020-12) is the authoritative 
 
 - **Top level:** `schema_version` (integer, `1`), `generated_at` (UTC timestamp), `run_id` (`RunStats.run_id`) and `items`.
 - **Each item:** `id` (`Article.id`), `title`, `url` (the canonical URL), `source_id`, `domain` (host of the canonical URL without `www.`), `author`, `published_at`, `summary` (plain text), `lead_image` (the publisher's absolute URL), `score`, `score_breakdown`, `extraction_status`, `display` (`article` or `link`), `word_count` and `content_path`. Every key is always present; values the article lacks are `null`.
-- **Source names:** `Source` has no display name today, so the client shows `domain`. Adding one is a contract change to `models.py` (its own `needs-human` issue); the feed would then gain an optional `source_name`, an additive change.
+- **Source names:** `Source` has no display name today, so the client shows `domain`. Adding one is a contract change to `models.py` (its own issue); the feed would then gain an optional `source_name`, an additive change.
 - **Score breakdown is included.** It is a handful of numbers per item, and it lets the client explain a ranking ("why am I seeing this", Phase 6) and lets me tune the rules from the phone. Its keys are the rank stage's (#81: `topic:<name>`, `source`, `recency`); they are for explanation only, and the client never recomputes the score from them.
 
 ### Selection and order
