@@ -9,12 +9,14 @@
 
 Tiers (AUTOMATION.md §9):
 
-* Tier C: the human merges. The automation itself (.claude/, .github/, scripts/,
-  AUTOMATION.md, CLAUDE.md), fetching/, milestone reports, infrastructure for IAM,
-  billing and budgets, and any needs-human PR or issue.
+* Tier C: the human merges. The automation itself (.claude/, .github/, scripts/ and
+  their tests, AUTOMATION.md, CLAUDE.md, and the build and lint files in TIER_C_PATHS),
+  fetching/, milestone reports, infrastructure for IAM, billing, budgets, service
+  account keys and delete rules, and any needs-human PR or issue.
 * Tier B: the delivery manager merges, with a `Confirm later` entry. Decide-and-record
-  changes: contracts, ADRs, dependencies, curated config, the evaluation expectations
-  and scorer, test infrastructure, REVIEW.md, PROJECT_PLAN.md, and other infra/ files.
+  changes: contracts (including the feed schema), ADRs, dependencies, curated config,
+  the evaluation expectations and scorer, test infrastructure, REVIEW.md, PROJECT_PLAN.md,
+  and other infra/ files.
 * Tier A: the delivery manager merges. Everything else.
 
 The tier comes from the diff, not from anyone's judgement, and this script is in
@@ -60,6 +62,13 @@ TIER_C_PATHS = (
     ".claude/*",
     ".github/*",
     "scripts/*",
+    "backend/tests/scripts/*",  # the tests of this gate
+    # What CI runs, and what goes into the image: `make lint` and `make test` are the checks.
+    "Makefile",
+    ".pre-commit-config.yaml",
+    ".gitignore",
+    ".dockerignore",
+    "backend/Dockerfile",
     "AUTOMATION.md",
     "CLAUDE.md",
     "backend/src/newsfeed/fetching/*",  # polite fetching, CLAUDE.md architecture rule 6
@@ -70,7 +79,12 @@ TIER_C_PATHS = (
 )
 # IAM and billing can sit in any infra/ file, so changed lines count as well as names.
 INFRA_PREFIX = "infra/"
-INFRA_RISK_RE = re.compile(r"\biam\b|_iam_|roles/|billing|budget", re.IGNORECASE)
+INFRA_RISK_RE = re.compile(
+    r"\biam\b|_iam_|roles/|billing|budget|google_service_account_key", re.IGNORECASE
+)
+# A rule's age or prefix can change on a line that names neither the rule nor its action,
+# so this one is matched against the whole patch, context lines included.
+DELETE_RULE_RE = re.compile(r"lifecycle_rule|type\s*=\s*\"delete\"", re.IGNORECASE)
 
 # Decide-and-record: agents choose, and the human confirms at the milestone.
 EVAL_DECISION_PATHS = ("eval/urls.yaml", "backend/src/newsfeed/eval/*")
@@ -78,6 +92,8 @@ TIER_B_PATHS = (
     "backend/src/newsfeed/models.py",
     "backend/src/newsfeed/ports.py",
     "docs/adr/*",
+    "docs/feed.schema.json",  # the client contract, ADR-0006
+    "docs/feed.example.json",
     "backend/pyproject.toml",
     "backend/uv.lock",
     "client/package.json",
@@ -103,14 +119,31 @@ SRC_PATHS = ("backend/src/*", "client/*")
 GENERATED_PATHS = ("eval/results/*", "backend/uv.lock", "client/package-lock.json")
 EXTRACT_PREFIX = "backend/src/newsfeed/extract/"
 
-TEST_PATHS = ("backend/tests/*",)
-# One line of a Python test. A multi-line assert shows only where its first line changes.
+TEST_PATHS = (
+    "backend/tests/*",
+    "client/*.test.*",
+    "client/*.spec.*",
+    "client/*__tests__/*",
+    "client/test/*",
+    "client/tests/*",
+)
+# One line of a test, in Python or in the client's JavaScript or TypeScript. A multi-line
+# assert shows only where its first line changes.
 ASSERTION_RE = re.compile(
     r"^\s*(?:assert\b|with pytest\.raises\b|pytest\.(?:raises|fail)\(|(?:async\s+)?def test_)"
     r"|\.assert_\w*\("
+    r"|^\s*(?:it|test)(?:\.\w+)*\(|\bexpect\("
 )
-SKIP_RE = re.compile(r"pytest\.(?:skip|xfail)\b|pytest\.mark\.(?:skip|skipif|xfail)\b")
+# Anything that stops a test running by default. `live` tests are deselected in CI.
+SKIP_RE = re.compile(
+    r"pytest\.(?:skip|xfail|importorskip)\b|\bmark\.(?:skip|skipif|xfail|live)\b"
+    r"|\bunittest\.skip"
+    r"|\b(?:it|test|describe)\.(?:skip|only|todo|fixme)\b|\bx(?:it|describe)\("
+)
 TEST_COMMIT_RE = re.compile(r"^test(?:\([^)]*\))?:")
+# The test author ends its commits with this trailer (.claude/agents/test-author.md),
+# because a `test:` subject alone is what a worker's own first commit looks like too.
+TEST_AUTHOR_TRAILER_RE = re.compile(r"^Test-Author:[^\S\n]*\S", re.IGNORECASE | re.MULTILINE)
 
 CLOSES_RE = re.compile(r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)", re.IGNORECASE)
 SECTION_RE = re.compile(r"^##\s+For human review\s*$(.*?)(?=^##\s|\Z)", re.MULTILINE | re.DOTALL)
@@ -128,7 +161,9 @@ DEFECT_RE = _marker("defect")
 NEEDS_HUMAN_RE = _marker("needs\\s+human")
 CONFIRM_LATER_RE = _marker("confirm\\s+later")
 RESOLVED_RE = re.compile(r"\*\*\s*Resolved\s*\*\*\s+in\s+[0-9a-f]{7,40}\b", re.IGNORECASE)
-VERDICT_RE = re.compile(r"^\W*verdict\W*\s*merge\b", re.IGNORECASE | re.MULTILINE)
+# `[^\w\n]`, not `\W`, in everything that reads one line: `\W` and `\s` match a newline, so an
+# empty field would borrow the next line's text.
+VERDICT_RE = re.compile(r"^[^\w\n]*verdict[^\w\n]*merge\b", re.IGNORECASE | re.MULTILINE)
 
 # The review's statement of the AUTOMATION.md §7.3 checks: one line, naming each one.
 # A check that doesn't apply says so ("red n/a, docs only"); one left undone must not pass.
@@ -141,9 +176,30 @@ REQUIRED_CHECK_WORDS = {
 }
 CHECK_NOT_DONE_RE = re.compile(r"\bnot done\b|\bskipped\b", re.IGNORECASE)
 
-EVAL_BEFORE_RE = re.compile(r"^\W*before\W+(\d+(?:\.\d+)?)", re.IGNORECASE | re.MULTILINE)
-EVAL_AFTER_RE = re.compile(r"^\W*after\W+(\d+(?:\.\d+)?)", re.IGNORECASE | re.MULTILINE)
-EVAL_REASON_RE = re.compile(r"^\W*reason\W+\S", re.IGNORECASE | re.MULTILINE)
+EVAL_BEFORE_RE = re.compile(r"^[^\w\n]*before[^\w\n]+(\d+(?:\.\d+)?)", re.IGNORECASE | re.MULTILINE)
+EVAL_AFTER_RE = re.compile(r"^[^\w\n]*after[^\w\n]+(\d+(?:\.\d+)?)", re.IGNORECASE | re.MULTILINE)
+EVAL_REASON_RE = re.compile(r"^[^\w\n]*reason[^\w\n]+(\w.*)$", re.IGNORECASE | re.MULTILINE)
+
+# What a required field holds when nothing was really recorded.
+PLACEHOLDERS = frozenset(
+    {
+        "",
+        "n/a",
+        "na",
+        "nil",
+        "no",
+        "no decisions",
+        "none",
+        "none needed",
+        "none yet",
+        "not applicable",
+        "not needed",
+        "nothing",
+        "null",
+        "tbd",
+        "todo",
+    }
+)
 
 
 @dataclass
@@ -178,7 +234,9 @@ def infra_risk(f: ChangedFile) -> str | None:
     if f.patch is None:
         return f"{f.path}: no diff available to check for IAM or billing changes"
     if any(INFRA_RISK_RE.search(ln) for ln in changed_lines(f.patch)):
-        return f"{f.path} changes IAM, billing or budgets"
+        return f"{f.path} changes IAM, billing, budgets or service account keys"
+    if DELETE_RULE_RE.search(f.patch):
+        return f"{f.path} changes a lifecycle rule, which can delete content"
     return None
 
 
@@ -235,15 +293,20 @@ def heading(comment: str) -> str:
     return first.lstrip("#* ").strip()
 
 
+def is_placeholder(value: str) -> bool:
+    """True if a required field says nothing, whatever its case, punctuation or bold."""
+    return re.sub(r"(?:[^\w/]|_)+", " ", value).strip(" /").lower() in PLACEHOLDERS
+
+
 def has_confirm_later(body: str) -> bool:
-    """True if the header, above the first section, records a decision."""
+    """True if the header, above the first section, records a decision on the entry's line."""
     found = FIRST_SECTION_RE.search(body)
     header = HTML_COMMENT_RE.sub("", body[: found.start()] if found else body)
     entry = CONFIRM_LATER_RE.search(header)
     if not entry:
         return False
-    value = header[entry.end() :].strip().split("\n", 1)[0].split("·", 1)[0]
-    return value.strip().rstrip(".").lower() not in ("", "none")
+    value = header[entry.end() :].split("\n", 1)[0].split("·", 1)[0]
+    return not is_placeholder(value)
 
 
 def checks_statement_failure(review: str) -> str | None:
@@ -271,7 +334,8 @@ def evaluation_failure(owned: list[str], head: str) -> str | None:
     before, after = EVAL_BEFORE_RE.search(latest), EVAL_AFTER_RE.search(latest)
     if not before or not after:
         return "'Evaluation scores' has no 'Before:' and 'After:' lines"
-    if float(after.group(1)) < float(before.group(1)) and not EVAL_REASON_RE.search(latest):
+    reasons = [found.group(1) for found in EVAL_REASON_RE.finditer(latest)]
+    if float(after.group(1)) < float(before.group(1)) and all(map(is_placeholder, reasons)):
         return f"overall score fell from {before.group(1)} to {after.group(1)} with no 'Reason:'"
     return None
 
@@ -361,7 +425,7 @@ def hunks(patch: str) -> list[list[str]]:
 
 
 def assertion_changes(path: str, patch: str) -> list[str]:
-    """Assertions a test file's patch deletes or changes, and any skips it adds."""
+    """Assertions a test file's patch deletes or changes, and any skips or live marks it adds."""
     findings: list[str] = []
     for hunk in hunks(patch):
         removed = [ln[1:].strip() for ln in hunk if ln.startswith("-")]
@@ -372,7 +436,9 @@ def assertion_changes(path: str, patch: str) -> list[str]:
             if ASSERTION_RE.search(line) and line not in added:
                 findings.append(f"{path}: {'changed' if replaced else 'deleted'}: {line}")
         findings += [
-            f"{path}: skip added: {ln}" for ln in added if SKIP_RE.search(ln) and ln not in removed
+            f"{path}: skip or live marker added: {ln}"
+            for ln in added
+            if SKIP_RE.search(ln) and ln not in removed
         ]
     return findings
 
@@ -390,19 +456,29 @@ def diff_findings(files: list[ChangedFile]) -> list[str]:
     return findings
 
 
+def is_test_commit(commit: dict[str, Any]) -> bool:
+    message: str = commit["commit"]["message"]
+    return bool(TEST_COMMIT_RE.match(message))
+
+
+def has_test_author_trailer(commit: dict[str, Any]) -> bool:
+    """True if the message's last paragraph, where trailers go, has the trailer."""
+    message: str = commit["commit"]["message"]
+    return bool(TEST_AUTHOR_TRAILER_RE.search(message.rstrip().rsplit("\n\n", 1)[-1]))
+
+
+def test_author_commits(commits: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The `test:` commits with the trailer at the start of the branch (AUTOMATION.md §5.4)."""
+    return list(takewhile(lambda c: is_test_commit(c) and has_test_author_trailer(c), commits))
+
+
 def test_author_edits(commits: list[dict[str, Any]]) -> list[str]:
     """Lines that later commits removed from files in the test author's commits.
 
-    `commits` are REST commit objects, oldest first. The test author's are the `test:`
-    commits at the start of the branch (AUTOMATION.md §5.4). Adding to their files is
-    fine, so only removed lines are listed; a changed line shows as removed.
+    `commits` are REST commit objects, oldest first. Adding to their files is fine, so
+    only removed lines are listed; a changed line shows as removed.
     """
-
-    def subject(commit: dict[str, Any]) -> str:
-        message: str = commit["commit"]["message"]
-        return message.split("\n", 1)[0]
-
-    authored = list(takewhile(lambda c: TEST_COMMIT_RE.match(subject(c)), commits))
+    authored = test_author_commits(commits)
     their_files = {f["filename"] for c in authored for f in c.get("files", [])}
     findings: list[str] = []
     for commit in commits[len(authored) :]:
@@ -418,6 +494,24 @@ def test_author_edits(commits: list[dict[str, Any]]) -> list[str]:
                 if ln.startswith("-") and ln[1:].strip()
             ]
     return findings
+
+
+def authorship_notes(commits: list[dict[str, Any]]) -> list[str]:
+    """Commits whose author the report can't tell for certain, so a reviewer checks them."""
+    rest = commits[len(test_author_commits(commits)) :]
+    unmarked = list(takewhile(is_test_commit, rest))
+    notes = [
+        f"{c['sha'][:7]}: a leading test: commit with no Test-Author trailer. Counted as the "
+        "worker's, so the report can't tell whether it holds a test author's tests"
+        for c in unmarked
+    ]
+    notes += [
+        f"{c['sha'][:7]}: has the Test-Author trailer, but not as a test: commit at the start "
+        "of the branch. Counted as the worker's"
+        for c in rest
+        if has_test_author_trailer(c)
+    ]
+    return notes
 
 
 # --- GitHub (REST) -------------------------------------------------------------
@@ -516,12 +610,17 @@ def cmd_classify(number: int, label: bool) -> None:
 
 def cmd_tests(number: int) -> None:
     deleted = diff_findings(fetch_files(number))
-    edits = test_author_edits(fetch_commits(number))
+    commits = fetch_commits(number)
+    edits = test_author_edits(commits)
+    notes = authorship_notes(commits)
     print(f"PR #{number}: test change report")
-    print("Assertions deleted or changed, and skips added:")
+    print("Assertions deleted or changed, and skips or live markers added:")
     print("\n".join(f"  - {ln}" for ln in deleted) or "  none")
     print("Edits to the test author's tests:")
     print("\n".join(f"  - {ln}" for ln in edits) or "  none")
+    if notes:
+        print("Check by hand:")
+        print("\n".join(f"  - {ln}" for ln in notes))
 
 
 def cmd_merge(number: int, dry_run: bool) -> None:
