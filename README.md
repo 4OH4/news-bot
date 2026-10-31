@@ -40,7 +40,7 @@ docker run --rm newsfeed run
 
 ### Retrying failed extractions
 
-Each run's extract stage also retries failed articles whose failure looks temporary: timeouts (including HTTP 408), connection errors, HTTP 5xx and HTTP 429. It never retries robots.txt refusals, other 4xx errors (401, 403, 404, 410...), "no content" failures, or `paywalled` and `skipped` articles. A retry happens once the backoff for the attempt count has passed since `extraction.last_attempt_at`, up to the cap, and only while the article is inside the retry window. Every extraction attempt increments `extraction.attempts`, and retries are counted as `retried` in the run's extract stage counts. The policy is `should_retry` in `backend/src/newsfeed/extract/retry.py`.
+Each run's extract stage also retries failed articles whose failure looks temporary: timeouts (including HTTP 408), connection errors, HTTP 5xx and HTTP 429. It never retries robots.txt refusals, other 4xx errors (401, 403, 404, 410...), "no content" failures, or `paywalled` and `skipped` articles. A retry happens once the backoff for the attempt count has passed since `extraction.last_attempt_at`, up to the cap, and only while the article is inside the retry window. With `NEWSFEED_RETRY_PARTIAL` on, a kept partial article is fetched again on its backoff schedule even after a 403, 404, 402 or robots.txt refusal. Those retries keep the partial and only record the attempt and error, but an extractor `paywalled` result replaces the partial. Every extraction attempt increments `extraction.attempts`, and retries are counted as `retried` in the run's extract stage counts. The policy is `should_retry` in `backend/src/newsfeed/extract/retry.py`.
 
 ### JavaScript rendering (optional)
 

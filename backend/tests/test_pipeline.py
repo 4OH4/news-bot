@@ -1922,6 +1922,92 @@ def test_a_better_retry_still_refines_the_canonical_url(
     assert stored.extraction.status is ExtractionStatus.OK
 
 
+def test_a_longer_partial_retry_refines_the_canonical_url(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    url = "https://r.example.com/story/5"
+    longer = ExtractionResult(status=ExtractionStatus.PARTIAL, text="longer", word_count=240)
+    services = _services(
+        tmp_path,
+        repository,
+        _fetcher_with(url, CANONICAL_PAGE, headers=HTML),
+        FakeExtractor(default=longer),
+        retry=PARTIAL_POLICY,
+    )
+    _stored_partial(services, url)
+
+    _retry_partial(services)
+
+    (stored,) = repository.list_articles()
+    assert stored.canonical_url == "https://r.example.com/story/elsewhere"
+    assert stored.extraction.word_count == 240
+
+
+def test_a_better_retry_merges_into_a_stored_article_that_has_text(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    url = "https://r.example.com/story/6"
+    other = "https://r.example.com/story/elsewhere"
+    target = _article_for(other).model_copy(
+        update={
+            "extraction": ArticleExtraction(
+                status=ExtractionStatus.OK, method="earlier", word_count=300
+            )
+        }
+    )
+    repository.upsert_article(target)
+    services = _services(
+        tmp_path,
+        repository,
+        _fetcher_with(url, CANONICAL_PAGE, headers=HTML),
+        FakeExtractor(default=_ok("Full text.", word_count=400)),
+        retry=PARTIAL_POLICY,
+    )
+    _stored_partial(services, url)
+
+    stats = _retry_partial(services)
+
+    (stored,) = repository.list_articles()
+    assert stored.id == target.id
+    assert stats.stage_counts["extract"]["merged"] == 1
+
+
+class _FailingArticleBlobs(LocalBlobStore):
+    """Fails writes of article bodies once ``failing`` is set."""
+
+    failing = False
+
+    def put(self, key: str, data: bytes, content_type: str = "application/octet-stream") -> str:
+        if self.failing and key.startswith("articles/"):
+            raise OSError("disk full")
+        return super().put(key, data, content_type)
+
+
+def test_a_blob_failure_after_a_rekey_leaves_one_row_under_the_new_id(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    url = "https://r.example.com/story/7"
+    blobs = _FailingArticleBlobs(tmp_path / "blobs")
+    services = _services(
+        tmp_path,
+        repository,
+        _fetcher_with(url, CANONICAL_PAGE, headers=HTML),
+        FakeExtractor(default=_ok("Full text.", word_count=400)),
+        blobs=blobs,
+        retry=PARTIAL_POLICY,
+    )
+    _stored_partial(services, url)
+    blobs.failing = True
+
+    stats = _retry_partial(services)
+
+    (stored,) = repository.list_articles()
+    assert stored.canonical_url == "https://r.example.com/story/elsewhere"
+    assert stored.extraction.status is ExtractionStatus.PARTIAL
+    assert stored.extraction.word_count == 160
+    assert stats.error_count == 1
+
+
 def test_an_extractor_paywalled_retry_replaces_the_partial(
     tmp_path: Path, repository: SqliteRepository
 ) -> None:
