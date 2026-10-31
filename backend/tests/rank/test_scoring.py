@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 
 from newsfeed.models import Article, Source, SourceType
-from newsfeed.rank.interests import InterestsConfig
+from newsfeed.rank.interests import InterestsConfig, load_interests
 from newsfeed.rank.scoring import score_article
 
 NOW = datetime(2026, 10, 18, 12, 0, tzinfo=UTC)
@@ -209,3 +210,18 @@ def test_default_scoring_leaves_body_only_demotion_unmarked() -> None:
 def test_body_only_demotion_must_be_between_0_and_1() -> None:
     with pytest.raises(ValueError):
         config(scoring={"body_only_demotion": 1.5})
+
+
+def test_repo_config_weakens_body_only_demotions() -> None:
+    cfg = load_interests(Path(__file__).resolve().parents[3] / "config" / "interests.yaml")
+    plain_body = "Nothing of note happened."
+    plain, _ = score_article(article(), plain_body, cfg, None, NOW)
+
+    body_only, breakdown = score_article(article(), "Also: football results", cfg, None, NOW)
+    in_title, _ = score_article(article(title="Football final"), plain_body, cfg, None, NOW)
+
+    # Sport is weight -2: a body-only match counts a quarter, so 1 / (1 + 2 * 0.25)
+    assert body_only == pytest.approx(plain * 2 / 3)
+    assert breakdown["demote_body_only:sport"] == pytest.approx(0.25)
+    # A title match keeps full strength: 1 / (1 + 2 * 3)
+    assert in_title == pytest.approx(plain / 7)
