@@ -5,11 +5,14 @@ hour, the job runs `newsfeed run` with the Firestore and Cloud Storage adapters,
 and a budget emails an alert as spending grows. ADR-0004
 ([`docs/adr/0004-infrastructure-as-code.md`](../docs/adr/0004-infrastructure-as-code.md))
 records the approach: a one-off `gcloud` bootstrap, then everything else in
-Terraform, applied only by the human from their own machine.
+Terraform. ADR-0007
+([`docs/adr/0007-agent-infrastructure-scope.md`](../docs/adr/0007-agent-infrastructure-scope.md))
+sets who applies it.
 
-Agents write and review this code. They never run `terraform init` against the
-real backend, `plan`, `apply` or `destroy`, or any `gcloud` command that changes
-resources.
+The human does the first-time setup below, including the first `terraform apply`,
+and adds secret values. After that, agents apply merged changes with a limited
+service account inside the development scope. That account can't create or change
+IAM, budget or secret resources, so the human applies those changes too.
 
 ## What is here
 
