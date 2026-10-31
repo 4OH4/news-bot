@@ -62,6 +62,13 @@ ensure_logins() {
   fi
 }
 
+# The image tag names a commit, so that commit must be what gets built.
+# terraform init writes the lock file, which an agent commits afterwards.
+require_clean_tree() {
+  [[ -z "$(git -C "$REPO_ROOT" status --porcelain -- . ':!infra/terraform/.terraform.lock.hcl')" ]] ||
+    die "commit or stash your changes first, so the image matches its tag"
+}
+
 run_infra() {
   log "Bootstrapping $PROJECT_ID"
   "$REPO_ROOT/infra/bootstrap.sh" "$PROJECT_ID" "$BILLING_ACCOUNT" "$REGION"
@@ -88,10 +95,6 @@ run_infra() {
 }
 
 run_deploy() {
-  # The image tag names a commit, so that commit must be what gets built.
-  [[ -z "$(git -C "$REPO_ROOT" status --porcelain)" ]] ||
-    die "commit or stash your changes first, so the image matches its tag"
-
   local repository job schedule bucket tag
   repository="$(terraform -chdir="$TF_DIR" output -raw image_repository)"
   job="$(terraform -chdir="$TF_DIR" output -raw job_name)"
@@ -101,8 +104,11 @@ run_deploy() {
 
   # A scheduled run could otherwise overlap the run below, and both would
   # fetch the same sites and write to Firestore.
+  # It's already paused if an earlier run failed, and pausing it again may fail.
   log "Pausing the schedule"
-  gcloud scheduler jobs pause "$schedule" --location="$REGION"
+  local state
+  state="$(gcloud scheduler jobs describe "$schedule" --location="$REGION" --format='value(state)')"
+  [[ "$state" != "ENABLED" ]] || gcloud scheduler jobs pause "$schedule" --location="$REGION"
   PAUSED=yes
 
   log "Building and pushing $tag"
@@ -143,6 +149,9 @@ esac
 require_tools git gcloud terraform
 [[ "$command" == "infra" ]] || require_tools docker
 load_values
+# Makes every gcloud call use the project in terraform.tfvars.
+export CLOUDSDK_CORE_PROJECT="$PROJECT_ID"
+[[ "$command" == "infra" ]] || require_clean_tree
 ensure_logins
 
 [[ "$command" == "deploy" ]] || run_infra
