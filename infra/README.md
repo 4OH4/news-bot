@@ -35,7 +35,7 @@ read-only roles let it refresh them, but never read secret values.
 | `terraform/outputs.tf` | Names the deploy workflow and the steps below need. |
 | `terraform/.terraform.lock.hcl` | The provider versions, so CI and you use the same ones. Update it with `terraform init -upgrade`. |
 
-The `Infra` workflow (`.github/workflows/infra.yml`) runs `terraform fmt -check`, `init -backend=false` and `validate` on every PR that touches `infra/`. It is offline, needs no credentials and never plans or applies.
+The `Infra` workflow (`.github/workflows/infra.yml`) runs `terraform fmt -check`, `init -backend=false` and `validate` on every PR that touches `infra/`. It needs no credentials or secrets (it only downloads the provider) and never plans or applies.
 
 Firestore and the content bucket hold the data, so both have `prevent_destroy`:
 a plan that would delete them fails instead. The content bucket is private;
@@ -112,7 +112,7 @@ fails, the schedule stays paused until a later `deploy` succeeds.
 
    The first apply takes a few minutes; the Firestore indexes keep building in
    the background for a few more. `init` writes `.terraform.lock.hcl`: leave it
-   in place, and an agent commits it.
+   in place; it is committed already, and `terraform init` only changes it if the provider version changes.
 
 6. Pause the scheduler first. It has been live since step 5, and Cloud Run
    lets two runs of the job overlap: once the real image is in place, a
