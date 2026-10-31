@@ -178,7 +178,9 @@ Agents need to create, change and destroy cloud resources during development, so
 
 - The human sets up the scope once: a separate development project, a service account limited to it, and short-lived credentials. No long-lived keys are stored on disk.
 - Inside that scope, agents can run `terraform apply`, `terraform destroy` and `gcloud` commands that change resources.
+- `terraform apply` runs only after a change is merged, from up-to-date `main`, so nothing reaches the cloud before its review.
 - Agents can't change IAM, billing or budgets, or delete the project. The service account's roles enforce this, so it doesn't rely on instructions.
+- The development service account has no Secret Manager access. Permission deny rules are prefixes that a reordered command can get past, so they are only a second line of defence behind these roles.
 - Budget alerts don't stop spending, so the scope also needs quotas and resource limits.
 - Resources are labelled so that leftovers are easy to find, and the milestone report lists anything still running.
 
@@ -188,7 +190,7 @@ Agents need to create, change and destroy cloud resources during development, so
 
 Agents run and assess evaluations themselves. For each PR that touches `extract/`, the lead runs `make eval`, commits the generated `eval/results/` file to the branch and posts the before and after scores on the PR. Because an agent could improve a score by changing the expected answer, two rules apply:
 
-- A change to `eval/urls.yaml` or the scorer goes in its own PR, never with extraction code.
+- A change to `eval/urls.yaml`, the scorer or the scorer's data (`eval/boilerplate.txt`) goes in its own PR, never with extraction code.
 - Every such change is a `Confirm later` item, and the milestone report shows the score before and after it.
 
 ## 7. Test-first development and review
@@ -250,8 +252,17 @@ A chain of small dependent issues in one area can still go to one test author an
 | Tier | Contents | Who merges |
 |---|---|---|
 | **A** | Everything not listed in B or C, including all backend code, `client/`, tests and docs | Delivery manager |
-| **B** | Decide-and-record changes: `models.py`, `ports.py`, ADRs, new dependencies, `config/interests.yaml`, `config/sources.yaml`, `eval/urls.yaml`, the eval scorer, test infrastructure (`conftest.py`, `fakes.py`, the network guard, the contract suites), `docs/feed.schema.json`, `docs/feed.example.json`, `REVIEW.md`, `PROJECT_PLAN.md`, `infra/` outside Tier C | Delivery manager, with a `Confirm later` entry |
-| **C** | `.claude/`, `.github/`, `scripts/`, `backend/tests/scripts/`, `Makefile`, `.pre-commit-config.yaml`, `.gitignore`, `.dockerignore`, `backend/Dockerfile`, `AUTOMATION.md`, `CLAUDE.md`, `fetching/`, `docs/milestones/`, `infra/` changes to IAM, billing, budgets, service account keys or delete lifecycle rules, and any `needs-human` PR | Human |
+| **B** | Decide-and-record changes: `models.py`, `ports.py`, ADRs, new dependencies, `config/interests.yaml`, `config/sources.yaml`, `backend/pyproject.toml` outside its `[tool.*]` tables, `eval/urls.yaml`, `eval/boilerplate.txt`, the eval scorer, test infrastructure (any `conftest.py` or `fakes.py` under `backend/tests/`, the network guard, the contract suites), `docs/feed.schema.json`, `docs/feed.example.json`, `REVIEW.md`, `PROJECT_PLAN.md`, `infra/` and Terraform files outside Tier C | Delivery manager, with a `Confirm later` entry |
+| **C** | `.claude/`, `.github/`, `scripts/`, `backend/tests/scripts/`, `.gitignore`, `.dockerignore`, `backend/Dockerfile`, `AUTOMATION.md`, `CLAUDE.md`, `fetching/`, `docs/milestones/`; the files that define the checks (below); infrastructure changes that touch IAM or other access, billing, budgets, service accounts or delete rules, or that can destroy stored data (below); and any `needs-human` PR | Human |
+
+**Files that define the checks.** Each tool takes the nearest configuration it finds, so these are Tier C by name in any directory: `Makefile`, `.pre-commit-config.yaml`, `pytest.ini`, `pytest.toml`, `tox.ini`, `setup.cfg`, `ruff.toml`, `mypy.ini`, `.coveragerc`, their dotted forms, any `pyproject.toml` other than `backend/pyproject.toml`, any `conftest.py` outside `backend/tests/`, and the client's equivalents (`tsconfig*.json`, ESLint, Prettier, Jest, Vitest and Playwright configuration). In `backend/pyproject.toml`, any change inside a `[tool.*]` table, or to a table header, is Tier C. `tier.py` reads the file at the head to tell, because a patch's context lines don't show which table a line is in. Dependency changes there stay Tier B, unless they need a `[[tool.mypy.overrides]]` entry.
+
+**Infrastructure.** These rules cover `infra/` and any `*.tf`, `*.tfvars` or `*.tf.json` file, including a file moved out of `infra/`. A change is Tier C if:
+
+- its whole patch, context lines included, mentions IAM, roles, `member` or `members`, policies, bindings, permissions, ACLs, public access, service accounts, billing or budgets, as a one-line `member` change names none of these on the changed line;
+- its whole patch mentions a delete rule: `lifecycle_rule`, a `Delete` action or a Firestore `ttl_config`;
+- a changed line sets `force_destroy` to anything but `false`, changes a protection or retention setting (`deletion_protection`, `delete_protection_state`, `deletion_policy`, `prevent_destroy`, `retention_policy`, `soft_delete_policy`), adds a `removed` block, or runs a delete command;
+- it removes or relabels a `google_storage_bucket`, a `google_firestore_*` resource, `google_project` or a `module`, or changes the `count` or `for_each` of one.
 
 `tier.py merge` refuses unless all of these hold:
 
@@ -264,7 +275,7 @@ A chain of small dependent issues in one area can still go to one test author an
 
 A feature with resolved defects can now merge after a clean second review, and one size limit applies to every PR: 400 source lines and 1,500 lines in total. The old feature conditions, including `Deviations: none` and `Tier A feature: confirmed`, are removed. The human can still revert any merge, or add `hold` to stop one.
 
-The delivery manager sends an oversized PR back to a worker to split. On the 25 tiered PRs, these rules would have allowed 21 agent merges (84%) and left 4 for the human: three that set up the workflow itself, and #125, which includes billing and IAM. #108 counts as an agent merge on the assumption that it would have been split.
+The delivery manager sends an oversized PR back to a worker to split. On the 25 tiered PRs, these rules would have allowed 20 agent merges (80%) and left 5 for the human: three that set up the workflow itself, #125, which includes billing and IAM, and #109, which added a `mypy` override. #108 counts as an agent merge on the assumption that it would have been split.
 
 ## 10. Measuring it
 
@@ -400,7 +411,8 @@ Some things are deliberately kept out of the repo:
 | 2026-10-31 | Retire the usage hook in favour of light pacing and automatic resume | Reaching the limit costs nothing but some repeated work, so a hard stop is out of proportion |
 | 2026-10-31 | Respect the weekly limit too, and pause at about 90% until the human decides | Reaching it can stop development and the human's own use for days |
 | 2026-10-31 | No restart from outside the lead's session for now | It needs a safe headless setup, and pauses aren't yet a proven problem |
-| 2026-10-31 | The files that define the checks, and the tests of the merge gate, are Tier C | Otherwise an agent could weaken `make lint` or `tier.py`'s tests without the human, against principle 6 |
+| 2026-10-31 | The files that define the checks, wherever they sit, including `[tool.*]` tables in `pyproject.toml`, and the tests of the merge gate, are Tier C | Otherwise an agent could weaken `make lint`, `make test` or `tier.py`'s tests without the human, against principle 6 |
+| 2026-10-31 | `terraform apply` runs only after merge, and the development service account has no Secret Manager access | Review comes before anything reaches the cloud, and the limit on secrets rests on roles, not on deny rules |
 
 ## 15. Open questions
 
