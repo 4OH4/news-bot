@@ -164,12 +164,14 @@ Each phase has a clear exit criterion. Later phases may be re-planned based on w
 - Publish `feed.json` snapshot; run stats and structured logging.
 - Added by ADR-0003: paywall and teaser detection; publish non-clean items as headline, summary and link; measure live extraction from GCP against the Phase 1 baseline.
 - **Exit:** the pipeline runs hourly unattended for a week within budget, and the feed snapshot is accessible.
+- **Milestone demo:** open the published `feed.json` from the cloud bucket, or a preview built from it, and see ranked articles from the latest hourly run, with that run's stats and the week's cost so far.
 
 ### Phase 3: Reader client (PWA)
 - Feed list, article reader view (typography, dark mode), offline cache.
 - Feedback capture through a thin API (Cloud Run + FastAPI); authentication restricted to me.
 - Installable on the Android home screen.
 - **Exit:** I use it daily in place of the Google feed for two weeks.
+- **Milestone demo:** install the PWA on my Android phone, read today's feed, open an article, like one, and read it again offline.
 
 ### Phase 4: Personalisation
 - Embedding provider interface (Vertex AI or a local model); interest centroids built from liked and read articles.
@@ -177,13 +179,16 @@ Each phase has a clear exit criterion. Later phases may be re-planned based on w
 - Hybrid score combining rules, similarity, freshness, source weight and a diversity penalty, with a transparent score breakdown per article.
 - Near-duplicate story clustering.
 - **Exit:** a measurable lift in open and read rate versus rules-only (simple A/B by day or by feed slot).
+- **Milestone demo:** read the same day's feed with and without personalisation, open one article's score breakdown, and see the A/B results so far.
 
 ### Phase 5: Native Android and widget (optional)
 - Kotlin/Compose app or Trusted Web Activity wrapper; a home-screen widget showing the top stories.
 - Optional FCM push for high-scoring breaking stories.
+- **Milestone demo:** install the app and add the widget to the home screen, then open a top story from it.
 
 ### Phase 6: Enhancements (backlog of ideas)
 - LLM summaries and tags; a "why am I seeing this" view; a "what's trending" discovery layer; source discovery suggestions; full-text search.
+- **Milestone demo:** each enhancement chosen for the phase, shown in the reader client on today's feed.
 
 ## 7. Extraction Evaluation Approach
 
@@ -201,8 +206,12 @@ Extraction quality is the riskiest assumption, so it gets a dedicated, repeatabl
 /
 ├── CLAUDE.md                 # conventions & guidance for Claude Code agents
 ├── PROJECT_PLAN.md           # this document
+├── AUTOMATION.md             # how the project is built: phases, agents, merge rules
+├── REVIEW.md                 # failure patterns from real defects
 ├── docs/
-│   └── adr/                  # architecture decision records (0001-*.md)
+│   ├── adr/                  # architecture decision records (0001-*.md)
+│   ├── phases/               # phase designs: phase-<n>.md
+│   └── milestones/           # milestone reports: phase-<n>.md
 ├── config/
 │   ├── sources.yaml
 │   ├── extraction.yaml       # per-domain extractor overrides
@@ -243,7 +252,7 @@ Extraction quality is the riskiest assumption, so it gets a dedicated, repeatabl
 ### 9.1 Where the backlog lives
 **GitHub Issues + a GitHub Project board** is the backlog. It is visible to me, to Claude Code locally (via the `gh` CLI) and to Claude in GitHub Actions, and every issue links naturally to its branch and PR.
 
-- **Project board columns:** `Backlog` → `Ready` → `In progress` → `Agent review` → `Human review` → `Done`. A PR sits in `Agent review` while agents review and rework it, and moves to `Human review` once the lead has posted its review and it waits only for me.
+- **Project board columns:** `Backlog` → `Ready` → `In progress` → `Agent review` → `Human review` → `Done`. A PR sits in `Agent review` while agents review and rework it, and moves to `Human review` when it waits only for me: a Tier C PR, once the delivery manager has posted its review.
 - **Milestones** = phases (`Phase 0`, `Phase 1`, ...).
 - **Labels:**
   - `area:ingest|extract|rank|store|api|client|infra|eval|docs`
@@ -257,6 +266,7 @@ Extraction quality is the riskiest assumption, so it gets a dedicated, repeatabl
 Every `agent-ready` issue must contain:
 - **Context:** why the work matters, written for me first. It opens with a short plain-language paragraph (the problem or gap today, what the change makes possible, and what it unblocks), followed by links to the relevant plan section, requirement IDs and ADRs.
 - **Task:** what to build. It opens with a **Summary** of two to four sentences (what is being built and how it fits the pipeline, or the workflow for infra and docs issues), followed by **Details**, the precise spec.
+- **Acceptance examples:** concrete given/when/then cases in plain language, which the test author turns into tests.
 - **Acceptance criteria:** testable checkboxes.
 - **Files / modules in scope**, and anything explicitly *out of scope*, to limit collisions between agents.
 - **Interfaces touched**, noting any change to `models.py` or `ports.py`.
@@ -266,28 +276,16 @@ Every `agent-ready` issue must contain:
 ### 9.3 Making work parallelisable
 - **Contracts first.** `models.py` and `ports.py` are defined and merged early, by a human or a single agent. After that, stages and adapters can be built in parallel against stable interfaces.
 - **Vertical slices by module.** Issues are scoped to one `area`/directory wherever possible, so parallel agents rarely edit the same files.
-- **Contract changes are serialised.** Any change to `models.py`/`ports.py` is its own issue, labelled `needs-human`, and merged before the dependent work.
+- **Contract changes are serialised.** Any change to `models.py`/`ports.py` is its own issue and Tier B PR, merged before the dependent work.
 - **Fixtures over network.** Tests use synthetic fixtures and fakes, so agents can work offline and deterministically. Evaluation snapshots sit in a shared folder outside the repo, so parallel worktrees all see the same set.
 
 ### 9.4 How agents run
-- **Local parallel agents:** several Claude Code sessions, each in its own **git worktree** and branch (`issue-<n>-<slug>`), each taking one `Ready` + `agent-ready` issue.
-- **Subagents within a session:** for fan-out tasks such as "write fixtures and expected values for these 20 URLs" or "review this PR against the acceptance criteria".
-- **Claude in GitHub Actions:** triggered by an `@claude` mention on an issue or PR, for small, well-specified issues, follow-up fixes and PR review.
-- **Lead and workers (adopted 2026-10-11):** one lead session runs the board. It promotes `agent-ready` issues to `Ready` once their dependencies are merged, starts up to 3 worker agents (one per issue, each in its own worktree), has each PR reviewed adversarially by a fresh-context, read-only reviewer agent (which lists its recommendations and risk areas under "For human review" in the PR, while the worker fixes any defects), and flags what needs me. Workers also draft PRs for `needs-human` issues that have an "Agent prep" section. Workers and reviewers are project subagents in `.claude/agents/`. Workers run on Sonnet (on Opus for `needs-human` or design-heavy issues), and the lead and reviewers run on Opus. This keeps token use down while the adversarial review stays on the stronger model (#47). The mechanics are in `CLAUDE.md` ("Agent automation"), with `scripts/board.py` for board moves and `.claude/settings.json` for the shared permission allow and deny lists.
-- **Risk tiers and chains (adopted 2026-10-17, #67):** I was the bottleneck, so I now spend my attention by risk. `scripts/tier.py` classifies each PR from its diff. The lead merges **Tier A** PRs (small changes to docs, tests, eval results or one stage package, including small features built exactly as their agent-ready issue planned, #70) once CI, the reviewer and its own re-check are clean, and I read them afterwards. I merge **Tier B** (larger or off-plan features, and everything else) and **Tier C** (contracts, ADRs, evaluation expectations, source and interest curation, infrastructure, and the automation itself). PR descriptions open with a short header and summary, with the evidence collapsed. A chain of small dependent issues in one area can be delivered as one PR.
-- **Guardrails:**
-  - CI must pass.
-  - Every PR links its issue (`Closes #N`).
-  - A human merges every Tier B and C PR. The lead merges Tier A PRs only through `scripts/tier.py merge`, which checks CI, the reviews and the head SHA.
-  - Agents never handle production credentials. Infrastructure applies and secret changes are `needs-human`.
+The way of working is in `AUTOMATION.md`, which replaced the lead-and-workers model on 2026-10-31. In brief: I agree each phase's goal, and agents build the phase. A lead session owns delivery, an architect turns the phase into a design and issues, and a delivery manager runs batches of issues through test author, worker, CI and an independent reviewer, then merges through `scripts/tier.py`. I review a working demo and the recorded decisions at each milestone.
+
+Claude in GitHub Actions is still available: an `@claude` mention on an issue or PR handles small, well-specified follow-ups.
 
 ### 9.5 What stays human
-My role is to **read and merge**. Agents prepare every change, including ADRs, contract PRs and curation drafts, as a merge-ready PR. Merging is my approval, and comments are my change requests, which agents then apply. I don't edit files unless I'm fixing a mistake. The decisions below remain mine, but I make them by reviewing and merging (or declining) rather than by writing:
-- Architecture decisions and ADR approval.
-- Curating the evaluation set's expectations (judging what "clean" means).
-- GCP project setup, billing, IAM and secrets.
-- Interest configuration and taste judgments.
-- Merging to `main`, apart from Tier A PRs, which the lead merges (§9.4). I can revert one, put `hold` on one, or change the tier rules, which are themselves Tier C.
+`AUTOMATION.md` §6 is the full list. Agents make reversible decisions and record them for the milestone review. I set the intent, sign off each milestone by merging its report, merge Tier C PRs, and handle what agents can't: credentials, cloud project setup, IAM, billing, paid services, and anything that can't be reversed. I can revert any merge, or add `hold` to stop one. I don't edit files unless I'm fixing a mistake.
 
 ### 9.6 CLAUDE.md should cover
 - Project summary and a pointer to this plan.
@@ -341,6 +339,6 @@ Once 6 and 7 are merged, issues 8–10, 12 and 13 can run in parallel. 11, 14, 1
 | Occasional commits from Windows introducing CRLF line endings | `.gitattributes` enforces LF; development itself happens on Ubuntu |
 | Agents colliding on shared files | Contracts first; area-scoped issues; serialised contract changes |
 | **Open:** PWA framework choice | Decide at the start of Phase 3 (ADR) |
-| **Decided:** Terraform vs scripted gcloud | Terraform, after a one-off `gcloud` bootstrap of the project and state bucket; only I apply changes ([ADR-0004](docs/adr/0004-infrastructure-as-code.md)) |
+| **Decided:** Terraform vs scripted gcloud | Terraform, after a one-off `gcloud` bootstrap of the project and state bucket ([ADR-0004](docs/adr/0004-infrastructure-as-code.md)); agents apply changes inside a limited development scope, and production is out of scope for now ([ADR-0007](docs/adr/0007-agent-infrastructure-scope.md)) |
 | **Decided:** content retention period | Metadata and run stats kept indefinitely; article content deleted after 30 days by a Cloud Storage lifecycle rule, then shown as headline and link ([ADR-0005](docs/adr/0005-content-retention.md)) |
 | **Open:** embedding provider (Vertex AI vs local) | Decide in Phase 4 based on cost and quality |

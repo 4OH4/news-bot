@@ -1,17 +1,17 @@
 ---
 name: lead-finish
-description: End a lead development session for news-bot cleanly. Waits for or accounts for running workers, tidies worktrees and branches, syncs the board, records a handoff note for the next session, and tells the user what's ready to merge. Use when the user says they're stopping, wrapping up, switching to a new chat, or runs /lead-finish.
+description: End a lead development session for news-bot cleanly. Accounts for a running delivery manager, tidies worktrees and branches, syncs the board, records a handoff note for the next session, and tells the user where the phase stands. Use when the user says they're stopping, wrapping up, switching to a new chat, or runs /lead-finish.
 ---
 
 # Lead session: finish
 
-## 1. Account for workers
+## 1. Account for agents
 
-List any worker or reviewer agents still running. For each one, either:
-- wait for it to report, then continue its PR as in `/lead-start` step 4; or
-- if the user is leaving now, note it as still running. Its worktree will be kept and listed next session.
+List any delivery manager or architect still running. For each one, either:
+- wait for it to report, then handle the report as in `/lead-start`; or
+- if the user is leaving now, note it as still running. Its worktrees will be kept and listed next session, and a new delivery manager can pick up from the board.
 
-Never remove a worktree that a running worker or reviewer is using.
+Never remove a worktree that a running agent is using.
 
 ## 2. Tidy
 
@@ -27,21 +27,22 @@ Anything with uncommitted or unmerged work is **kept and listed**. Never force-d
 ## 3. Hand off
 
 Update the `lead-handoff` memory file, replacing its contents. Use absolute dates. Record:
-- what merged this session, marking the PRs the lead merged itself (Tier A), and the merge queue (cards in "Human review") with what each merge unlocks, as in `/lead-start` step 5;
+- the phase, its stage (`/lead-start` step 2) and the decisions issue number;
+- what the last batch merged and what is parked, and the merge queue (cards in "Human review") with what each merge unlocks;
 - what is In progress, in Agent review or kept back, and why;
-- the next steps: which issues become Ready after the pending merges, which `needs-human` PRs to prepare next, and any decision waiting on the user.
+- any usage pause: which limit and when it resets. A scheduled check dies with the session, so the next `/lead-start` picks the work up;
+- the next steps, including the next batch and any decision waiting on the user.
 
 Don't copy information the board or git history already holds. Record only what the next session needs to act.
 
 ## 4. Report
 
 Tell the user, briefly:
-- the merge queue, what each merge unlocks, and what agents are working on, in the format of `/lead-start` step 5;
-- the Tier A PRs the lead merged this session, one line each;
+- where the phase stands, and the report sections from `/lead-start` that have anything in them;
 - anything only they can do;
 - how to resume: start a new conversation in this folder with `/lead-start`.
 
-If the idle check in `/lead-start` step 6 started this finish, no agents are running and the human isn't watching. Don't wait for or ask them anything. Delete any idle check still scheduled (`CronList`, then `CronDelete`). Open the report with a banner that can't be missed when they come back:
+If the idle check in `/lead-start` started this finish, no agents are running and the human isn't watching. Don't wait for or ask them anything. Delete any idle check still scheduled (`CronList`, then `CronDelete`). Open the report with a banner that can't be missed when they come back:
 
 ```
 ## ✅ Lead session finished at <HH:MM, date> (idle since <HH:MM>)

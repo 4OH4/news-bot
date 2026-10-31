@@ -1,4 +1,5 @@
-Closes #<!-- N; one line per issue for a chain --> · **Tier** <!-- A/B/C, from `python3 scripts/tier.py classify <PR>` --> · **Merge after:** <!-- "any order", or the PRs that must merge first --> · **Deviations:** <!-- "none", or each departure from the issue: scope change, judgement call the issue didn't settle, unforeseen problem -->
+Closes #<!-- N; one line per issue for a chain --> · **Tier** <!-- A/B/C, from `python3 scripts/tier.py classify <PR>` --> · **Merge after:** <!-- "any order", or the PRs that must merge first -->
+**Confirm later:** <!-- Each decision the issue didn't settle: what you chose, the reason, and how to undo it. A dependency also states its licence and why that package. Required on Tier B. Delete this line if there are none. -->
 
 ## For human review
 <!-- Filled in by the independent reviewer: judgement calls you approve by merging, risks and open questions, one or two lines each. "None" if there are none. -->
@@ -20,13 +21,13 @@ make lint
 make test
 ```
 
-<!-- Commands run and their results. If extract/ was touched, the before/after `make eval` summary. -->
+<!-- Commands run and their results. If extract/ was touched, the lead adds the evaluation scores in a comment. -->
 
 </details>
 
 <details><summary>Contracts, design notes and follow-ups</summary>
 
-- [ ] No changes to `models.py` or `ports.py` (or: linked `needs-human` issue #___)
+- [ ] No changes to `models.py` or `ports.py` (or: this is the contract change's own PR)
 - [ ] No cloud SDK imports outside `adapters/`
 
 **Design notes:** <!-- Notable choices worth capturing as an ADR, or "None". -->

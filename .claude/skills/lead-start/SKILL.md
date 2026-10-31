@@ -1,11 +1,13 @@
 ---
 name: lead-start
-description: Start (or resume) a lead development session for news-bot. Syncs the repo and board, starts worker agents on Ready issues, prepares unblocked needs-human PRs, reviews finished PRs, and reports what is ready to merge. Use when the user says "continue", "start", "resume development" or runs /lead-start.
+description: Start (or resume) a lead development session for news-bot. Syncs the repo and board, works out where the phase stands, starts the architect or a delivery manager for the next batch, handles usage pauses, and reports. Use when the user says "continue", "start", "resume development" or runs /lead-start.
 ---
 
 # Lead session: start
 
-You are the **lead** described in CLAUDE.md, "Agent automation". The human only reads and merges; never ask them to edit files.
+You are the **lead** in `AUTOMATION.md` §5.1: accountable for delivering the phase. Read `AUTOMATION.md` once at the start of a session. The human never edits files, and reviews a working demo at each milestone.
+
+To protect your context, read batch reports, not diffs or per-agent results, and send agents issue numbers instead of restating issues.
 
 ## 1. Sync
 
@@ -15,138 +17,153 @@ Run `python3 scripts/lead.py start` from the repo root. It:
 - removes merged worktrees and branches;
 - syncs the board.
 
-Read its "Kept back" list. A worktree that is unmerged or has uncommitted changes means an earlier worker's work was left behind. Check its PR (`gh pr list --head <branch>`) and either resume it or report it.
+Read its "Kept back" list. A worktree that is unmerged or has uncommitted changes means an earlier agent's work was left behind, which is normal after a usage cut-off. Check its PR (`gh pr list --head <branch>`). A new delivery manager picks up work from the board and open branches, so list anything it needs to know in its task message.
 
-## 2. Plan
+Then read the handoff note, and run `python3 scripts/usage.py`.
 
-- Read the board status that `lead.py` printed, and the open PRs.
-- Count the Ready `agent-ready` issues. Read each one with `gh issue view <n> --repo 4OH4/news-bot --json title,body,labels,state`.
-- Find `needs-human` issues whose dependencies are all closed and which have an "Agent prep" section. Run `python3 scripts/board.py show` for the list.
-- Choose up to **3 concurrent workers** in total, counting issues already In progress. Never run two issues whose "Files / modules in scope" overlap, except the shared files listed in CLAUDE.md, which are handled by rebasing.
-- **Chains.** If a Ready issue has dependents that are blocked only by it (and, in turn, by each other), consider giving the whole chain to one worker as one PR, so the human reviews and merges once. Do it only when every issue in the chain:
-  - is `agent-ready`, not `needs-human`, and changes no contract;
-  - is in the same area, with overlapping files in scope;
-  - adds up with the others to no more than about a day's work (one M plus S issues, or up to three S issues).
+## 2. Find where the phase stands
 
-  Otherwise keep them separate. A chain counts as one worker. Its later issues stay in Backlog (`promote` won't move them while the first is open); the worker moves their cards.
+Take the first of these that applies:
 
-## 3. Start workers
+1. **The milestone is awaiting sign-off:** the report PR is open. Act on any comments from the human (step 7). Building stops until the human merges it, though the architect may draft the next phase.
+2. **The phase has no design:** no `docs/phases/phase-<n>.md`. Confirm the goal and exit criterion from `PROJECT_PLAN.md` §6, then start the architect (step 3).
+3. **Ready issues or unfinished PRs exist:** start the next batch (step 4).
+4. **Every issue in the phase is closed, or parked:** prepare the milestone (step 6).
 
-For each chosen issue, use the Agent tool with `subagent_type: worker`, `isolation: worktree` and `run_in_background: true`. Send the short worker task message below. Don't wait on one worker before starting the next.
+The six PRs open when this model began (#123, #124, #125, #126, #129, #130) finish under the rules they were written for: the human merges them, and `tier.py merge` refuses them. Keep them in the merge queue until they are merged, and send them back for a rebase if they conflict.
 
-Workers run on Sonnet by default (set in `.claude/agents/worker.md`). Pass `model: opus` instead for:
-- `needs-human` issues (ADRs, contracts, curation);
-- issues that call for design judgement the issue doesn't settle.
+## 3. Design
 
-If the human requests changes on a PR that was reported to them with defects left after two reviews, start a fresh `worker` with `model: opus` for that rework.
+Start `subagent_type: architect` with `isolation: worktree`, naming the phase or epic. When it reports:
+- check the design and issues against the project's goals and later phases, and send it back if they don't fit;
+- send the phase design PR through a delivery manager as the first batch. It takes the normal route without a test author: an independent reviewer, then a merge;
+- copy the architect's `Confirm later` items to the decisions issue (step 5).
 
-Keep the lead and the reviewers on Opus. If reviewers start finding noticeably more defects in Sonnet workers' PRs, use Opus for more issue types and note it in the handoff.
+Call the architect back whenever a design problem emerges, and it updates the file through the same route.
 
-## 4. Review as workers report back
+## 4. Run a batch
 
-For each finished PR:
-1. **Independent review.** Start a reviewer with the Agent tool, using `subagent_type: reviewer`, `isolation: worktree` and `run_in_background: true`, and the short reviewer task message below. Give it only the PR number, the issue number and the consuming issues. Don't pass on the worker's report or your own view of the PR, because the point is a fresh context. Only start it once that PR's worker has finished.
-2. **When the reviewer reports:**
-   - For each defect it lists, send the worker back with the specific change: by SendMessage if it is still running, otherwise by starting a fresh `worker` with the rework task message below, which works on the existing branch. Before starting a fresh worker, free the branch: if the finished worker's worktree is clean (`git -C <path> status --porcelain` prints nothing) and its HEAD equals `origin/<branch>`, run `git worktree remove <path>`; otherwise don't start the worker, and report the worktree to the human instead. If the rework changes behaviour, start a fresh reviewer afterwards. At most two reviews per PR: if the second still finds defects, report the PR to the human instead of starting a third, and `python3 scripts/board.py set <N> "Human review"`.
-   - The worker marks each item it fixed "**Resolved** in <sha>" in "For human review"; check those markers when you re-run the checks, and leave the rest for the human. Don't otherwise rewrite the reviewer's items; if you disagree with one, say so in your Lead review comment.
-3. **Re-run the checks.** In a detached checkout, never one holding the branch (`git fetch origin`, then `git checkout --detach origin/<branch>`, in the worker's worktree or your own), run `uv sync` in `backend/`, then `make lint` and `make test`. Run `make eval` too if `extract/` was touched. Confirm CI is green.
-4. **Shared files.** If the PR shares `pyproject.toml` or `uv.lock` with another open PR, either stack it on that PR's branch (resolve `uv.lock` with `uv lock`) or tell the human the merge order.
-5. **Tier.** Run `python3 scripts/tier.py classify <P> --label`. If the PR header's tier is wrong, correct that line yourself.
-6. **Comment.** Post a short comment headed "Lead review" on the PR: a verdict line (`Verdict: merge`, or what is still needed), what you re-ran, the merge order, and the head SHA you checked (`Checked at <first 7 characters of the SHA>`). `tier.py merge` needs that verdict line and SHA. Push nothing after it; if the branch changes, re-check and comment again.
-7. **Merge or hand over.**
-   - **Tier A:** run `python3 scripts/tier.py merge <P> --dry-run`, then `python3 scripts/tier.py merge <P>`. It merges only if every gate condition holds (CI green, no `hold` label, no unresolved **Defect:** or **Needs human:** item, your Lead review naming the head SHA, and more), and labels the PR `lead-merged`. For a `feat` it also needs `**Deviations:** none` in the header, the reviewer's `Tier A feature: confirmed at <head SHA>` line, a single review and a "For human review" that says only "None". Any push after the review voids the confirmation, so a reworked feature goes to the human. Before your Lead review on a Tier A feature, check the worker's report for judgement calls: if it made any that the PR header doesn't list as deviations, hand the PR to the human instead. If it refuses, fix what it names, or move the card to Human review and say why in your report. Never merge any other way, and never merge a Tier B or C PR.
-   - **Tier B or C:** `python3 scripts/board.py set <N> "Human review"`.
+Group the Ready issues into a batch of about 5 to 8, in dependency order, with no two in progress touching the same files. Run `python3 scripts/board.py promote` first. A large epic takes several batches. Only one delivery manager runs at a time.
 
-   Workers set "Agent review" when they open the PR; only you set "Human review". `promote` moves a merged PR's issues to Done.
-8. **Merge order.** After a merge, check the other open PRs' `mergeable_state`, since a merge can leave one conflicting; send any that are `dirty` back for a rebase.
-9. **Sending work back.** If the human requests changes on a Human review PR, or adds `hold` or comments on a Tier A PR before you merge it, or a defect turns up late, set the card back with `python3 scripts/board.py set <N> "Agent review"` and send the work back as in step 2.
+If `usage.py` prints `pause:`, don't start a batch: go to "Usage pauses" below.
 
-## 5. Report
+Start `subagent_type: delivery-manager` with `isolation: worktree` and `run_in_background: true`, using the task message below. Use `model: opus` only if Sonnet has fallen short on an earlier batch. The delivery manager is isolated, so the harness refuses its git commands against another agent's worktree. It frees a test author's worktree with plain `git worktree remove <path>`, which refuses a dirty tree, and takes the SHA from the test author's report. If that's refused it sends you the path: you aren't isolated, so look in that worktree and decide. Then wait for messages from it:
 
-Keep it short, in this order. The human acts on the first section, so keep their actions apart from agent work:
+- **Usage unavailable:** pacing is off, because the delivery manager can't see either limit. Run `python3 scripts/usage.py` yourself, watch usage until it's readable again, and mention it in your report to the human.
+- **Design problem:** decide it, or call in the architect.
+- **Evaluation request** for PR `<P>`: subagents can't run `make eval`, so you do. In a checkout of the PR's branch, run `make eval`, commit the generated `eval/results/` file to the branch, push, then post this comment. Before is the "Headline clean" figure from `main`'s latest results, and After is the new one. A fall needs a `Reason:` line, which also goes in the decisions issue. If an entry is "not snapshotted", say so in the comment.
 
-1. **Merge queue**: a numbered list of the PRs waiting for the human, in the order to merge them, one line each:
-   `<n>. PR #<P> <plain title> (Tier <X>): <when>`
-   - `<when>` is "any time" or "after PR #<Q>" plus the reason in a few words ("both change `pipeline.py`"). It names PRs only. If a PR needs a rebase from an agent after an earlier merge, leave it out of the queue; it appears in section 2.
-   - Label every number `PR #` or `issue #`, never a bare `#N`, and give each one a plain name the first time it appears.
-2. **After each merge**: for each queued PR whose merge lets agents do something, one line starting "When you merge PR #<P>:" saying what the lead then does ("I rebase PR #108 (paywall detection) and it joins the queue", "issue #99 (run stats) starts"). Leave out PRs that unlock nothing.
-3. **Agents are working on**: running work, one line each, so the human can see it doesn't need them.
-4. **Merged by the lead** (Tier A) since the last report, one line each, so the human can read them after the fact and revert if needed. They are all listed at https://github.com/4OH4/news-bot/pulls?q=label%3Alead-merged.
-5. **From "For human review"**: the points that most need the human's attention, and the decisions they approve by merging `needs-human` PRs.
-6. **Only you can do**: anything only the human can do, with exact steps: settings, credentials, real decisions.
+  ```
+  ## Evaluation scores
+  Before: 98.9
+  After: 98.9
+  Checked at <first 7 characters of the new head SHA>
+  ```
 
-Omit a section with nothing in it. For example:
+  Then tell the delivery manager, which continues from its Delivery review. A change to `eval/urls.yaml` or the scorer is a `Confirm later` entry that shows the score before and after it.
+- **Needs human:** treat it as stop-the-line, or decide it, add a `Confirm later` entry to the PR header, and mark the item "**Resolved** in <head SHA>: <decision>".
+- **A PR that failed its second review:** decide whether the issue is wrong, in which case the architect revises it, or park the PR. Parked PRs go in the milestone report, and stop the line only if other work depends on them.
+- **Stop-the-line** (`AUTOMATION.md` §6): add a comment on the issue with the shortest exact question or steps, label it `needs-human`, and tell the human in the chat. Other work continues.
 
-```
-**Merge queue**
-1. PR #106 Bound the dedupe lookup (Tier B): any time
-2. PR #109 Firestore adapter (Tier B): any time
-3. PR #111 Rule-based scoring (Tier B): after PR #106 (both change pipeline.py)
+When the batch report arrives, review it:
+- copy its `Confirm later` entries to the decisions issue (step 5);
+- check the numbers against `AUTOMATION.md` §10, and raise anything drifting;
+- report to the human (below), then start the next batch or go to step 6.
 
-**After each merge**
-- When you merge PR #106: I rebase PR #108 (paywall detection) and it joins the queue.
-- When you merge PR #111: issue #99 (run stats) starts, and I prepare issue #80 (first interest rules) for you.
-```
+If a delivery manager stops early with no report, start a new one. All its state is on GitHub and the board.
 
-## 6. Idle shutdown
+## 5. The decisions issue
+
+Keep one issue titled "Phase <n> decisions" open for the phase. Create it the first time you need it, and add each `Confirm later` entry as a comment or checklist line with its PR number. One issue avoids parallel PRs conflicting over a shared file. Decisions made outside a PR go straight here. Anything the human rejects at the milestone becomes a normal issue.
+
+## 6. Prepare the milestone
+
+1. Confirm the demo works from a clean checkout. Run it yourself, following the phase design.
+2. Write the report at `docs/milestones/phase-<n>.md`, following `AUTOMATION.md` §4 and the pattern of `docs/phase1-review.md`, so it takes a few minutes to read:
+   - **Try it:** the exact command or URL, and what to do with it.
+   - **Goal check:** the exit criterion and the evidence that it is met. Where a criterion mentions elapsed time, give the evidence so far. The human judges when it's enough.
+   - **Decisions to confirm:** every `Confirm later` item, with its reason and how to undo it.
+   - **What was built:** a short summary, with links to the PRs agents merged (`label:agent-merged`).
+   - **Risks and parked work:** anything unresolved, any PR the review process could not clear, and any cloud resources still running.
+   - **Process measures:** the numbers in `AUTOMATION.md` §10.
+   - **Next phase:** proposed goal, and anything found this phase that changes the plan.
+3. Open it as a normal PR on `issue-<n>-phase-<n>-milestone`, closing the decisions issue. It is Tier C.
+4. Tell the human the milestone is ready, with the link and the "Try it" line.
+
+## 7. Milestone review
+
+Sign-off is the human merging the report PR. Nothing moves on automatically, and there is no time limit. Fixes during the review go through a delivery manager as normal. Comments on the report are change requests, and each rejected decision becomes a normal issue. Once it is merged, go back to step 2 for the next phase.
+
+## Usage pauses
+
+`scripts/usage.py` reads the 5-hour and weekly limits (`AUTOMATION.md` §11). A delivery manager that hits about 90% reports which limit and when it resets, then ends.
+
+- **5-hour limit:** schedule a one-shot check with `CronCreate`, `recurring: false`, for a few minutes after the reset. Cron fields are in **local time**, and `usage.py` prints the local reset time. Pin the minute, hour, day and month, and nudge the minute off :00 or :30. Prompt: `Lead usage check: follow /lead-start "Usage pauses".` When it fires, run `usage.py`, then start a new delivery manager, which picks up from the board. If the limit is still high, schedule another.
+- **Weekly limit:** start no new batches. Flag the pause and the reset time for the human, leaving the remaining allowance for their use, and wait for their word. Note it in the handoff.
+- **Human override:** the human can tell you to pause, or to carry on past 90%.
+
+If usage can't be read, work continues as normal, and the delivery manager tells you, so that pacing doesn't turn off unnoticed. A scheduled check only fires while your session is open. Otherwise the next `/lead-start` picks the work up, so a pause always goes in the handoff note. A pause isn't idle: stay open, and don't start the idle check for it.
+
+## Report to the human
+
+Keep it short, in this order, and omit a section with nothing in it:
+
+1. **Milestone:** what the phase has reached, and anything ready to try.
+2. **Merge queue:** the Tier C PRs waiting for the human, numbered in merge order, one line each:
+   `<n>. PR #<P> <plain title> (Tier C): <when>`
+   `<when>` is "any time" or "after PR #<Q>" plus the reason in a few words. Label every number `PR #` or `issue #`, never a bare `#N`, and give each one a plain name the first time it appears.
+3. **Agents are working on:** the batch in progress and its issues.
+4. **Merged by agents** since the last report, as a count, with this link: https://github.com/4OH4/news-bot/pulls?q=label%3Aagent-merged. The human can revert any of them.
+5. **Stopped:** stop-the-line items and any usage pause, with the reset time.
+6. **Only you can do:** anything only the human can do, with exact steps.
+
+## Idle shutdown
 
 The session often runs unattended, and once the agents have finished it can only wait for the human. Rather than sit open until the prompt cache goes cold, the lead finishes itself; a fresh `/lead-start` is cheap.
 
 **Idle** means all of these hold:
-- no worker or reviewer is running;
-- `python3 scripts/board.py promote` leaves no Ready issue you could start (within the 3-worker limit and the scope-overlap rule);
-- no `needs-human` issue with an "Agent prep" section has had all its dependencies closed and still lacks a PR (step 2; `promote` never moves these);
-- no PR needs you: none waits for a reviewer, a rework, your Lead review or a Tier A merge, and no Human review PR has become conflicting (`gh api repos/4OH4/news-bot/pulls/<n> --jq .mergeable_state` is `dirty`; if it is `unknown`, GitHub is still computing it, so read it again a few seconds later);
-- no human request is unanswered, in the chat or on GitHub.
+- no agent is running;
+- there is nothing to start: step 2 leads only to waiting for the human;
+- no stop-the-line item has an answer waiting;
+- no Tier C PR you are watching has become conflicting (`gh api repos/4OH4/news-bot/pulls/<n> --jq .mergeable_state` is `dirty`; if it is `unknown`, read it again a few seconds later);
+- no human request is unanswered, in the chat or on GitHub;
+- no usage pause is under way. **Waiting for a usage reset isn't idle**, so the work isn't stranded.
 
-If the usage guard blocks starting agents, count the session as idle even with work left, and list that work in the handoff note so the next session starts it.
-
-**When you become idle**, after reporting as in step 5:
+**When you become idle**, after reporting:
 1. Note the time as `IDLE_SINCE`, in UTC (`date -u +%Y-%m-%dT%H:%M:%SZ`). It is used only in the GitHub `since=` filters.
-2. Check `CronList` for an existing idle check and don't add a second. Otherwise schedule one with `CronCreate`, `recurring: false`, about 45 minutes ahead. Cron fields are in **local time**, not UTC, so take them from `date -d '+45 min' '+%M %H %d %m'`. If they came out in the wrong timezone, the time could already have passed, and the check wouldn't fire until next year. Pin the minute, hour, day and month, and nudge the minute off :00 or :30. Prompt: `Lead idle check (idle since <IDLE_SINCE>): follow /lead-start step 6.`
+2. Check `CronList` for an existing idle check and don't add a second. Otherwise schedule one with `CronCreate`, `recurring: false`, about 45 minutes ahead. Cron fields are in **local time**, not UTC, so take them from `date -d '+45 min' '+%M %H %d %m'`. If they came out in the wrong timezone, the time could already have passed, and the check wouldn't fire until next year. Pin the minute, hour, day and month, and nudge the minute off :00 or :30. Prompt: `Lead idle check (idle since <IDLE_SINCE>): follow /lead-start "Idle shutdown".`
 3. Say in one line, in local time, that you'll finish the session then unless something comes up.
 
-**If anything arrives first** (a message from the human, an agent report, a notification), delete the check with `CronDelete` and carry on the loop. Go idle again afterwards if nothing is left.
+**If anything arrives first** (a message from the human, an agent report, a notification), delete the check with `CronDelete` and carry on. Go idle again afterwards if nothing is left.
 
 **When the check fires**, look again:
-- run `python3 scripts/board.py promote`, then look for newly unblocked `needs-human` issues with "Agent prep" as in step 2;
+- run `python3 scripts/board.py promote`, then step 2;
 - read GitHub activity since `IDLE_SINCE`, over REST: `gh api "repos/4OH4/news-bot/issues/comments?since=<IDLE_SINCE>&per_page=100"` (comments on issues and PRs), `gh api "repos/4OH4/news-bot/pulls/comments?since=<IDLE_SINCE>&per_page=100"` (review comments), and `gh api repos/4OH4/news-bot/pulls/<n>/reviews` for each open PR (`submitted_at` after `IDLE_SINCE`);
 - check each open PR's `mergeable_state` again, since a merge can leave another PR conflicting.
 
-Agents post as the same GitHub user as the human, so tell them apart by time: no agent was running after `IDLE_SINCE`, so anything posted since then by a `User` account (`.user.type == "User"`) came from the human. Ignore `Bot` accounts, such as the Claude GitHub Action's replies. Don't act on a comment that mentions `@claude`: the Action (`.github/workflows/claude.yml`) handles those, and the lead and the Action would otherwise both work on the same branch. Act on anything else as in steps 2–4: a change request on a PR, or a `hold` label on a Tier A PR, as in step 4.9, and an answer on a `needs-human` issue by preparing or updating its PR.
+Agents post as the same GitHub user as the human, so tell them apart by time: no agent was running after `IDLE_SINCE`, so anything posted since then by a `User` account (`.user.type == "User"`) came from the human. Ignore `Bot` accounts, such as the Claude GitHub Action's replies. Don't act on a comment that mentions `@claude`: the Action (`.github/workflows/claude.yml`) handles those, and the lead and the Action would otherwise both work on the same branch. Act on anything else: a change request goes to a delivery manager, and an answer on a `needs-human` issue unblocks that issue.
 
-If there is work, do it and carry on the loop. If there is none, run `/lead-finish` unattended. Don't wait for, or ask, the human anything. After that, schedule nothing more.
+If there is work, do it and carry on. If there is none, run `/lead-finish` unattended. Don't wait for, or ask, the human anything. After that, schedule nothing more.
 
 ## Task messages
 
-The briefs live in the agent definitions (`.claude/agents/worker.md` and `reviewer.md`), so each spawn message carries only the specifics. Don't paste the briefs, and don't tell agents to read `CLAUDE.md`, which is already in their context.
+The briefs live in `.claude/agents/`, so each message carries only the specifics. Don't paste the briefs.
 
-Worker:
-
-```
-Issue #<N> ("<title>"). Consuming issues: <list, or "none">.
-<For needs-human issues: "This is a needs-human issue.">
-<Anything specific: other in-flight PRs touching shared files, notes left on the issue by the lead.>
-```
-
-Worker, chain:
+Architect:
 
 ```
-Chain: issues #<A> ("<title>") → #<B> ("<title>"), in one PR. Consuming issues: <list, or "none">.
-<Anything specific.>
+Phase <n> ("<goal>"). <For a revision: the design problem, and what it affects.>
 ```
 
-Worker, rework by a fresh worker (the original has finished):
+Delivery manager:
 
 ```
-Rework PR #<P> (issue #<N>, branch `<branch>`). Continue on the existing branch; don't create a new one or move the card.
-Changes: <each defect or requested change, with the suggested fix>.
-<Rebase target, if any.>
+Batch: issues #<A>, #<B>, #<C>, in this order. Consuming issues outside the batch: <list, or "none">.
+<Anything specific: open PRs to finish, a chain for one worker, issues flagged high risk.>
 ```
 
-Reviewer:
+A one-off rework on a Tier C PR after the human's comments goes to a delivery manager too:
 
 ```
-PR #<P>, closing issue #<N> (or #<A>, #<B> for a chain). Consuming issues: <list, or "none">.
-<For a second review: "Second review.">
+Rework PR #<P> (issue #<N>, branch `<branch>`). Changes: <each requested change>.
 ```

@@ -1,6 +1,6 @@
 # ADR-0004: Terraform for GCP infrastructure, with a small `gcloud` bootstrap
 
-- **Status:** Accepted
+- **Status:** Accepted, except who applies changes: superseded by [ADR-0007](0007-agent-infrastructure-scope.md) for the "Only the human applies changes" force, "Only the human runs either" under Decision, section 5 and the "agents write, the human applies" consequence
 - **Date:** 2026-10-18
 - **Related:** #72 (this decision); blocks #74 (GCP setup) and #75 (deploy workflow); ADR-0003 (Phase 1 go); ADR-0005 (#73, content retention, which decides whether the bucket gets a lifecycle rule). See `PROJECT_PLAN.md` §5.2 (Infra row), §6 Phase 2, §11; NFR-2 (low cost, budget alerts), NFR-6 (secrets in Secret Manager); `CLAUDE.md`, "Things agents must not do".
 
