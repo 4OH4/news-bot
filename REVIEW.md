@@ -20,6 +20,10 @@ Failure patterns taken from real defects in this repo. Test authors and workers 
 - A destructive operation must be limited to files the code created.
 - Nothing may bypass a paywall or an access control, and third-party article text must not reach the public repo.
 
+## Rules that classify changes
+
+- A rule must match the whole class of change, not one example path or line. In #133, only the top-level `conftest.py` was covered, though each tool takes the nearest configuration file, and IAM was matched on changed lines, so a one-line `member` change inside an IAM resource passed as routine. Ask what else does the same job under another name or in another place.
+
 ## Agent briefs
 
 - A command in an agent brief must be checked under the isolation that agent runs with. In #133, briefs ran git against a sibling worktree, by `git -C` and by `cd`, which the harness refuses for an isolated agent, so the hand-off between agents could not work.
