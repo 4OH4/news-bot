@@ -28,7 +28,8 @@ stored ``id``/``run_id`` field, so it needs these four composite indexes
 
 Ties are ordered by the database, not sorted in the adapter, so ``limit`` is
 exact at a tie boundary. The Firestore emulator does not enforce indexes, so
-the emulator tests can't confirm this list; deploying the indexes is #74.
+the emulator tests can't confirm this list. ``infra/terraform/firestore.tf``
+deploys the indexes; keep it in step with this list.
 
 Concurrency: the ``google.cloud.firestore.Client`` is safe to share between
 threads, and every port method is a single request, so no locking is needed.

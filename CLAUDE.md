@@ -12,7 +12,7 @@ The current phase and its goals are listed in `PROJECT_PLAN.md` §6. Don't build
 
 `make` commands run from the repo root. The Makefile sets `NEWSFEED_CONFIG_DIR` and `NEWSFEED_DATA_DIR` to absolute paths, so the pipeline finds `config/` wherever it's run from.
 
-**Environment:** development happens on Ubuntu, and CI and the containers are Linux too. Prerequisites: `make`, `git`, `uv`, Docker Engine and `gh`. Use `pathlib` for paths in Python rather than string concatenation.
+**Environment:** development happens on Ubuntu, and CI and the containers are Linux too. Prerequisites: `make`, `git`, `uv`, Docker Engine and `gh`, plus Terraform (1.6 or later) and `gcloud` for the infrastructure in `infra/`. Use `pathlib` for paths in Python rather than string concatenation.
 
 ```bash
 make setup        # install deps with uv, install pre-commit hooks
@@ -171,7 +171,7 @@ The lead also starts workers for `needs-human` issues that an agent can prepare,
 ## Things agents must not do
 
 - Handle production credentials, service account keys or secrets. Never commit secrets; use `.env` locally (git-ignored) and Secret Manager in production.
-- Run `terraform apply`, `gcloud` commands that change resources, or production deploys. Infrastructure changes are `needs-human`.
+- Run `terraform init` against the real state backend, `terraform plan`, `terraform apply` or `terraform destroy`, `gcloud` commands that change resources, or production deploys (ADR-0004). Agents may write Terraform and run `terraform fmt`, and `terraform validate` after `terraform init -backend=false`. Infrastructure changes are `needs-human`; `infra/README.md` lists the apply steps.
 - Edit evaluation expectations in `eval/urls.yaml` to make results look better. Changes there require human review.
 - Commit third-party article content: page snapshots, extracted article text or full feed dumps. This is a public repo; short quoted snippets in `eval/urls.yaml` are the only exception.
 - Disable or weaken tests, lint rules or type checks to get CI passing.
