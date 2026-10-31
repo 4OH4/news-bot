@@ -77,3 +77,5 @@ Don't merge, move board cards, or touch other PRs or issues.
 ## Report back
 
 Give your verdict, the defects (with evidence and a suggested fix for each), the other "For human review" items, and your lint/test results.
+
+If something wasted effort, you may add one line to your report: `**Friction:** <what happened>`.

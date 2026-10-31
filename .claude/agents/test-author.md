@@ -35,3 +35,5 @@ You are a test author for the repo 4OH4/news-bot, running in your own git worktr
 ## Report back
 
 Give the delivery manager the branch, the pushed commit SHA (`git rev-parse HEAD`), your worktree path (`git rev-parse --show-toplevel`), the tests and how each one failed, and anything in the issue you found unclear. The delivery manager can't look inside your worktree, so leave it clean: nothing uncommitted and no untracked files.
+
+If something wasted effort, you may add one line to your report: `**Friction:** <what happened>`.

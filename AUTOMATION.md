@@ -68,6 +68,7 @@ The report lives at `docs/milestones/phase-<n>.md`, following the pattern of `do
 - **What was built:** a short summary, with links to the PRs that agents merged.
 - **Risks and parked work:** anything unresolved, and any PR the review process could not clear.
 - **Process measures:** the numbers in §10.
+- **Process review:** the §10 numbers against the previous milestone, the top three friction points from the batch reports' "Friction" sections, each with evidence and a proposed change, how the last milestone's changes turned out, and the human's own friction notes.
 - **Next phase:** proposed goal, and anything found this phase that changes the plan.
 
 Sign-off is always a positive confirmation from the human. Nothing moves on automatically, and no time limit or waiting period applies to a milestone review. Where an exit criterion mentions elapsed time, such as "runs hourly for a week", the report gives the evidence so far, and the human judges when it's enough. Fixes during the review go through Gear 2 as normal.
@@ -76,7 +77,7 @@ Sign-off is always a positive confirmation from the human. Nothing moves on auto
 
 | Role | Gear | Runs as | Model | Can change code? |
 |---|---|---|---|---|
-| Lead | 1 | Main session | Opus | Only generated evaluation results and the milestone report |
+| Lead | 1 | Main session | Opus | Only generated evaluation results, the milestone report and §15 |
 | Architect | 1 | Subagent, fresh per phase or epic | Opus | The phase design and issues only |
 | Delivery manager | 2 | Background subagent, fresh per batch | Sonnet, Opus if that falls short | No, except merging through `tier.py` |
 | Test author | 2 | Subagent, one per issue | Sonnet, Opus for high-risk issues | Tests only |
@@ -298,6 +299,28 @@ The lead reports these at each milestone. The thresholds are starting proposals,
 
 If a failure rate is exceeded, the tier rules tighten through a normal Tier C PR. The test author's value is judged from these numbers too. If the extra agent adds cost without reducing defects, it can be limited to high-risk issues.
 
+### The improvement loop
+
+Friction is recorded as it happens and reviewed once per milestone:
+
+- Each batch report has a "Friction" section: rework rounds and defects found, permission prompts (those the agents tell it about), usage pauses and cut-offs, failed gates and escalations.
+- Workers, test authors and reviewers may add one line, `**Friction:** <what wasted effort>`, to their report. The delivery manager collects these into its batch report.
+- The milestone report's "Process review" (§4) takes the top three friction points, with evidence and a proposed change. The human may add notes of their own.
+- Once the milestone report is merged, the lead opens a `process` issue for each proposed change the human didn't reject, stating what should improve and which measure shows it, at most three per phase. `process` issues follow the normal tier rules, so changes to the automation are Tier C.
+- The lead updates §15 at each milestone, including what didn't work.
+- Friction data is kept in the "Phase N decisions" issue: the lead copies each batch's "Friction" section there, and the human's notes go there too.
+
+| Signal | Suggests |
+|---|---|
+| Repeated rework on the same kind of defect | A missing test, check or line in a brief |
+| Permission prompts for the same command | An allowlist entry, proposed as a human step |
+| Usage pauses or cut-offs mid-batch | Batches too large, or a model choice too costly |
+| Gates failing for non-substantive reasons | A rule that is too strict or badly worded |
+| Escalations to the lead for the same reason | An issue template or architect gap |
+| Parked PRs | Issues that are too big or unclear |
+
+Permission prompts are counted only when an agent reports them. Usage per issue, overturned decisions and issues reworked because the plan was wrong have no source yet, and wait for automated metrics, which are deferred until one or two milestones show which numbers matter.
+
 ## 11. Operating limits
 
 - **Parallelism:** up to 3 issues in progress, each using one test author and then one worker. Reviewers, the architect and the delivery manager don't count. No two in-progress issues touch the same files, and only one delivery manager runs at a time.
@@ -417,8 +440,9 @@ Some things are deliberately kept out of the repo:
 | 2026-10-31 | No restart from outside the lead's session for now | It needs a safe headless setup, and pauses aren't yet a proven problem |
 | 2026-10-31 | The files that define the checks, wherever they sit, including `[tool.*]` tables in `pyproject.toml`, and the tests of the merge gate, are Tier C | Otherwise an agent could weaken `make lint`, `make test` or `tier.py`'s tests without the human, against principle 6 |
 | 2026-10-31 | `terraform apply` runs only after merge, and the development service account has no access to secret values | Review comes before anything reaches the cloud, and the limit on secrets rests on roles, not on deny rules |
-| The development service account gets read-only roles, including `roles/secretmanager.viewer` (names and metadata, never values) | `terraform apply` must refresh the resources it can't change, or "Agents apply later changes" can't work |
-| Record learnings in §15 | The human wants to reuse this document on other projects, and the evidence is freshest now |
+| 2026-10-31 | The development service account gets read-only roles, including `roles/secretmanager.viewer` (names and metadata, never values) | `terraform apply` must refresh the resources it can't change, or "Agents apply later changes" can't work |
+| 2026-10-31 | Monitor the way of working with a light loop: friction notes, a batch "Friction" section and a milestone "Process review", with at most three `process` issues per phase | Without a source for the numbers and an owner for the changes, friction would stay in place; automated metrics wait until it is clear which ones matter |
+| 2026-10-31 | Record learnings in §15 | The human wants to reuse this document on other projects, and the evidence is freshest now |
 
 ## 15. Learnings
 
