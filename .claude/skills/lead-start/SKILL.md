@@ -66,7 +66,7 @@ Start `subagent_type: delivery-manager` with `isolation: worktree` and `run_in_b
 - **Stop-the-line** (`AUTOMATION.md` §6): add a comment on the issue with the shortest exact question or steps, label it `needs-human`, and tell the human in the chat. Other work continues.
 
 When the batch report arrives, review it:
-- copy its `Confirm later` entries to the decisions issue (step 5);
+- copy its `Confirm later` entries and its "Friction" section to the decisions issue (step 5), where the human's own friction notes also go, because batch reports and lead sessions don't persist to the milestone;
 - check the numbers against `AUTOMATION.md` §10, and raise anything drifting;
 - report to the human (below), then start the next batch or go to step 6.
 
@@ -86,14 +86,14 @@ Keep one issue titled "Phase <n> decisions" open for the phase. Create it the fi
    - **What was built:** a short summary, with links to the PRs agents merged (`label:agent-merged`).
    - **Risks and parked work:** anything unresolved, any PR the review process could not clear, and any cloud resources still running.
    - **Process measures:** the numbers in `AUTOMATION.md` §10.
-   - **Process review:** those numbers against the previous milestone, the top three friction points from the batch reports' "Friction" sections (evidence and a proposed change each), how the last milestone's changes turned out, and the human's own friction notes. Update `AUTOMATION.md` §15, including what didn't work. Accepted changes become `process` issues, at most three per phase.
+   - **Process review:** those numbers against the previous milestone, the top three friction points from the batch reports' "Friction" sections (evidence and a proposed change each), how the last milestone's changes turned out, and the human's own friction notes. Update `AUTOMATION.md` §15, including what didn't work.
    - **Next phase:** proposed goal, and anything found this phase that changes the plan.
 3. Open it as a normal PR on `issue-<n>-phase-<n>-milestone`, closing the decisions issue. It is Tier C.
 4. Tell the human the milestone is ready, with the link and the "Try it" line.
 
 ## 7. Milestone review
 
-Sign-off is the human merging the report PR. Nothing moves on automatically, and there is no time limit. Fixes during the review go through a delivery manager as normal. Comments on the report are change requests, and each rejected decision becomes a normal issue. Once it is merged, go back to step 2 for the next phase.
+Sign-off is the human merging the report PR. Nothing moves on automatically, and there is no time limit. Fixes during the review go through a delivery manager as normal. Comments on the report are change requests, and each rejected decision becomes a normal issue. Once it is merged, open a `process` issue for each proposed process change the human didn't reject, at most three per phase, stating what should improve and which measure shows it; `process` issues follow the normal tier rules, so changes to the automation are Tier C. Then go back to step 2 for the next phase.
 
 ## Usage pauses
 

@@ -38,7 +38,7 @@ Don't copy information the board or git history already holds. Record only what 
 ## 4. Report
 
 Tell the user, briefly:
-- where the phase stands, and the report sections from `/lead-start` that have anything in them (at a milestone, including the "Process review");
+- where the phase stands, and the report sections from `/lead-start` that have anything in them (at a milestone, also the milestone report's "Process review", which is step 6 of `/lead-start`, not a report section);
 - anything only they can do;
 - how to resume: start a new conversation in this folder with `/lead-start`.
 
