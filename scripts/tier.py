@@ -11,8 +11,9 @@ Tiers (AUTOMATION.md §9):
 
 * Tier C: the human merges. The automation itself (.claude/, .github/, scripts/ and
   their tests, AUTOMATION.md, CLAUDE.md, and the build and lint files in TIER_C_PATHS),
-  fetching/, milestone reports, infrastructure for IAM, billing, budgets, service
-  account keys and delete rules, and any needs-human PR or issue.
+  fetching/, milestone reports, infrastructure that touches IAM or other access,
+  billing, budgets, service accounts or delete rules, or that can destroy stored data,
+  and any needs-human PR or issue.
 * Tier B: the delivery manager merges, with a `Confirm later` entry. Decide-and-record
   changes: contracts (including the feed schema), ADRs, dependencies, curated config,
   the evaluation expectations and scorer, test infrastructure, REVIEW.md, PROJECT_PLAN.md,
@@ -77,17 +78,40 @@ TIER_C_PATHS = (
     "infra/*billing*",
     "infra/*budget*",
 )
-# IAM and billing can sit in any infra/ file, so changed lines count as well as names.
-INFRA_PREFIX = "infra/"
+# Terraform is infrastructure wherever the file sits.
+INFRA_PATHS = ("infra/*", "*.tf", "*.tfvars", "*.tf.json")
+# Who can reach what, and who pays, can sit in any infra file, and a one-line change often
+# names neither: `member = "allUsers"` shows as IAM only through the resource around it. So
+# these two are matched against the whole patch, context lines included.
 INFRA_RISK_RE = re.compile(
-    r"\biam\b|_iam_|roles/|billing|budget|google_service_account_key", re.IGNORECASE
+    r"(?<![a-z0-9])iam(?![a-z0-9])"  # `_` and `-` count as boundaries: google_iam_policy
+    r"|roles/|\bmembers?\s*=|\bpolicy_data\b|\bpermissions\s*=|\bbinding\s*\{"
+    r"|allUsers|allAuthenticatedUsers|service_account"
+    r"|(?<![a-z0-9])acl(?![a-z0-9])|public_access_prevention|uniform_bucket_level_access"
+    r"|billing|budget",
+    re.IGNORECASE,
 )
-# A rule's age or prefix can change on a line that names neither the rule nor its action,
-# so this one is matched against the whole patch, context lines included.
-DELETE_RULE_RE = re.compile(r"lifecycle_rule|type\s*=\s*\"delete\"", re.IGNORECASE)
+DELETE_RULE_RE = re.compile(r'lifecycle_rule|ttl_config|type"?\s*[=:]\s*"delete"', re.IGNORECASE)
+# These only matter when they change, so they're matched against changed lines. A protection
+# flag counts whichever way it moves, and `force_destroy` unless it is plainly off.
+DATA_LOSS_RE = re.compile(
+    r"force_destroy\s*=(?!\s*false\b)"
+    r"|deletion_protection|delete_protection_state|deletion_policy|prevent_destroy"
+    r"|retention_policy|soft_delete_policy"
+    r"|^\s*removed\s*\{"  # Terraform's block for dropping a resource from a configuration
+    r"|\bgsutil\b.*\b(?:rm|rb)\b|\bgcloud\b.*\b(?:rm|delete)\b|\bterraform\s+destroy\b",
+    re.IGNORECASE,
+)
+# What holds data or the project itself. Removing the block destroys it, as does taking its
+# `count` or `for_each` to nothing, and a module can hold any of them.
+STORE_RESOURCE_RE = re.compile(
+    r'^[ +-]?\s*(?:module\s+"|resource\s+"google_(?:storage_bucket|firestore_\w+|project)")',
+    re.IGNORECASE | re.MULTILINE,
+)
+COUNT_RE = re.compile(r"^\s*(?:count|for_each)\s*=")
 
 # Decide-and-record: agents choose, and the human confirms at the milestone.
-EVAL_DECISION_PATHS = ("eval/urls.yaml", "backend/src/newsfeed/eval/*")
+EVAL_DECISION_PATHS = ("eval/urls.yaml", "eval/boilerplate.txt", "backend/src/newsfeed/eval/*")
 TIER_B_PATHS = (
     "backend/src/newsfeed/models.py",
     "backend/src/newsfeed/ports.py",
@@ -108,7 +132,7 @@ TIER_B_PATHS = (
     "backend/tests/contract/*",
     "REVIEW.md",
     "PROJECT_PLAN.md",
-    "infra/*",
+    *INFRA_PATHS,
 )
 
 # One size limit for every PR. Oversized PRs go back to a worker to split.
@@ -227,16 +251,30 @@ def changed_lines(patch: str | None) -> list[str]:
     return [ln[1:] for ln in (patch or "").splitlines() if ln[:1] in ("+", "-")]
 
 
+def loses_data(patch: str) -> bool:
+    """True if this infra patch can destroy stored data, or the project itself."""
+    changed = changed_lines(patch)
+    if any(DATA_LOSS_RE.search(ln) for ln in changed):
+        return True
+    removed = (ln for ln in patch.splitlines() if ln.startswith("-"))
+    if any(STORE_RESOURCE_RE.search(ln) for ln in removed):
+        return True
+    return bool(STORE_RESOURCE_RE.search(patch)) and any(COUNT_RE.search(ln) for ln in changed)
+
+
 def infra_risk(f: ChangedFile) -> str | None:
-    """Why this file's infra/ change is Tier C, if it is. An unreadable diff counts."""
-    if not f.path.startswith(INFRA_PREFIX) or f.changes == 0:
+    """Why this file's infra change is Tier C, if it is. An unreadable diff counts."""
+    is_infra = any(p and matches(p, INFRA_PATHS) for p in (f.path, f.previous_path))
+    if not is_infra or f.changes == 0:
         return None
     if f.patch is None:
         return f"{f.path}: no diff available to check for IAM or billing changes"
-    if any(INFRA_RISK_RE.search(ln) for ln in changed_lines(f.patch)):
-        return f"{f.path} changes IAM, billing, budgets or service account keys"
+    if INFRA_RISK_RE.search(f.patch):
+        return f"{f.path} changes IAM, access, billing, budgets or service accounts"
     if DELETE_RULE_RE.search(f.patch):
-        return f"{f.path} changes a lifecycle rule, which can delete content"
+        return f"{f.path} changes a delete rule, which can delete content"
+    if loses_data(f.patch):
+        return f"{f.path} can destroy stored data or the project"
     return None
 
 
