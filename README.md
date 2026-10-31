@@ -82,7 +82,7 @@ config/    sources, interest rules and extraction overrides (YAML)
 eval/      extraction evaluation set, committed results (metrics only) and local per-run logs
 docs/adr/  architecture decision records
 client/    reader PWA (Phase 3)
-infra/     infrastructure as code (Phase 2)
+infra/     GCP infrastructure: gcloud bootstrap and Terraform (setup steps in infra/README.md)
 ```
 
 This is a personal project. No third-party article content is stored in this repository.

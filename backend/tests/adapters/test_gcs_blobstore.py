@@ -74,3 +74,25 @@ def test_content_type_comes_from_the_extension() -> None:
         "images/lead.jpg": "image/jpeg",
         "blob.bin": "application/octet-stream",
     }
+
+
+def test_json_objects_are_uploaded_with_no_cache() -> None:
+    # feed.json is overwritten every run, so caches must revalidate it (#74).
+    client = FakeGcsClient()
+    store = _store(client, "prod")
+    store.put("feed.json", b"{}")
+    store.put("feeds/run-1.json", b"{}")
+    store.put("articles/a.html", b"<p>x</p>")
+    assert client.state.cache_control == {
+        ("bkt", "prod/feed.json"): "no-cache",
+        ("bkt", "prod/feeds/run-1.json"): "no-cache",
+    }
+
+
+def test_non_json_uploads_leave_cache_control_unset() -> None:
+    # Assigning None would send `cacheControl: null`; other objects keep the default.
+    client = FakeGcsClient()
+    store = _store(client, "prod")
+    store.put("articles/a.html", b"<p>x</p>")
+    assert ("bkt", "prod/articles/a.html") in client.state.objects
+    assert ("bkt", "prod/articles/a.html") not in client.state.cache_control
