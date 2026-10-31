@@ -53,11 +53,9 @@ def classify(*files: Any, needs_human: bool = False) -> Any:
         "backend/src/newsfeed/cli.py",
         "backend/src/newsfeed/wiring.py",
         "backend/tests/rank/test_score.py",
-        "backend/Dockerfile",
         "client/src/app.ts",
         "config/extraction.yaml",
         "docs/phases/phase-2.md",
-        "docs/feed.schema.json",
         "eval/results/x.json",
         "README.md",
     ],
@@ -82,6 +80,8 @@ def test_tier_a_spans_packages_and_needs_no_title_type() -> None:
         "backend/src/newsfeed/models.py",
         "backend/src/newsfeed/ports.py",
         "docs/adr/0003-ranking.md",
+        "docs/feed.schema.json",
+        "docs/feed.example.json",
         "backend/pyproject.toml",
         "backend/uv.lock",
         "client/package.json",
@@ -111,6 +111,12 @@ def test_decide_and_record_paths_are_tier_b(path: str) -> None:
         ".claude/agents/worker.md",
         ".github/workflows/ci.yml",
         "scripts/tier.py",
+        "backend/tests/scripts/test_tier.py",
+        "Makefile",
+        ".pre-commit-config.yaml",
+        ".gitignore",
+        ".dockerignore",
+        "backend/Dockerfile",
         "AUTOMATION.md",
         "CLAUDE.md",
         "backend/src/newsfeed/fetching/http.py",
@@ -155,12 +161,34 @@ def test_infra_without_iam_or_billing_is_tier_b() -> None:
         '-resource "google_billing_budget" "cap" {',
         "+gcloud iam service-accounts create deploy",
         "+  amount = var.budget_gbp",
+        '+resource "google_service_account_key" "deploy" {',
     ],
 )
 def test_iam_or_billing_lines_in_any_infra_file_are_tier_c(line: str) -> None:
     result = classify(F("infra/terraform/deploy.tf", 1, patch=f"@@ -1 +1 @@\n{line}"))
     assert result.tier == "C"
-    assert "infra/terraform/deploy.tf changes IAM, billing or budgets" in result.reasons
+    assert (
+        "infra/terraform/deploy.tf changes IAM, billing, budgets or service account keys"
+        in result.reasons
+    )
+
+
+@pytest.mark.parametrize(
+    "patch",
+    [
+        '@@ -1 +1,4 @@\n+  lifecycle_rule {\n+    action {\n+      type = "Delete"\n+    }',
+        '@@ -1 +1 @@\n-      type = "SetStorageClass"\n+      type = "Delete"',
+        # Only the age changes: the rule shows in the patch's context lines.
+        '@@ -1,3 +1,3 @@\n   lifecycle_rule {\n     action { type = "Delete" }\n'
+        "-    condition { age = 90 }\n+    condition { age = 7 }",
+    ],
+)
+def test_a_lifecycle_delete_rule_is_tier_c(patch: str) -> None:
+    result = classify(F("infra/terraform/storage.tf", 2, patch=patch))
+    assert result.tier == "C"
+    assert result.reasons == [
+        "infra/terraform/storage.tf changes a lifecycle rule, which can delete content"
+    ]
 
 
 def test_iam_in_unchanged_context_lines_does_not_count() -> None:
@@ -360,6 +388,7 @@ DELIVERY_MISSING = f"no 'Delivery review' with 'Verdict: merge' naming the head 
         f"Delivery review: Verdict: not ready. Checked at {HEAD[:7]}",
         f"Delivery review: checked {HEAD[:7]}",  # no verdict
         f"Lead review\nVerdict: merge. Checked at {HEAD[:7]}",  # the old heading
+        f"Delivery review\nVerdict:\nmerge the other one first. Checked at {HEAD[:7]}",
     ],
 )
 def test_delivery_review_must_say_merge_at_the_current_head(delivery: str) -> None:
@@ -475,7 +504,15 @@ NO_CONFIRM = "Tier B, but the header has no **Confirm later:** entry"
     [
         "Closes #70 · Tier B",
         "Closes #70 · Tier B\n**Confirm later:** none",
+        "Closes #70 · Tier B\n**Confirm later:** None.",
+        "Closes #70 · Tier B\n**Confirm later:** n/a",
+        "Closes #70 · Tier B\n**Confirm later:** N/A.",
+        "Closes #70 · Tier B\n**Confirm later:** _(none)_",
+        "Closes #70 · Tier B\n**Confirm later:** TBD",
+        "Closes #70 · Tier B\n**Confirm later:** -",
         "Closes #70 · Tier B\n**Confirm later:**",
+        "Closes #70 · Tier B\n**Confirm later:**   \nThe next line is not an entry",
+        "**Confirm later:** n/a · Closes #70 · Tier B",
         "Closes #70 · Tier B\n**Confirm later:** <!-- each decision: what, reason, how to undo -->",
     ],
 )
@@ -535,6 +572,30 @@ def test_score_drop_blocks_unless_a_reason_is_given() -> None:
     assert tier.gate_failures(pr(), EXTRACT, GREEN, explained) == []
 
 
+@pytest.mark.parametrize(
+    "reason",
+    ["Reason:", "Reason: ", "**Reason:** ", "Reason: n/a", "**Reason:** none."],
+)
+def test_score_drop_with_an_empty_reason_blocks(reason: str) -> None:
+    # The next line must not stand in for the empty field: `scores` puts text after it.
+    comments = [*REVIEWED, *owned(scores(after="97", extra=reason))]
+    assert tier.gate_failures(pr(), EXTRACT, GREEN, comments) == [
+        "overall score fell from 98.9 to 97 with no 'Reason:'"
+    ]
+
+
+def test_a_bold_reason_counts() -> None:
+    comments = [*REVIEWED, *owned(scores(after="97", extra="**Reason:** a site changed layout"))]
+    assert tier.gate_failures(pr(), EXTRACT, GREEN, comments) == []
+
+
+def test_a_score_must_be_on_its_own_line() -> None:
+    body = f"## Evaluation scores\nBefore:\n98.9\nAfter: 99\nAt {HEAD[:7]}"
+    assert tier.gate_failures(pr(), EXTRACT, GREEN, [*REVIEWED, *owned(body)]) == [
+        "'Evaluation scores' has no 'Before:' and 'After:' lines"
+    ]
+
+
 def test_latest_scores_at_the_head_win() -> None:
     comments = [*REVIEWED, *owned(scores(), scores(after="90"))]
     assert tier.gate_failures(pr(), EXTRACT, GREEN, comments) == [
@@ -585,10 +646,66 @@ def test_other_kinds_of_check_count_as_assertions(line: str) -> None:
     assert tier.assertion_changes("t.py", f"@@ -1 +0,0 @@\n-    {line}")
 
 
-@pytest.mark.parametrize("line", ["@pytest.mark.skip", '@pytest.mark.xfail(reason="x")'])
-def test_added_skip_is_reported(line: str) -> None:
+@pytest.mark.parametrize(
+    "line",
+    [
+        "@pytest.mark.skip",
+        '@pytest.mark.xfail(reason="x")',
+        "@pytest.mark.live",
+        "pytestmark = pytest.mark.live",
+        "@mark.live",
+        '@unittest.skip("x")',
+        'pytest.importorskip("x")',
+    ],
+)
+def test_added_skip_or_live_marker_is_reported(line: str) -> None:
     patch = f"@@ -1 +1,2 @@\n+{line}\n def test_x(): ..."
-    assert tier.assertion_changes("t.py", patch) == [f"t.py: skip added: {line}"]
+    assert tier.assertion_changes("t.py", patch) == [f"t.py: skip or live marker added: {line}"]
+
+
+def test_moved_live_marker_reports_nothing() -> None:
+    patch = "@@ -1,2 +1,2 @@\n-@pytest.mark.live\n+  @pytest.mark.live\n def test_x(): ..."
+    assert tier.assertion_changes("t.py", patch) == []
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "client/src/feed.test.ts",
+        "client/src/feed.spec.tsx",
+        "client/src/__tests__/feed.ts",
+        "client/tests/feed.ts",
+        "client/test/feed.js",
+    ],
+)
+def test_client_tests_are_scanned(path: str) -> None:
+    patch = "@@ -1 +0,0 @@\n-  expect(items).toHaveLength(2);"
+    assert tier.diff_findings([F(path, 1, patch=patch)]) == [
+        f"{path}: deleted: expect(items).toHaveLength(2);"
+    ]
+
+
+def test_client_source_is_not_scanned_as_tests() -> None:
+    patch = "@@ -1 +0,0 @@\n-  expect(items).toHaveLength(2);"
+    assert tier.diff_findings([F("client/src/app.ts", 1, patch=patch)]) == []
+
+
+@pytest.mark.parametrize(
+    "line",
+    ['it.skip("shows", () => {', 'test.only("shows", () => {', 'describe.skip("x", () => {'],
+)
+def test_client_skips_are_reported(line: str) -> None:
+    patch = f"@@ -1 +1 @@\n+{line}"
+    assert tier.assertion_changes("client/a.test.ts", patch) == [
+        f"client/a.test.ts: skip or live marker added: {line}"
+    ]
+
+
+def test_deleted_client_test_is_reported() -> None:
+    patch = '@@ -1 +0,0 @@\n-it("shows the feed", () => {'
+    assert tier.assertion_changes("client/a.test.ts", patch) == [
+        'client/a.test.ts: deleted: it("shows the feed", () => {'
+    ]
 
 
 def test_diff_findings_only_read_test_files_and_flag_missing_diffs() -> None:
@@ -609,6 +726,12 @@ def commit(sha: str, subject: str, *files: dict[str, Any]) -> dict[str, Any]:
     return {"sha": sha, "commit": {"message": f"{subject}\n\nBody."}, "files": list(files)}
 
 
+def authored(sha: str, subject: str, *files: dict[str, Any]) -> dict[str, Any]:
+    """A commit as the test author makes it, with the trailer among the others."""
+    message = f"{subject}\n\nBody.\n\nTest-Author: yes\nCo-Authored-By: An Agent <a@example.com>\n"
+    return {"sha": sha, "commit": {"message": message}, "files": list(files)}
+
+
 def touched(name: str, deletions: int = 0, patch: str | None = None) -> dict[str, Any]:
     data: dict[str, Any] = {"filename": name, "deletions": deletions}
     if patch is not None:
@@ -618,7 +741,7 @@ def touched(name: str, deletions: int = 0, patch: str | None = None) -> dict[str
 
 def test_worker_edit_of_a_test_authors_test_is_reported() -> None:
     commits = [
-        commit("a" * 40, "test(rank): add failing tests", touched("t.py")),
+        authored("a" * 40, "test(rank): add failing tests", touched("t.py")),
         commit("b" * 40, "feat(rank): boost", touched("t.py", 1, "@@ -1 +1 @@\n-x = 1\n+x = 2")),
     ]
     assert tier.test_author_edits(commits) == ["bbbbbbb t.py: x = 1"]
@@ -626,7 +749,7 @@ def test_worker_edit_of_a_test_authors_test_is_reported() -> None:
 
 def test_additions_and_other_files_are_not_edits() -> None:
     commits = [
-        commit("a" * 40, "test: add failing tests", touched("t.py")),
+        authored("a" * 40, "test: add failing tests", touched("t.py")),
         commit("b" * 40, "feat: x", touched("t.py", 0, "@@ -1 +1,2 @@\n+x = 1")),
         commit("c" * 40, "fix: y", touched("other.py", 1, "@@ -1 +0,0 @@\n-x = 1")),
     ]
@@ -643,16 +766,68 @@ def test_only_leading_test_commits_are_the_test_authors() -> None:
 
 def test_later_test_commit_editing_their_file_is_reported() -> None:
     commits = [
-        commit("a" * 40, "test: add failing tests", touched("t.py")),
+        authored("a" * 40, "test: add failing tests", touched("t.py")),
         commit("b" * 40, "feat: x"),
         commit("c" * 40, "test: relax it", touched("t.py", 1, "@@ -1 +0,0 @@\n-x = 1")),
     ]
     assert tier.test_author_edits(commits) == ["ccccccc t.py: x = 1"]
 
 
+def test_a_workers_own_first_test_commit_is_not_the_test_authors() -> None:
+    commits = [
+        commit("a" * 40, "test: first tests", touched("t.py")),
+        commit("b" * 40, "feat: x", touched("t.py", 1, "@@ -1 +0,0 @@\n-x = 1")),
+    ]
+    assert tier.test_author_edits(commits) == []  # nothing of the test author's to edit
+    assert tier.authorship_notes(commits) == [
+        "aaaaaaa: a leading test: commit with no Test-Author trailer. Counted as the worker's, "
+        "so the report can't tell whether it holds a test author's tests"
+    ]
+
+
+def test_a_workers_test_commit_after_the_test_authors_is_flagged_and_its_edits_count() -> None:
+    commits = [
+        authored("a" * 40, "test: add", touched("t.py")),
+        commit("b" * 40, "test: relax it", touched("t.py", 1, "@@ -1 +0,0 @@\n-x = 1")),
+    ]
+    assert tier.test_author_edits(commits) == ["bbbbbbb t.py: x = 1"]
+    assert [note[:8] for note in tier.authorship_notes(commits)] == ["bbbbbbb:"]
+
+
+def test_the_trailer_only_counts_on_a_leading_test_commit() -> None:
+    commits = [
+        authored("a" * 40, "test: add", touched("t.py")),
+        commit("b" * 40, "feat: x"),
+        authored("c" * 40, "test: relax it", touched("t.py", 1, "@@ -1 +0,0 @@\n-x = 1")),
+        authored("d" * 40, "feat: not a test commit"),
+    ]
+    assert tier.test_author_edits(commits) == ["ccccccc t.py: x = 1"]
+    assert [note[:7] for note in tier.authorship_notes(commits)] == ["ccccccc", "ddddddd"]
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "test: add\n\nTest-Author: yes\nreads like a trailer, but the body goes on\n\nBody.",
+        "test: add\n\nBody.\n\nTest-Author:\nCo-Authored-By: An Agent <a@example.com>",
+    ],
+)
+def test_a_trailer_must_be_in_the_last_paragraph_and_have_a_value(message: str) -> None:
+    commits = [{"sha": "a" * 40, "commit": {"message": message}, "files": []}]
+    assert tier.test_author_commits(commits) == []
+
+
+def test_marked_test_commits_need_no_note() -> None:
+    commits = [
+        authored("a" * 40, "test: add", touched("t.py")),
+        commit("b" * 40, "feat: x"),
+    ]
+    assert tier.authorship_notes(commits) == []
+
+
 def test_edit_with_no_diff_is_flagged() -> None:
     commits = [
-        commit("a" * 40, "test: add", touched("t.py")),
+        authored("a" * 40, "test: add", touched("t.py")),
         commit("b" * 40, "feat: x", touched("t.py", 9)),
     ]
     assert tier.test_author_edits(commits) == [
@@ -676,7 +851,7 @@ def test_tests_command_prints_both_parts(
         if path.startswith("pulls/70/commits"):
             return [{"sha": "a" * 40}, {"sha": "b" * 40}]
         if path == f"commits/{'a' * 40}":
-            return commit("a" * 40, "test: add", touched("backend/tests/a.py"))
+            return authored("a" * 40, "test: add", touched("backend/tests/a.py"))
         return commit(
             "b" * 40, "feat: x", touched("backend/tests/a.py", 1, "@@ -1 +0,0 @@\n-assert x")
         )
@@ -686,6 +861,17 @@ def test_tests_command_prints_both_parts(
     out = capsys.readouterr().out
     assert "  - backend/tests/a.py: deleted: assert x" in out
     assert "  - bbbbbbb backend/tests/a.py: assert x" in out
+    assert "Check by hand" not in out
+
+
+def test_tests_command_prints_authorship_notes(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(tier, "fetch_files", lambda number: [])
+    monkeypatch.setattr(tier, "fetch_commits", lambda number: [commit("a" * 40, "test: add")])
+    tier.cmd_tests(70)
+    out = capsys.readouterr().out
+    assert "Check by hand:\n  - aaaaaaa: a leading test: commit" in out
 
 
 # --- merge command ---------------------------------------------------------------
@@ -788,4 +974,6 @@ def test_patches_reach_the_classifier(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(tier, "gh_api", gh_api)
     result = tier.classify_pr(pr(number=80, body="Closes #71"))
-    assert result.reasons == ["infra/terraform/deploy.tf changes IAM, billing or budgets"]
+    assert result.reasons == [
+        "infra/terraform/deploy.tf changes IAM, billing, budgets or service account keys"
+    ]
