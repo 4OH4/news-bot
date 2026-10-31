@@ -656,10 +656,10 @@ urls:
     expected_title: "Tool: LaTeX renderer"
     must_contain:
       - "the URL, so every document created using"
-    word_range: [270, 410]
+    word_range: [270, 430]
     paywalled: false
     tags: [blog, tech, short]
-    notes: "Page h1 is the blog name; og:title is 'Tool: LaTeX renderer', the feed says 'LaTeX renderer'. Title guessed."
+    notes: "Page h1 is the blog name; og:title is 'Tool: LaTeX renderer', the feed says 'LaTeX renderer'. Title guessed. Range includes the lead line (tool title and description, about 82 words) that Readability drops: body 330 + lead line 82 + date and category 4 = 416 words with trafilatura."
 
   - id: willison-2026-10-13-redesigning-source-control-at-anthropic
     url: https://simonwillison.net/2026/Oct/13/redesigning-source-control-at-anthropic/
