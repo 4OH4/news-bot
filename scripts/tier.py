@@ -131,14 +131,17 @@ INFRA_RISK_RE = re.compile(
     r"|billing|budget",
     re.IGNORECASE,
 )
-DELETE_RULE_RE = re.compile(r'lifecycle_rule|ttl_config|type"?\s*[=:]\s*"delete"', re.IGNORECASE)
+# Retention sets when a delete rule fires, and a shorter `default` under
+# `variable "content_retention_days"` names it only on a context line.
+DELETE_RULE_RE = re.compile(
+    r'lifecycle_rule|ttl_config|retention|type"?\s*[=:]\s*"delete"', re.IGNORECASE
+)
 # These only matter when they change, so they're matched against changed lines. A protection
-# flag counts whichever way it moves, and `force_destroy` unless it is plainly off. Any line
-# naming retention counts: `age = var.content_retention_days` hides the rule in another file.
+# flag counts whichever way it moves, and `force_destroy` unless it is plainly off.
 DATA_LOSS_RE = re.compile(
     r"force_destroy\s*=(?!\s*false\b)"
     r"|deletion_protection|delete_protection_state|deletion_policy|prevent_destroy"
-    r"|retention|soft_delete_policy"
+    r"|soft_delete_policy"
     r"|^\s*removed\s*\{"  # Terraform's block for dropping a resource from a configuration
     r"|\bgsutil\b.*\b(?:rm|rb)\b|\bgcloud\b.*\b(?:rm|delete)\b|\bterraform\s+destroy\b",
     re.IGNORECASE,
