@@ -34,9 +34,9 @@ docker run --rm newsfeed run
 | `NEWSFEED_FIRESTORE_DATABASE` | default database | Optional Firestore database id. |
 | `NEWSFEED_GCP_PROJECT` | from credentials | Optional Google Cloud project for both clients. |
 | `NEWSFEED_DEDUPE_WINDOW_DAYS` | `14` (at least 1) | Ingest dedupes against articles fetched in this many days, which bounds the reads per run on Firestore. Keep it at least as long as any `--since` you use (a longer `--since` widens it for that run). An older entry that reappears is never allowed to overwrite a stored article, and one the feed dates before the window is skipped as `stale` once the source has been read in full before. |
-| `NEWSFEED_RETRY_BACKOFF_HOURS` | `[1, 6, 24]` (JSON list) | Hours to wait after the 1st, 2nd... extraction attempt before retrying a transient failure. Its length is the cap (three retries by default); `[]` turns retries off. |
+| `NEWSFEED_RETRY_BACKOFF_HOURS` | `[1, 6, 24]` (JSON list) | Hours to wait after the 1st, 2nd... extraction attempt before retrying a transient failure. Its length is the cap (three retries by default); `[]` turns retries off. Each value must be positive and finite; zero, negative, NaN and infinity are rejected at startup. |
 | `NEWSFEED_RETRY_WINDOW_DAYS` | `3` | Failed articles are only retried within this many days of being fetched. |
-| `NEWSFEED_RETRY_PARTIAL` | `false` | Also retry `partial` extractions (usually a short page). |
+| `NEWSFEED_RETRY_PARTIAL` | `false` | Also retry `partial` extractions (usually a short page). A retry that does worse keeps the stored text and status and only records the attempt and error. |
 
 ### Retrying failed extractions
 
