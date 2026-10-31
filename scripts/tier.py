@@ -117,6 +117,8 @@ TESTS_PREFIX = "backend/tests/"
 
 # Terraform is infrastructure wherever the file sits.
 INFRA_PATHS = ("infra/*", "*.tf", "*.tfvars", "*.tf.json")
+# Terraform reads the files by name in one directory, and a rename's patch shows only its edits.
+TF_CONFIG_PATHS = ("*.tf", "*.tf.json")
 # Who can reach what, and who pays, can sit in any infra file, and a one-line change often
 # names neither: `member = "allUsers"` shows as IAM only through the resource around it. So
 # these two are matched against the whole patch, context lines included.
@@ -124,17 +126,19 @@ INFRA_RISK_RE = re.compile(
     r"(?<![a-z0-9])iam(?![a-z0-9])"  # `_` and `-` count as boundaries: google_iam_policy
     r"|roles/|\bmembers?\s*=|\bpolicy_data\b|\bpermissions\s*=|\bbinding\s*\{"
     r"|allUsers|allAuthenticatedUsers|service_account"
-    r"|(?<![a-z0-9])acl(?![a-z0-9])|public_access_prevention|uniform_bucket_level_access"
+    r"|(?<![a-z0-9])acl(?![a-z0-9])|google_storage_\w*access_control"
+    r"|public_access_prevention|uniform_bucket_level_access"
     r"|billing|budget",
     re.IGNORECASE,
 )
 DELETE_RULE_RE = re.compile(r'lifecycle_rule|ttl_config|type"?\s*[=:]\s*"delete"', re.IGNORECASE)
 # These only matter when they change, so they're matched against changed lines. A protection
-# flag counts whichever way it moves, and `force_destroy` unless it is plainly off.
+# flag counts whichever way it moves, and `force_destroy` unless it is plainly off. Any line
+# naming retention counts: `age = var.content_retention_days` hides the rule in another file.
 DATA_LOSS_RE = re.compile(
     r"force_destroy\s*=(?!\s*false\b)"
     r"|deletion_protection|delete_protection_state|deletion_policy|prevent_destroy"
-    r"|retention_policy|soft_delete_policy"
+    r"|retention|soft_delete_policy"
     r"|^\s*removed\s*\{"  # Terraform's block for dropping a resource from a configuration
     r"|\bgsutil\b.*\b(?:rm|rb)\b|\bgcloud\b.*\b(?:rm|delete)\b|\bterraform\s+destroy\b",
     re.IGNORECASE,
@@ -312,7 +316,11 @@ def loses_data(patch: str) -> bool:
 def infra_risk(f: ChangedFile) -> str | None:
     """Why this file's infra change is Tier C, if it is. An unreadable diff counts."""
     is_infra = any(p and matches(p, INFRA_PATHS) for p in (f.path, f.previous_path))
-    if not is_infra or f.changes == 0:
+    if not is_infra:
+        return None
+    if f.previous_path and any(matches(p, TF_CONFIG_PATHS) for p in (f.path, f.previous_path)):
+        return f"{f.path} moves Terraform from {f.previous_path}, which can drop what it defines"
+    if f.changes == 0 and not f.previous_path:
         return None
     if f.patch is None:
         return f"{f.path}: no diff available to check for IAM or billing changes"
@@ -368,7 +376,7 @@ def tool_settings_changed(patch: str, text: str) -> bool:
 
 def pyproject_risk(f: ChangedFile) -> str | None:
     """Why this change to backend/pyproject.toml is Tier C, if it is."""
-    if PYPROJECT not in (f.path, f.previous_path) or f.changes == 0:
+    if PYPROJECT not in (f.path, f.previous_path) or (f.changes == 0 and not f.previous_path):
         return None
     if f.patch is None or f.text is None:
         return f"{PYPROJECT}: file not readable, so no way to check its [tool.*] tables"
