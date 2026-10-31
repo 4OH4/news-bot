@@ -38,6 +38,7 @@ from newsfeed.pipeline import (
     run_pipeline,
 )
 from newsfeed.ports import Extractor
+from newsfeed.report import build_report
 from newsfeed.wiring import Services, build_ingesters
 from tests.fakes import FakeExtractor, FakeFetcher, FakeResponse, FakeSourceIngester
 
@@ -1256,3 +1257,15 @@ def test_skipped_stages_have_no_duration(tmp_path: Path, repository: SqliteRepos
     stats = run_pipeline(services, [SOURCE], extract=False, rank=False, publish=False)
 
     assert set(stats.stage_durations_ms) == {PipelineStage.INGEST}
+
+
+def test_report_lists_a_failed_article_from_a_real_run(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    """Regression: nothing sets last_attempt_at yet, so matching falls back to fetched_at."""
+    run_pipeline(_services(tmp_path, repository, _fetcher()), [SOURCE])
+
+    report = build_report(repository, [SOURCE.id])
+
+    urls = [u for g in report.failures for u in g.urls]
+    assert "https://news.example.com/2026/10/missing" in urls

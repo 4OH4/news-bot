@@ -17,6 +17,7 @@ Requires Ubuntu (or another Linux), [`uv`](https://docs.astral.sh/uv/) and Docke
 ```bash
 cd backend
 uv run newsfeed run          # run the pipeline locally
+uv run newsfeed report       # failing feeds and failed articles by site and reason (--run, --since, --json)
 
 # from the repo root
 docker build -f backend/Dockerfile -t newsfeed .

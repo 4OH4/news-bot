@@ -259,3 +259,20 @@ def test_run_and_publish_write_feed_json_to_the_data_dir(env: Path) -> None:
     assert "publish: items=" in result.output
     again = json.loads(feed_path.read_bytes())
     assert [i["id"] for i in again["items"]] == [i["id"] for i in first["items"]]
+
+
+def test_report_prints_a_summary_after_a_run(env: Path) -> None:
+    assert runner.invoke(cli.app, ["run"]).exit_code == 0
+
+    text = runner.invoke(cli.app, ["report"])
+    as_json = runner.invoke(cli.app, ["report", "--json"])
+
+    assert text.exit_code == 0, text.output
+    assert "Extraction by domain" in text.output
+    assert as_json.exit_code == 0, as_json.output
+    assert len(json.loads(as_json.output)["run_ids"]) == 1
+
+
+def test_report_rejects_an_unknown_run_and_conflicting_options(env: Path) -> None:
+    assert runner.invoke(cli.app, ["report", "--run", "nope"]).exit_code == 1
+    assert runner.invoke(cli.app, ["report", "--run", "x", "--since", "2026-01-01"]).exit_code == 2
