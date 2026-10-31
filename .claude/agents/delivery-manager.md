@@ -67,4 +67,4 @@ End with one report to the lead:
 - waiting for the human: Tier C PRs;
 - parked: PRs and issues, with the reason;
 - every `Confirm later` entry from the PRs in the batch, and every dependency's licence and reason, copied exactly;
-- a "Friction" section (`AUTOMATION.md` §10): rework rounds and defects found, permission prompts, usage cut-offs, failed gates and escalations, plus any `**Friction:**` notes from the agents' reports, copied as written.
+- a "Friction" section (`AUTOMATION.md` §10): rework rounds and defects found, permission prompts, usage pauses and cut-offs, failed gates and escalations, plus any `**Friction:**` notes from the agents' reports, copied as written.
