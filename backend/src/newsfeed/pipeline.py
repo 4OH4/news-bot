@@ -653,14 +653,16 @@ def _log_outcome(outcome: _Outcome, elapsed_ms: int) -> None:
 
 
 def _finish_skipped(run: _ExtractRun, article: Article, reason: str, domain: str) -> _Outcome:
-    run.services.repository.upsert_article(
-        _with_changes(
+    if article.extraction.status is ExtractionStatus.PARTIAL:
+        recorded = _keeping_partial(article, reason, run.clock())
+    else:
+        recorded = _with_changes(
             article,
             extraction=ArticleExtraction(
                 status=ExtractionStatus.SKIPPED, error=reason, **_attempt(article, run.clock())
             ),
         )
-    )
+    run.services.repository.upsert_article(recorded)
     run.tally.extraction(ExtractionRecord(domain, ExtractionStatus.SKIPPED, error=reason))
     run.tally.count(PipelineStage.EXTRACT, ExtractionStatus.SKIPPED.value)
     return _Outcome(article, domain, ExtractionStatus.SKIPPED.value, error=reason)
@@ -733,8 +735,10 @@ def _paywall_refusal(extractor: Extractor, url: str, status_code: int | None) ->
 
 def _finish_paywalled(run: _ExtractRun, article: Article, reason: str, domain: str) -> _Outcome:
     """Record a page refused for want of a subscription; not an error (rule 6)."""
-    run.services.repository.upsert_article(
-        _with_changes(
+    if article.extraction.status is ExtractionStatus.PARTIAL:
+        recorded = _keeping_partial(article, reason, run.clock())
+    else:
+        recorded = _with_changes(
             article,
             extraction=ArticleExtraction(
                 status=ExtractionStatus.PAYWALLED,
@@ -743,7 +747,7 @@ def _finish_paywalled(run: _ExtractRun, article: Article, reason: str, domain: s
                 **_attempt(article, run.clock()),
             ),
         )
-    )
+    run.services.repository.upsert_article(recorded)
     run.tally.extraction(ExtractionRecord(domain, ExtractionStatus.PAYWALLED, error=reason))
     run.tally.count(PipelineStage.EXTRACT, ExtractionStatus.PAYWALLED.value)
     return _Outcome(article, domain, ExtractionStatus.PAYWALLED.value, error=reason)

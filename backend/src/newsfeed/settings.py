@@ -6,6 +6,8 @@ rank it is configuration in ``config/`` (CLAUDE.md, rule 5).
 
 from __future__ import annotations
 
+import math
+from datetime import timedelta
 from pathlib import Path
 from typing import Literal
 
@@ -77,8 +79,16 @@ class Settings(BaseSettings):
     @classmethod
     def _backoff_positive(cls, value: tuple[float, ...]) -> tuple[float, ...]:
         # A zero or negative wait would retry on every run: impolite to publishers (rule 6).
-        if any(hours <= 0 for hours in value):
-            raise ValueError(f"retry backoff hours must all be positive, got {list(value)}")
+        # NaN and infinity pass a bare ``<= 0`` check but break timedelta in should_retry.
+        for hours in value:
+            try:
+                valid = math.isfinite(hours) and hours > 0 and timedelta(hours=hours) > timedelta(0)
+            except OverflowError:
+                valid = False
+            if not valid:
+                raise ValueError(
+                    f"retry backoff hours must all be positive and finite, got {list(value)}"
+                )
         return value
 
     @model_validator(mode="after")

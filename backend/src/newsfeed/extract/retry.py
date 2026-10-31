@@ -11,7 +11,9 @@ be impolite and wasteful, so the policy is deliberately narrow:
 - **Partial extractions** (usually a short page) are retried only when
   ``retry_partial`` is on; the default is off. A retry that does worse (a
   failure, or a partial no longer than the stored one) keeps the stored text
-  and status and only records the attempt and the latest error.
+  and status and only records the attempt and the latest error (also when the retry ends
+  skipped or paywalled). ``extract --url --save`` of a stored partial article
+  goes through the same path, so it applies this rule too.
 - **Backoff and cap:** after attempt *n* the article waits ``backoff_hours[n-1]``
   before the next try, measured from ``extraction.last_attempt_at`` (or
   ``fetched_at`` for articles stored before that field existed). The defaults
