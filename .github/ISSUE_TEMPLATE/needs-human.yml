@@ -1,13 +1,14 @@
 name: Needs human
-description: A decision, setup step, review or judgement call that an agent shouldn't make alone.
+description: A stop-the-line item (AUTOMATION.md §6) that only the human can settle.
 title: "[area] Short description of the decision or task"
 labels: ["needs-human"]
 body:
   - type: markdown
     attributes:
       value: |
-        Use this for work that needs my judgement, credentials or taste: architecture decisions, contract changes,
-        GCP/billing/IAM setup, curating evaluation expectations, and go/no-go reviews.
+        Use this only for work that needs me: credentials, cloud setup, billing and IAM, paid services, data that
+        can't be recreated, third-party limits, a change of goal, or a design choice that can't be reversed.
+        Reversible decisions don't come here: agents make them and record a `Confirm later` entry.
         Agents may prepare material for these issues (drafts, analysis, options) but must not close them.
 
   - type: dropdown

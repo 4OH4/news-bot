@@ -88,6 +88,20 @@ body:
       required: true
 
   - type: textarea
+    id: examples
+    attributes:
+      label: Acceptance examples
+      description: |
+        Concrete given/when/then cases in plain language, which the test author turns into failing tests.
+        They describe behaviour. Name interfaces under "Interfaces touched", so the test author and worker
+        can work independently. Write "None" for docs, config-only and tooling work.
+      placeholder: |
+        Given a page with a cookie banner, when it is extracted, then the banner's text isn't in the body.
+        Given a page with no article, when it is extracted, then the status is failed and the run continues.
+    validations:
+      required: true
+
+  - type: textarea
     id: acceptance
     attributes:
       label: Acceptance criteria
@@ -127,7 +141,7 @@ body:
     id: interfaces
     attributes:
       label: Interfaces touched
-      description: Contracts this uses or implements. Any change to models.py / ports.py must be a separate needs-human issue.
+      description: Contracts this uses or implements, named exactly. Any change to models.py / ports.py must be its own issue.
       placeholder: |
         Implements: `Extractor` protocol (ports.py)
         Uses: `ExtractionResult` (models.py)
