@@ -15,6 +15,7 @@ resources.
 
 | File | What it manages |
 |------|-----------------|
+| `setup.sh` | Runs the first-time setup below from `terraform.tfvars`. Re-runnable. |
 | `bootstrap.sh` | The project, its billing link, the first three APIs and the Terraform state bucket. Run once. |
 | `terraform/versions.tf`, `providers.tf` | Terraform and Google provider versions, the `gcs` state backend, and the quota project for user credentials. |
 | `terraform/variables.tf` | The values you choose. Project, billing account, region, budget and alert email have no defaults. |
@@ -44,6 +45,26 @@ Costs Manager to create the budget.
 Choose the values first: a globally unique project id, your billing account id
 (`gcloud billing accounts list`), a region (for example `europe-west2`), a monthly
 budget in your billing currency, and the alert email address.
+
+### The quick way
+
+`infra/setup.sh` runs every step below, reading the project, billing account and
+region from `terraform.tfvars`, so that is the only file to edit. Update your
+checkout first, because `.gitignore` must already cover that file:
+
+```bash
+git switch main && git pull
+cp infra/terraform/terraform.tfvars.example infra/terraform/terraform.tfvars
+# edit terraform.tfvars: project_id, billing_account, region, budget_amount, alert_email
+infra/setup.sh
+```
+
+It stops for you to read the Terraform plan and type `yes`, and it's safe to
+re-run. `infra/setup.sh infra` covers the bootstrap and Terraform, and
+`infra/setup.sh deploy` builds, pushes and runs the image at `HEAD`. If the run
+fails, the schedule stays paused until a later `deploy` succeeds.
+
+### Step by step
 
 1. Log in, for gcloud and for Terraform (Application Default Credentials):
 
