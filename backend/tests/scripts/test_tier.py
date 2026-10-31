@@ -256,6 +256,12 @@ def test_infra_without_iam_or_billing_is_tier_b() -> None:
         '+  predefined_acl = "publicRead"',
         '+resource "google_storage_bucket_acl" "open" {',
         '+  public_access_prevention = "inherited"',
+        '+resource "google_storage_bucket_access_control" "open" {',
+        '+resource "google_storage_object_access_control" "open" {',
+        '+resource "google_storage_default_object_access_control" "open" {',
+        # Neither name is on the line with `member`, so nothing else catches them.
+        '+  readers = ["allUsers"]',
+        '+  readers = ["allAuthenticatedUsers"]',
         "+  uniform_bucket_level_access = false",
     ],
 )
@@ -304,7 +310,11 @@ def test_a_delete_rule_is_tier_c(patch: str) -> None:
         '@@ -1 +1,2 @@\n name = var.db\n+  deletion_policy = "DELETE"',
         "@@ -1,2 +1 @@\n name = var.bucket\n-  lifecycle { prevent_destroy = true }",
         "@@ -1,2 +1 @@\n name = var.bucket\n-  retention_policy { retention_period = 90 }",
-        "@@ -1,2 +1 @@\n name = var.bucket\n-  soft_delete_policy { retention = 9 }",
+        "@@ -1,2 +1 @@\n name = var.bucket\n-  soft_delete_policy { enabled = true }",
+        # The rule itself is in another file, or its block is on a context line.
+        "@@ -1,2 +1,2 @@\n variable x {\n-  default = var.content_retention_days\n+  default = 1",
+        "@@ -1,3 +1,3 @@\n   soft_delete_policy {\n-    retention_duration_seconds = 604800\n"
+        "+    retention_duration_seconds = 0\n  }",
         # Removing a store, whether the file stays or goes.
         '@@ -1,4 +1 @@\n a = 1\n-resource "google_storage_bucket" "articles" {\n-  name = "a"\n-}',
         '@@ -1,2 +0,0 @@\n-resource "google_firestore_database" "main" {\n-}',
@@ -390,8 +400,38 @@ def test_infra_change_with_no_readable_diff_is_tier_c() -> None:
     assert classify(F("infra/terraform/large.tf", 5000)).tier == "C"
 
 
-def test_pure_infra_rename_has_no_patch_and_stays_tier_b() -> None:
-    assert classify(F("infra/b.tf", 0, previous_path="infra/a.tf")).tier == "B"
+@pytest.mark.parametrize(
+    ("path", "previous"),
+    [
+        ("infra/terraform/storage.tf.off", "infra/terraform/storage.tf"),
+        ("docs/storage.txt", "infra/terraform/storage.tf"),
+        ("infra/b.tf", "infra/a.tf"),
+        ("infra/terraform/storage.tf", "docs/storage.txt"),
+    ],
+)
+def test_moving_terraform_is_tier_c_with_or_without_edits(path: str, previous: str) -> None:
+    # Terraform stops reading the old name, so what the file defines goes with it.
+    reason = f"{path} moves Terraform from {previous}, which can drop what it defines"
+    assert classify(F(path, 0, previous_path=previous)).reasons == [reason]
+    edited = F(path, 2, previous, "@@ -1 +1 @@\n-a = 1\n+a = 2")
+    assert classify(edited).reasons == [reason]
+
+
+def test_infra_rename_with_no_patch_is_tier_c() -> None:
+    moved = F("infra/run.sh", 0, previous_path="infra/start.sh")
+    assert classify(moved).reasons == [
+        "infra/run.sh: no diff available to check for IAM or billing changes"
+    ]
+
+
+def test_infra_rename_with_a_harmless_readable_diff_stays_tier_b() -> None:
+    patch = "@@ -1 +1 @@\n-set -e\n+set -eu"
+    assert classify(F("infra/run.sh", 2, "infra/start.sh", patch)).tier == "B"
+
+
+def test_infra_mode_change_stays_tier_b() -> None:
+    # GitHub reports 0 changes and no patch for a change of file mode, and no previous name.
+    assert classify(F("infra/bootstrap.sh", 0)).tier == "B"
 
 
 def test_empty_diff_is_tier_b() -> None:
@@ -491,13 +531,26 @@ def test_a_removed_line_belongs_to_the_table_above_it() -> None:
     assert tier.tool_settings_changed(patch, "[tool.a]\nx = 1\n[b]\ny = 1\n")
 
 
+def test_every_added_line_moves_on_a_line() -> None:
+    # Two added lines shift the third change into the [tool.b] table.
+    patch = "@@ -1,2 +1,5 @@\n [a]\n+x = 1\n+y = 2\n [tool.b]\n+z = 3"
+    assert tier.tool_settings_changed(patch, "[a]\nx = 1\ny = 2\n[tool.b]\nz = 3\n")
+
+
 def test_pyproject_with_no_diff_or_text_is_tier_c() -> None:
     reason = f"{PYPROJECT}: file not readable, so no way to check its [tool.*] tables"
     assert pyproject_tier(None).reasons == [reason]
     assert pyproject_tier("@@ -1 +1 @@\n-a\n+b", text=None).reasons == [reason]
 
 
-def test_pyproject_rename_with_no_change_stays_tier_b() -> None:
+@pytest.mark.parametrize(
+    ("path", "previous"), [("backend/x.toml", PYPROJECT), (PYPROJECT, "backend/x.toml")]
+)
+def test_pyproject_rename_with_no_change_is_tier_c(path: str, previous: str) -> None:
+    assert classify(F(path, 0, previous_path=previous)).tier == "C"
+
+
+def test_pyproject_mode_change_stays_tier_b() -> None:
     assert classify(F(PYPROJECT, 0)).tier == "B"
 
 
