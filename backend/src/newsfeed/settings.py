@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from newsfeed.eval.snapshot import default_fixtures_dir
@@ -72,6 +72,14 @@ class Settings(BaseSettings):
         ge=0,
         description="Minimum seconds between requests to one host.",
     )
+
+    @field_validator("retry_backoff_hours")
+    @classmethod
+    def _backoff_positive(cls, value: tuple[float, ...]) -> tuple[float, ...]:
+        # A zero or negative wait would retry on every run: impolite to publishers (rule 6).
+        if any(hours <= 0 for hours in value):
+            raise ValueError(f"retry backoff hours must all be positive, got {list(value)}")
+        return value
 
     @model_validator(mode="after")
     def _gcp_needs_bucket(self) -> Settings:

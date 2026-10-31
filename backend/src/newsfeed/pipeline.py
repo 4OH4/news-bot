@@ -577,6 +577,37 @@ def _merge(
     )
 
 
+_QUALITY = {ExtractionStatus.OK: 2, ExtractionStatus.PARTIAL: 1}
+
+
+def _is_better(new: ExtractionStatus, new_words: int, old: ArticleExtraction) -> bool:
+    """Whether a retry's result should replace a stored ``partial`` one.
+
+    ``ok`` beats ``partial`` beats anything else; between two partials the
+    longer wins, and a tie keeps the earlier one.
+    """
+    new_q, old_q = _QUALITY.get(new, 0), _QUALITY.get(old.status, 0)
+    if new_q != old_q:
+        return new_q > old_q
+    return new is ExtractionStatus.PARTIAL and new_words > old.word_count
+
+
+def _keeping_partial(article: Article, error: str | None, now: datetime) -> Article:
+    """``article`` with its partial extraction kept, recording only the attempt and latest error.
+
+    Readable text already in the feed must not be lost to a transient outage or
+    a thinner page on retry.
+    """
+    kept = article.extraction.model_copy(
+        update={
+            "error": error[:500] if error else None,
+            "error_type": reason_category(error) if error else None,
+            **_attempt(article, now),
+        }
+    )
+    return _with_changes(article, extraction=kept)
+
+
 @dataclass(frozen=True)
 class _ExtractRun:
     services: Services
@@ -652,17 +683,20 @@ def _finish_failed(
     run.tally.extraction(ExtractionRecord(domain, ExtractionStatus.FAILED, error=error))
     run.tally.count(PipelineStage.EXTRACT, ExtractionStatus.FAILED.value)
     try:
-        run.services.repository.upsert_article(
-            _with_changes(
+        message = f"{error_type}: {error}"[:500]
+        if article.extraction.status is ExtractionStatus.PARTIAL:
+            recorded = _keeping_partial(article, message, run.clock())
+        else:
+            recorded = _with_changes(
                 article,
                 extraction=ArticleExtraction(
                     status=ExtractionStatus.FAILED,
-                    error=f"{error_type}: {error}"[:500],
+                    error=message,
                     error_type=reason_category(error),
                     **_attempt(article, run.clock()),
                 ),
             )
-        )
+        run.services.repository.upsert_article(recorded)
     except Exception as exc:  # the repository itself is failing; nothing more to do
         _warn(
             "couldn't record the failure",
@@ -754,7 +788,12 @@ def _extract_content(
     services = run.services
     result = services.extractor.extract(page.html, page.final_url)
     content_ref = None
-    if result.content_html:
+    keep_earlier = article.extraction.status is ExtractionStatus.PARTIAL and not _is_better(
+        result.status, result.word_count, article.extraction
+    )
+    if keep_earlier:
+        services.repository.upsert_article(_keeping_partial(article, result.error, run.clock()))
+    elif result.content_html:
         # Blob first, article second: a crash in between leaves an orphan blob,
         # not an article pointing at nothing (ports.py).
         content_ref = services.blobs.put(
@@ -762,7 +801,8 @@ def _extract_content(
             result.content_html.encode("utf-8"),
             "text/html; charset=utf-8",
         )
-    services.repository.upsert_article(_merge(article, result, content_ref, run.clock()))
+    if not keep_earlier:
+        services.repository.upsert_article(_merge(article, result, content_ref, run.clock()))
     run.tally.extraction(
         ExtractionRecord(domain, result.status, word_count=result.word_count, error=result.error)
     )
