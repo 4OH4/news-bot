@@ -289,6 +289,10 @@ def test_iam_or_billing_lines_in_any_infra_file_are_tier_c(line: str) -> None:
         '@@ -1 +1 @@\n-  "action": {"type": "SetStorageClass"}\n+  "action": {"type": "Delete"}',
         # Firestore's rule for deleting documents by age.
         '@@ -1 +1,2 @@\n+  ttl_config {}\n resource "google_firestore_field" "seen" {',
+        # Retention settings, on a changed line or only beside one.
+        "@@ -1,2 +1 @@\n name = var.bucket\n-  retention_policy { retention_period = 90 }",
+        "@@ -1,3 +1,3 @@\n   soft_delete_policy {\n-    retention_duration_seconds = 604800\n"
+        "+    retention_duration_seconds = 0\n  }",
     ],
 )
 def test_a_delete_rule_is_tier_c(patch: str) -> None:
@@ -296,6 +300,39 @@ def test_a_delete_rule_is_tier_c(patch: str) -> None:
     assert result.tier == "C"
     assert result.reasons == [
         "infra/terraform/storage.tf changes a delete rule, which can delete content"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("name", "description"),
+    [
+        (
+            "content_retention_days",
+            "Days before article content under articles/ is deleted (ADR-0005). "
+            "Also passed to the job.",
+        ),
+        (
+            "feed_copy_retention_days",
+            "Days the timestamped feed copies under feeds/ are kept (ADR-0005 decision 5, "
+            "ADR-0006).",
+        ),
+    ],
+)
+def test_a_shorter_retention_default_is_tier_c(name: str, description: str) -> None:
+    # The hunk infra/terraform/variables.tf gives: only the number is on a changed line.
+    patch = (
+        "@@ -52,7 +52,7 @@\n"
+        f' variable "{name}" {{\n'
+        f'   description = "{description}"\n'
+        "   type        = number\n"
+        "-  default     = 30\n"
+        "+  default     = 1\n"
+        " }"
+    )
+    result = classify(F("infra/terraform/variables.tf", 2, patch=patch))
+    assert result.tier == "C"
+    assert result.reasons == [
+        "infra/terraform/variables.tf changes a delete rule, which can delete content"
     ]
 
 
@@ -309,12 +346,7 @@ def test_a_delete_rule_is_tier_c(patch: str) -> None:
         '@@ -1,2 +1 @@\n name = var.db\n-  delete_protection_state = "DELETE_PROTECTION_ENABLED"',
         '@@ -1 +1,2 @@\n name = var.db\n+  deletion_policy = "DELETE"',
         "@@ -1,2 +1 @@\n name = var.bucket\n-  lifecycle { prevent_destroy = true }",
-        "@@ -1,2 +1 @@\n name = var.bucket\n-  retention_policy { retention_period = 90 }",
         "@@ -1,2 +1 @@\n name = var.bucket\n-  soft_delete_policy { enabled = true }",
-        # The rule itself is in another file, or its block is on a context line.
-        "@@ -1,2 +1,2 @@\n variable x {\n-  default = var.content_retention_days\n+  default = 1",
-        "@@ -1,3 +1,3 @@\n   soft_delete_policy {\n-    retention_duration_seconds = 604800\n"
-        "+    retention_duration_seconds = 0\n  }",
         # Removing a store, whether the file stays or goes.
         '@@ -1,4 +1 @@\n a = 1\n-resource "google_storage_bucket" "articles" {\n-  name = "a"\n-}',
         '@@ -1,2 +0,0 @@\n-resource "google_firestore_database" "main" {\n-}',
