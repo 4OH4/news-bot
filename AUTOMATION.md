@@ -181,7 +181,7 @@ Agents need to create, change and destroy cloud resources during development, so
 - Inside that scope, agents can run `terraform apply`, `terraform destroy` and `gcloud` commands that change resources.
 - `terraform apply` runs only after a change is merged, from up-to-date `main`, so nothing reaches the cloud before its review.
 - Agents can't change IAM, billing or budgets, or delete the project. The service account's roles enforce this, so it doesn't rely on instructions.
-- The development service account has no Secret Manager access. Permission deny rules are prefixes that a reordered command can get past, so they are only a second line of defence behind these roles.
+- The development service account has no access to secret values. It has read-only roles, so that `terraform apply` can refresh the IAM, budget and secret resources it can't change. These include `roles/secretmanager.viewer`, which shows secret names and metadata, never values. Permission deny rules are prefixes that a reordered command can get past, so they are only a second line of defence behind these roles.
 - Budget alerts don't stop spending, so the scope also needs quotas and resource limits.
 - Resources are labelled so that leftovers are easy to find, and the milestone report lists anything still running.
 
@@ -256,13 +256,13 @@ A chain of small dependent issues in one area can still go to one test author an
 | **B** | Decide-and-record changes: `models.py`, `ports.py`, ADRs, new dependencies, `config/interests.yaml`, `config/sources.yaml`, `backend/pyproject.toml` outside its `[tool.*]` tables, `eval/urls.yaml`, `eval/boilerplate.txt`, the eval scorer, test infrastructure (any `conftest.py` or `fakes.py` under `backend/tests/`, the network guard, the contract suites), `docs/feed.schema.json`, `docs/feed.example.json`, `REVIEW.md`, `PROJECT_PLAN.md`, `infra/` and Terraform files outside Tier C | Delivery manager, with a `Confirm later` entry |
 | **C** | `.claude/`, `.github/`, `scripts/`, `backend/tests/scripts/`, `.gitignore`, `.dockerignore`, `backend/Dockerfile`, `AUTOMATION.md`, `CLAUDE.md`, `fetching/`, `docs/milestones/`; the files that define the checks (below); infrastructure changes that touch IAM or other access, billing, budgets, service accounts or delete rules, or that can destroy stored data (below); and any `needs-human` PR | Human |
 
-**Files that define the checks.** Each tool takes the nearest configuration it finds, so these are Tier C by name in any directory: `Makefile`, `.pre-commit-config.yaml`, `pytest.ini`, `pytest.toml`, `tox.ini`, `setup.cfg`, `ruff.toml`, `mypy.ini`, `.coveragerc`, their dotted forms, any `pyproject.toml` other than `backend/pyproject.toml`, any `conftest.py` outside `backend/tests/`, and the client's equivalents (`tsconfig*.json`, ESLint, Prettier, Jest, Vitest and Playwright configuration). In `backend/pyproject.toml`, any change inside a `[tool.*]` table, or to a table header, is Tier C. `tier.py` reads the file at the head to tell, because a patch's context lines don't show which table a line is in. Renaming the file to or from that path is Tier C too. Dependency changes there stay Tier B, unless they need a `[[tool.mypy.overrides]]` entry.
+**Files that define the checks.** Each tool takes the nearest configuration it finds, so these are Tier C by name in any directory: `Makefile`, `.pre-commit-config.yaml`, `pytest.ini`, `pytest.toml`, `tox.ini`, `setup.cfg`, `ruff.toml`, `mypy.ini`, `.coveragerc`, their dotted forms, any `pyproject.toml` other than `backend/pyproject.toml`, any `conftest.py` outside `backend/tests/`, and the client's equivalents (`tsconfig*.json`, ESLint, Prettier, Jest, Vitest and Playwright configuration). In `backend/pyproject.toml`, any change inside a `[tool.*]` table, or to a table header, is Tier C. `tier.py` reads the file at the head to tell, because a patch's context lines don't show which table a line is in. Renaming the file away from that path is Tier C, as is renaming a file onto it with no readable diff. A rename onto it with a readable patch follows the same rule as any other change. Dependency changes there stay Tier B, unless they need a `[[tool.mypy.overrides]]` entry.
 
 **Infrastructure.** These rules cover `infra/` and any `*.tf`, `*.tfvars` or `*.tf.json` file, including a file moved out of `infra/`. A change is Tier C if:
 
 - its whole patch, context lines included, mentions IAM, roles, `member` or `members`, policies, bindings, permissions, ACLs (including `google_storage_*_access_control`), public access, service accounts, billing or budgets, as a one-line `member` change names none of these on the changed line;
-- its whole patch mentions a delete rule: `lifecycle_rule`, a `Delete` action or a Firestore `ttl_config`;
-- a changed line sets `force_destroy` to anything but `false`, changes a protection or retention setting (`deletion_protection`, `delete_protection_state`, `deletion_policy`, `prevent_destroy`, `soft_delete_policy`, or anything naming `retention`, such as `content_retention_days`), adds a `removed` block, or runs a delete command;
+- its whole patch mentions a delete rule or retention: `lifecycle_rule`, a `Delete` action, a Firestore `ttl_config` or anything naming `retention`, as a shorter `default` under `variable "content_retention_days"` names it only on a context line;
+- a changed line sets `force_destroy` to anything but `false`, changes a protection setting (`deletion_protection`, `delete_protection_state`, `deletion_policy`, `prevent_destroy` or `soft_delete_policy`), adds a `removed` block, or runs a delete command;
 - it removes or relabels a `google_storage_bucket`, a `google_firestore_*` resource, `google_project` or a `module`, or changes the `count` or `for_each` of one;
 - it renames a `*.tf` or `*.tf.json` file, because Terraform reads files by name and stops seeing what the old name defined, or renames any other of these files with no readable diff.
 
@@ -416,8 +416,47 @@ Some things are deliberately kept out of the repo:
 | 2026-10-31 | Respect the weekly limit too, and pause at about 90% until the human decides | Reaching it can stop development and the human's own use for days |
 | 2026-10-31 | No restart from outside the lead's session for now | It needs a safe headless setup, and pauses aren't yet a proven problem |
 | 2026-10-31 | The files that define the checks, wherever they sit, including `[tool.*]` tables in `pyproject.toml`, and the tests of the merge gate, are Tier C | Otherwise an agent could weaken `make lint`, `make test` or `tier.py`'s tests without the human, against principle 6 |
-| 2026-10-31 | `terraform apply` runs only after merge, and the development service account has no Secret Manager access | Review comes before anything reaches the cloud, and the limit on secrets rests on roles, not on deny rules |
+| 2026-10-31 | `terraform apply` runs only after merge, and the development service account has no access to secret values | Review comes before anything reaches the cloud, and the limit on secrets rests on roles, not on deny rules |
+| The development service account gets read-only roles, including `roles/secretmanager.viewer` (names and metadata, never values) | `terraform apply` must refresh the resources it can't change, or "Agents apply later changes" can't work |
+| Record learnings in §15 | The human wants to reuse this document on other projects, and the evidence is freshest now |
 
-## 15. Open questions
+## 15. Learnings
+
+What building this way has taught so far, written to be reused on other projects. The items on test authors, the delivery manager and milestones are reasoning from this project's history, because those parts haven't run yet. The first milestone will test them.
+
+### Conceptual
+
+- **Measure the bottleneck before designing a fix.** PR tier data showed that path rules, not a lack of execution, were holding work (§2). The proposed daemon would have added supply to a stuck queue.
+- **Reversibility decides human involvement.** Cheap-to-change decisions shouldn't wait. Harm to third parties, money, secrets and lost data should.
+- **Spend human time on working software and decisions.** A milestone with a demo gives the human more than reading diffs does.
+- **Tests and review do different jobs.** Tests check the cases somebody thought of, and independent review looks for the rest. Reviewers found more than 40 defects in work that had passed its tests.
+- **Separate authors help.** Tests written from the issue don't inherit the code's assumptions.
+- **Keep orchestration out of the accountable agent's context.** Use one fresh delivery manager per batch, so the lead's context stays on the phase.
+- **A hard stop can be out of proportion.** Reaching the 5-hour limit costs only repeated work, so pacing and resume beat a blocking hook. The weekly limit needs more care.
+- **The rules that govern agents need the closest scrutiny.** They fail quietly, and agents shouldn't be able to loosen them.
+- **Review has diminishing returns on rule code.** #133 had four reviews, against §8's limit of two, and the later ones found narrower gaps. Agree a stopping rule, and treat tier rules as a safety net against mistakes, not a security boundary.
+- **A single large process PR is expensive to review.** #133 mixed rule changes with document changes. Split them where possible.
+- **Don't shape a design around process friction.** Phase designs briefly moved from a file to an issue, only because nobody owned the file's PR. The fix was to assign an owner.
+
+### Practical
+
+- **Test a tool's capability before designing around it.** The assumption that subagents can't start subagents was wrong, and one small test settled it.
+- **Write check rules against real data shapes.** A retention fix in #133 passed a test whose input wasn't in the real file, and in #123 a report section was always empty on real data, because only the unit tests set its field.
+- **Match the whole class of change, not one example.** Read the whole patch when context decides meaning: a `member` or `default` line in #133 shows its risk only through the lines around it.
+- **Keep line-based gate regexes on their line.** `\W` and `\s` cross newlines, so an empty `Reason:` passed in #133. Placeholders like `n/a` must not satisfy a gate either.
+- **Check briefs under the isolation the agent runs with.** Isolated agents are refused git against sibling worktrees and in compound commands (#133).
+- **Stubs must copy real side effects.** A stub `terraform init` that wrote no lock file hid a defect in #136 that would have stopped the first real run.
+- **A mutation spot-check is cheap.** It finds tests that can't fail, as it did for `DELETE_RULE_RE` in #133.
+- **A "Resolved" marker is a claim to verify, not evidence.** #133's fourth review found one that overclaimed.
+- **Agents can't edit their own permission settings.** Plan that change as a human step, as #134 does, and never route round a refusal.
+- **Agents post as the owner's account.** GitHub doesn't notify the owner of those comments, so status must be visible in the lead chat or on the board.
+- **Check token scopes after a `gh` re-login.** The board needs the project scope, and an invalid token falls back silently to 60 anonymous calls an hour.
+- **Reversing a recorded decision needs a new ADR.** A reviewer caught ADR-0004 being overturned without one (#133, now ADR-0007).
+- **`Closes #N` closes an issue on merge even if human steps remain.** #125 closed #74 before the human's first apply.
+- **Rebases rewrite SHAs.** Remap "Resolved in" markers afterwards, and use each merge order to limit conflicts on shared files.
+- **The role that can run a check must own it.** `make eval` can't run in subagents, so the lead owns it.
+- **The git stash list is shared across worktrees.** Never use bare stash commands in a shared repo.
+
+## 16. Open questions
 
 None at present.

@@ -12,7 +12,8 @@ sets who applies it.
 The human does the first-time setup below, including the first `terraform apply`,
 and adds secret values. After that, agents apply merged changes with a limited
 service account inside the development scope. That account can't create or change
-IAM, budget or secret resources, so the human applies those changes too.
+IAM, budget or secret resources, so the human applies those changes too. Its
+read-only roles let it refresh them, but never read secret values.
 
 ## What is here
 
