@@ -6,17 +6,17 @@
 
 variable "project_id" {
   description = "GCP project id, as created by bootstrap.sh."
-  type        = string
+  type = string
 }
 
 variable "billing_account" {
   description = "Billing account id (XXXXXX-XXXXXX-XXXXXX) that the budget watches."
-  type        = string
+  type = string
 }
 
 variable "region" {
   description = "Region for Cloud Run, Scheduler, Artifact Registry and the content bucket, e.g. europe-west2."
-  type        = string
+  type = string
 }
 
 variable "budget_amount" {
@@ -31,7 +31,7 @@ variable "budget_amount" {
 
 variable "alert_email" {
   description = "Email address that receives the budget alerts."
-  type        = string
+  type = string
   sensitive   = true
 }
 
@@ -45,7 +45,7 @@ variable "budget_thresholds" {
 
 variable "firestore_location" {
   description = "Firestore location id. Defaults to var.region; a multi-region such as eur3 or nam5 also works."
-  type        = string
+  type = string
   default     = null
 }
 
@@ -68,25 +68,25 @@ variable "image" {
     sets. The default is Google's public sample job image, so the first apply
     works before any image has been pushed.
   EOT
-  type        = string
+  type = string
   default     = "us-docker.pkg.dev/cloudrun/container/job:latest"
 }
 
 variable "job_name" {
   description = "Name of the Cloud Run Job."
-  type        = string
+  type = string
   default     = "newsfeed"
 }
 
 variable "job_cpu" {
   description = "vCPUs for one pipeline run."
-  type        = string
+  type = string
   default     = "1"
 }
 
 variable "job_memory" {
   description = "Memory for one pipeline run."
-  type        = string
+  type = string
   default     = "1Gi"
 }
 
@@ -98,13 +98,13 @@ variable "job_timeout_seconds" {
 
 variable "schedule" {
   description = "Cron schedule for the pipeline (Cloud Scheduler syntax)."
-  type        = string
+  type = string
   default     = "0 * * * *"
 }
 
 variable "schedule_time_zone" {
   description = "Time zone the schedule is read in."
-  type        = string
+  type = string
   default     = "Etc/UTC"
 }
 
