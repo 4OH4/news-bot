@@ -1,7 +1,5 @@
 # Automation: how news-bot is built
 
-> **Status: draft for review, 2026-10-31.** This describes the target way of working. It is not in force yet: until the changes in §12 merge, `CLAUDE.md` and `PROJECT_PLAN.md` §9 still apply.
-
 This document explains the workflow, the agents, the method and the decisions behind them. `PROJECT_PLAN.md` says what is being built. `CLAUDE.md` holds the day-to-day rules and commands, and `.claude/agents/` and `.claude/skills/` hold the working briefs.
 
 ## 1. The model in brief
