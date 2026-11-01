@@ -37,7 +37,7 @@ The three items the Phase 2 report left for this design are settled here. ADR wo
 
 **Framework: Preact, TypeScript, Vite and `vite-plugin-pwa`.** It's a small bundle for a phone, it builds to static files for Hosting, and Testing Library and Playwright both work with it. Next.js and SvelteKit add server features this client doesn't use. React costs about ten times the bundle for nothing used here. Plain TypeScript would leave state and rendering to hand-written code.
 
-**Offline.** The service worker precaches only the app shell. Data lives in IndexedDB and the app reads it first, because API calls carry a token and need app logic around them: the last good feed, the text of the top 50 article items, anything opened or liked, the feedback queue and per-story state. Images stay online-only, so an offline article shows its text. Only a sign-out the user chooses clears all this. A forced one on a 401 or 403 ends the session and keeps the data, because a misconfigured owner email or a key-fetch failure mustn't wipe queued feedback or state that no route can restore (#180, #183, #184). The data stays readable to someone who signs in on the same phone until the API refuses them, which is accepted because it's the owner's phone.
+**Offline.** The service worker precaches only the app shell. Data lives in IndexedDB and the app reads it first, because API calls carry a token and need app logic around them: the last good feed, the text of the top 50 article items, anything opened or liked, the feedback queue and per-story state. Images stay online-only, so an offline article shows its text. The app shows the stored feed without waiting for `authReady`, which can stall on a slow signal; only the refresh waits for it (#183). Only a sign-out the user chooses clears all this, and if the user chose to send, it goes ahead only once the queue is empty (#184). A forced one on a 401 or 403 ends the session and keeps the data, because a misconfigured owner email or a key-fetch failure mustn't wipe queued feedback or state that no route can restore (#180, #183, #184). The data stays readable to someone who signs in on the same phone until the API refuses them, which is accepted because it's the owner's phone.
 
 **Rendering third-party HTML.** The blob is sanitised at extraction, the client runs DOMPurify over it with the same tag list, and the CSP blocks inline script. A token sits in the same origin, so a sanitiser gap is a failure that matters. `no-referrer` applies to all images and links.
 
@@ -49,7 +49,7 @@ The three items the Phase 2 report left for this design are settled here. ADR wo
 
 **Merge gate.** #174 leaves `TEST_PATHS` out of source lines in `tier.py`, because `SRC_PATHS` includes `client/*`, so test-first client PRs would otherwise hit the 400-line limit. It also adds `client/firebase.json` to `TIER_C_PATHS`, because that file holds the CSP and the `/api/**` rewrite.
 
-**Deploy.** The region isn't in the repo, so `client/firebase.json` commits the placeholder `__GCP_REGION__` (#174), and #178 fills it in from `vars.GCP_REGION`. #178 installs `firebase-tools` from a lockfile in `tools/firebase/` with `--ignore-scripts`, not `npx`, and builds before the auth step. The build mounts `client/` writable, so #178 then restores `client/firebase.json` from the checked-out commit and fails if it names `predeploy` or `postdeploy`, because Firebase runs those hooks as shell commands with the deploy credentials. Between them, these keep third-party code from running with the deploy identity.
+**Deploy.** The region isn't in the repo, so `client/firebase.json` commits the placeholder `__GCP_REGION__` (#174), and #178 fills it in from `vars.GCP_REGION`. #178 installs `firebase-tools` from a lockfile in `tools/firebase/` with `--ignore-scripts`, not `npx`, and builds before the auth step. The build mounts `client/` writable, so #178 then restores `client/firebase.json` from the checked-out commit and fails if it names `predeploy` or `postdeploy`, because Firebase runs those hooks as shell commands with the deploy credentials. It also fails if `client/dist` holds anything but regular files and directories, because a symlink there could publish the deploy step's token on the public site. Between them, these keep third-party build code from running with the deploy identity, and from reading it. `firebase-tools` is the exception: it's locked and installed without install scripts, but it does run with that identity.
 
 ## The demo
 
@@ -129,7 +129,7 @@ After #175, #177, #178, #179, #180 and #181: the feed list on the phone, signed 
 The statement in `CLAUDE.md`, confirmed for Phase 3 by merging PR #163, covers this phase. These are the failures above the bar in it, and each carries `**Risk:** high`:
 
 - anyone but the owner reading content or writing feedback (#175, #176, #177, #180);
-- a bill from a flood of requests at the public service (#177), which the instance cap limits but doesn't stop, as the follow-up below explains;
+- a bill from a flood of requests at the public service or at Hosting (#177), which nothing free stops: the instance cap limits only CPU and memory, as the follow-up below explains;
 - losing a feedback event once it's accepted, or leaving article text in a CDN cache (#175, #176);
 - script running from article HTML in the same origin as the token (#182);
 - a privileged deploy that widens what it can change (#178).
@@ -154,7 +154,7 @@ Each is reversible. The owning issue repeats it in its PR header.
 | DOMPurify as a second sanitiser pass in the client | Remove it and rely on extraction and the CSP |
 | Client tooling runs in Docker through `make` | Install Node and allow-list `npm` |
 | `FirebaseTokenVerifier` lives in `adapters/` and delegates to `firebase_admin.auth.verify_id_token`, so the project writes no HTTP of its own (rules 1 and 6). The library's key fetch is a cloud SDK's internal traffic, not project HTTP | Delegate to `google-auth` inside the same adapter |
-| API limits: 0 to 1 instance, 512 MiB, 1 vCPU | Change the Terraform variables |
+| API limits: 0 to 1 instance, 512 MiB, 1 vCPU, concurrency 8 | Change the Terraform variables |
 | Only a sign-out the user chooses clears local data, and a forced one on 401 or 403 keeps it | Call the `onSignOut` hooks from `endSession` too |
 | `firebase-tools` locked in `tools/firebase/`, installed with `--ignore-scripts` | Use `npx` with an exact version |
 
@@ -167,9 +167,25 @@ Each is reversible. The owning issue repeats it in its PR header.
 - Firestore rules are not open on a database that predates Firebase. #177 pins them to deny-all, so this holds either way.
 - `signInWithCredential` accepts the Google ID token with its `nonce`. It may instead answer `auth/missing-or-invalid-nonce`. Fallback: send Google the SHA-256 hex of the nonce and pass the raw nonce through `OAuthProvider('google.com').credential({ idToken, rawNonce })`. #180 checks this in the Firebase SDK source.
 - `firebase deploy --only hosting` works with install scripts off. Fallback: `npm rebuild <package>` for the one package that needs it.
+- `firebase deploy` follows symlinks in `dist`. #178's check fails on any symlink, so this holds either way.
+- `auth.authStateReady()` may reload the stored user during start-up, so on a stalled signal it could take up to about 30 seconds, against #183's "shows at once". #183 shows the stored feed without waiting for it, so this holds either way, and only a first open with nothing stored waits.
+- A request Cloud Run refuses with a 429, because the one instance is at its concurrency, isn't billed. If it is billed, the request charge follows the flood's rate with no limit. No design choice depends on this, only the size of the bill below.
+- `firebase hosting:disable` stops Hosting until the next deploy. Fallback: disable the site on the console's Hosting page.
 
 ## Follow-ups and a decision for the lead
 
 - **For the lead to decide:** `client` in `CONDITIONAL_CHECKS` passes the gate when absent, so a renamed job drops out silently. `REQUIRED_CHECKS` is stricter, but must match the `Protect main` ruleset, which the human changes. #174 uses `CONDITIONAL_CHECKS` until the lead chooses.
 - #175: `newsfeed serve` goes through `cli.py`, which still loads `trafilatura` and `newspaper` (0.4 s, 67 MiB). Lazy-import them if cold start matters.
-- #177: the instance cap is 1, not 2, because the service is public and a bill matters. A flood lasting a whole month then costs about $65 in CPU and memory instead of $130, plus $0.40 per million requests that reach the app (estimates from memory). That is still above the $10 budget, in about five days. Nothing free stops it, because a budget only sends email, so the limit is a person acting on the alerts at 50, 90 and 100%: `gcloud run services remove-iam-policy-binding newsfeed-api --region=<region> --member=allUsers --role=roles/run.invoker` stops all traffic to the app, and `terraform apply` restores it. #177 puts this in `infra/README.md`. Rejected: under 1 vCPU, because Cloud Run then allows one request at a time and prefetch sends four (from memory); Cloud Armor, a paid service; a budget-triggered shutdown, which needs a function and Pub/Sub to guard against an unlikely flood. During a flood the phone may get 429s and keeps its cached feed, which is cheap.
+- #177: **what a flood can cost.** The instance cap is 1, not 2, because the service is public and a bill matters. Prices below are from memory, for a Tier 1 region, ignoring about $5 of free tier; a Tier 2 region costs about 40% more.
+  - **$65 a month is a floor, not an estimate.** It is one instance busy all month, in CPU and memory only, and it passes the $10 budget in 4.6 days. Requests cost $0.40 per million on top, and they overtake the instance at about 63 req/s. A flood of cheap 401s can run far above that: one vCPU answers a few hundred a second (an estimate, as there's no API to measure yet).
+
+    | Requests per second | Requests per month | Total per month | Days to $10 |
+    |---|---|---|---|
+    | 0 | $0 | $65 | 4.6 |
+    | 100 | $104 | $169 | 1.8 |
+    | 300 | $311 | $376 | 0.8 |
+
+  - **Concurrency doesn't reduce this much.** #177 sets it to 8: four for prefetch, then a feed refresh, an opened article, a feedback event and one spare. A 401 takes a few milliseconds, so eight at a time is still about what the CPU can do, and a lower value would slow prefetch and save nothing. If requests refused with a 429 aren't billed (from memory, under "Unverified"), the limit is what the instance can answer, which is about the 300 req/s row. If they are billed, the request charge has no limit: 1,000 req/s is about $1,100 a month.
+  - **Hosting egress is separate, and uncapped.** Hosting serves the app shell to anyone with no token, at about $0.15/GB after a small daily allowance. The instance cap doesn't apply. $10 buys about 67 GB, which is four visits a second for a day if a visit is 200 KB (an assumed size; #174 sets the real one). At 300 visits a second, that's about $780 a day, so this can be the larger part of the bill.
+  - **Nothing free stops it.** A budget only sends email, at 50, 90 and 100%, and billing data can lag by hours (from memory). So the limit is a person acting on an alert, with two commands. `gcloud run services remove-iam-policy-binding newsfeed-api --region=<region> --member=allUsers --role=roles/run.invoker` stops traffic to the app, and `terraform apply` restores it. `firebase hosting:disable --project <project>` stops Hosting and its egress, which the first command doesn't, and the next deploy restores it, so hold merges until then. This machine has no Node, so #177's README gives the console route too. The phone keeps its stored feed either way, which is cheap.
+  - **Rejected:** under 1 vCPU, because it saves too little. Cloud Run would queue prefetch's four requests, not fail them (from memory), but 0.25 vCPU still costs about $19 a month, passes $10 in 16 days, and starts more slowly. Cloud Armor, a paid service. A budget-triggered shutdown, which needs a function and Pub/Sub to guard against an unlikely flood.
