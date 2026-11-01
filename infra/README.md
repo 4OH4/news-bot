@@ -169,7 +169,9 @@ fails, the schedule stays paused until a later `deploy` succeeds.
 the image, tags it with the commit SHA, pushes it and updates the job's image, and
 the next scheduled run uses it. It skips itself until `GCP_WIF_PROVIDER` is set, so
 merges before the setup below stay green. Re-running CI for an older commit on
-`main` deploys that commit, so it also works as a rollback.
+`main` deploys that commit, so it also works as a rollback. If a deploy fails, the
+workflow opens an issue naming the commit and the run (or comments on the open one),
+because the old image keeps running unnoticed otherwise.
 
 To set it up, after `wif.tf` is merged and with the repository's admin rights in
 `gh`, apply as in [Later changes](#later-changes), then from the repo root:
