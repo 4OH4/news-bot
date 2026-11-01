@@ -16,12 +16,6 @@ on:
     types: [completed]
     branches: [main]
 
-# One deploy at a time. A deploy in progress finishes, and only the newest waiting
-# one runs after it, so an older image can't overwrite a newer one.
-concurrency:
-  group: deploy
-  cancel-in-progress: false
-
 permissions: {}
 
 jobs:
@@ -36,6 +30,13 @@ jobs:
       github.event.workflow_run.head_branch == 'main' &&
       github.event.workflow_run.head_repository.full_name == github.repository &&
       vars.GCP_WIF_PROVIDER != ''
+    # One deploy at a time. A deploy in progress finishes, and only the newest
+    # waiting one runs after it, so an older image can't overwrite a newer one.
+    # This sits on the job, not the workflow, so that a run which then skips
+    # can't replace a waiting deploy.
+    concurrency:
+      group: deploy
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -68,6 +69,8 @@ jobs:
 
       # provenance is off so each image is one manifest: an attestation would be
       # a second version, counting against the registry's keep-10 cleanup policy.
+      # No build cache: any workflow running on main can write the Actions cache,
+      # so using it would let those workflows put layers into the deployed image.
       - name: Build and push image
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
@@ -76,7 +79,6 @@ jobs:
           push: true
           tags: ${{ env.IMAGE }}
           provenance: false
-          cache-from: type=gha
 
       # Image only: any other change here would show as drift in the next plan.
       - name: Update the Cloud Run Job

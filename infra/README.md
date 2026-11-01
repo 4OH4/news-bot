@@ -184,6 +184,13 @@ gh variable set GCP_WIF_PROVIDER --repo 4OH4/news-bot --body "$(tf workload_iden
 These are identifiers, not secrets. The apply creates IAM, so the human runs it
 (ADR-0007). The next merge to `main` then deploys.
 
+If the agents' development service account exists, also give it read access to
+the new resources, or its `terraform apply` can't refresh them:
+
+```bash
+gcloud projects add-iam-policy-binding <project-id> --member="serviceAccount:<dev-account-email>" --role=roles/iam.workloadIdentityPoolViewer
+```
+
 ## Later changes
 
 A PR that changes `infra/terraform/` lists its commands; normally:
