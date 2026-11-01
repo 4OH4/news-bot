@@ -363,7 +363,7 @@ Permission prompts are counted only when an agent reports them. Usage per issue,
 
 - **Parallelism:** up to 3 issues in progress, each using one test author and then one worker. Reviewers, the architect and the delivery manager don't count. No two in-progress issues touch the same files, and only one delivery manager runs at a time.
 - **Sessions:** the lead finishes after 45 idle minutes, and restarting is cheaper than reloading a cold session. A usage pause doesn't count as idle.
-- **Context checkpoint:** the lead can't clear or compact its own context, and stopping would end unattended work, so it lets automatic compaction happen and makes sure little depends on the summary. At each batch close it runs `python3 scripts/lead.py context`. At 150k tokens or more, or after three batches if that can't be read, it curates the Phase Log, rewrites the handoff note, tells the human they can restart to save usage, and starts the next batch. A batch costs about 55k tokens, so compaction may come mid-batch. Agents keep running through it, and a `SessionStart` hook sends the lead back to its handoff note, the Phase Log and its open work. The lead also records each batch in the handoff note as it starts. Agents don't depend on the lead's memory: a delivery manager with an unanswered request sends it again.
+- **Context checkpoint (not fully resolved, see §16):** the lead can't clear or compact its own context, and stopping would end unattended work, so it lets automatic compaction happen and makes sure little depends on the summary. At each batch close it runs `python3 scripts/lead.py context`. At 150k tokens or more, or after three batches if that can't be read, it curates the Phase Log, rewrites the handoff note, tells the human they can restart to save usage, and starts the next batch. A batch costs about 55k tokens, so compaction may come mid-batch. Agents keep running through it, and a `SessionStart` hook sends the lead back to its handoff note, the Phase Log and its open work. The lead also records each batch in the handoff note as it starts. Agents don't depend on the lead's memory: a delivery manager with an unanswered request sends it again.
 - **GitHub API:** 5,000 GraphQL points an hour are shared across every agent, so prefer REST in loops.
 - **Worktrees:** each agent works in its own, under `.claude/worktrees/`.
 - **Permissions:** agents work within the allow list in `.claude/settings.json`. A permission prompt would wait for the human, so the list must cover every routine step, and no agent uses `--dangerously-skip-permissions`.
@@ -532,4 +532,25 @@ What building this way has taught so far, written to be reused on other projects
 
 ## 16. Open questions
 
-None at present.
+### How the lead keeps working as its context fills
+
+**Status: not fully resolved.** §11 describes the current approach, which is a working choice and not a settled answer. Review it at the first mid-batch compaction, and at the first milestone at the latest.
+
+The problem: the lead's context grew from 44k to 210k tokens over three batches, about 55k a batch, and most of that was its own work. Automatic compaction summarises the context at an unplanned moment, and a large context uses the usage limits faster because every turn re-sends it. The lead can't clear or compact its own context, and a timer can't either: scheduled prompts run skills, but built-in commands reach the model as plain text. So a timer can resume work in the same session, but it can't empty the context.
+
+| Option | For | Against |
+|---|---|---|
+| **Checkpoint and carry on, with a recovery hook (current)** | Unattended work continues, no new infrastructure, and little depends on the summary | Compaction can land mid-batch, and the context stays large between compactions, which costs more usage |
+| **Stop at a threshold and wait for the human** | A clean handoff at a chosen moment, and a small context | Ends unattended work after about three batches, against the aim in §1. Rejected, though the human can still choose to restart when present |
+| **Restart from outside the session** | Clean restarts with no human, and the only unattended way to keep context small | Reverses §14 and needs a spike: `claude -p` waits about 10 minutes for background agents by default, a permission prompt has nobody to answer it, the human can't follow the session in the chat, and the machine must stay on. Cloud scheduled tasks have no local evaluation snapshots |
+| **Leave compaction to happen unaided** | The simplest, and it hasn't caused harm yet | Nothing makes sure the record is fresh, or brings the lead back to its open work |
+| **Use less lead context per batch** | Delays the problem, and also saves usage | Moves decisions away from the agent keeping the overview, and doesn't remove the limit |
+
+Still unknown:
+
+- whether recovery works when compaction lands mid-batch, and whether the hook fires as expected, because neither has happened yet;
+- whether scheduled checks survive compaction, on which the docs are silent;
+- how much usage a large context really costs;
+- whether 150k is the right threshold, as it rests on one session.
+
+Evidence goes in the Phase Log. If compaction proves costly, the next step is a spike on restarting from outside the session.
