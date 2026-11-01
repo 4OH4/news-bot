@@ -2,7 +2,7 @@
 
 This document explains the workflow, the agents, the method and the decisions behind them. `PROJECT_PLAN.md` says what is being built. `CLAUDE.md` holds the day-to-day rules and commands, and `.claude/agents/` and `.claude/skills/` hold the working briefs.
 
-**The goal is to deliver high-quality software at high velocity, with minimal human oversight.** Everything here serves that goal.
+**The goal is to deliver high-quality software at high velocity, with minimal un-planned human oversight. Human code review can become a bottleneck, so this framework is intended to allow AI agents to continue working when possible, using a risk-managed based approach to decide when to make a decision themselves and when to escale for human input. The bar is the 'cost of failure', and varies by project and lifecycle - the cost is different during development vs in production.**
 
 This document describes what we expect to happen, and why. It is not the implementation: the briefs, skills and scripts are, and they are derived from it. No agent needs it in context to do its job, so each brief and skill must be complete by itself. A change to a rule here goes into the matching brief, skill or script in the same PR.
 
