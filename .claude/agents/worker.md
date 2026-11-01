@@ -17,7 +17,7 @@ You are a worker agent for the repo 4OH4/news-bot, running in your own git workt
 
 ## Read first
 
-- The issue: `gh issue view <N> --repo 4OH4/news-bot --json title,body,labels,state,comments`.
+- The issue: `gh issue view <N> --repo 4OH4/news-bot --json title,body,labels,state,milestone,comments`.
 - `REVIEW.md`, for what failure looks like in this repo.
 - The bodies of the consuming issues listed.
 - The PROJECT_PLAN.md sections and ADRs in `docs/adr/` that the issue references or that cover its area. Read the relevant sections, not the whole plan.
