@@ -164,21 +164,46 @@ Counted from PR #133 onwards, when this way of working began. Phase 1 had no equ
 
 ## Process review
 
-**Top friction**
+**Friction and what to do about it.** Every item has a recommendation. Merging accepts them, and the lead then acts on them. Comment on any you'd change.
 
-1. **Compound commands refused:** about 15 in batch 1, then every batch, in every role. A refused compound can apply only its earlier part. All five briefs now state the real limit, so no change is proposed. Watch whether refusals fall in batch reports.
-2. **An owner merge can overtake review work:** PR #160 merged during its review, and PR #167 merged with your comment unactioned. PRs #164 and #165 went through as drafts, which worked, though a draft didn't stop PR #167's comment being missed. Proposed: all Tier C PRs stay drafts until the Delivery review, and the lead checks for your comments before queueing and after each merge. Shows up as zero overtaken reviews.
-3. **Review notes left for you to work out:** PR #164 ended with a recommendation nobody had actioned, and a Resolved item that keeps its note still reads as open. Proposed: `worker.md`, `reviewer.md` and the delivery manager brief require every item to be resolved or accepted in one line. Shows up as your friction notes.
+**Address.** Each becomes a `process` issue after sign-off. Three is the limit per phase.
+
+| # | Friction | Evidence | Recommendation | Shows it worked |
+|---|---|---|---|---|
+| 1 | An owner merge can overtake review work | PR #160 merged during its review; PR #167 merged with your comment unactioned | All Tier C PRs stay drafts until the Delivery review, and the lead reads PR comments before queueing and after each merge | No overtaken reviews, no missed comments |
+| 2 | Review notes left for you to work out | PR #164 ended with a recommendation nobody had actioned; a Resolved item that keeps its note reads as open | `worker.md`, `reviewer.md` and the delivery manager brief require each item to be resolved or accepted in one line | No friction notes from you on this |
+| 3 | Milestone steps are thin, and a report can list problems with no outcome | This section's first version; `/lead-start` step 6.3 says "update the status" while step 2 relies on "done" | Move steps 6 and 7 into a `/lead-milestone` skill. It requires a status for every item, says "done", and carries the small §10 and `REVIEW.md` edits below | You don't have to ask "so what?" |
+
+**Accept.** No action. Say so if you disagree.
+
+| Friction | Evidence | Why accept |
+|---|---|---|
+| Compound commands refused | About 15 in batch 1, then every batch | All five briefs now state the real limit, and the cost is a retry. Batch reports will show if it persists |
+| Rework beyond the review limit | #131 four reviews, #146 five rounds, because the issues named a symptom | The limit is now firm, and the architect now settles design first. `tier.py` needn't count reviews |
+| Delivery manager interim reports | Every batch | No work lost. A status line while waiting is harmless |
+| Reports or claims that were wrong | 1 from the delivery manager, 1 from the lead | Caught by checking comments, which the lead now does |
+| Evaluation ran before review was clean | 1 | Fixed by ordering |
+| Gate refused honest text | 2 | Both fixed |
+| Other refusals, including `--force-with-lease`, Monitor loops, `eval` in commands and a reviewer's scratch experiment | 4 kinds | Each had a working alternative |
+| Board slips: wrong number, new issue not added | 2 | One-line errors with a clear message |
+| Test or brief gaps | `tests/test_wiring.py` outside a checkout; the reviewer's `Closes #<N>` check on `Refs` PRs | Rare, and reviewers now know |
+
+**Defer.** Logged in the Phase 3 log, issue #187, with when to look again.
+
+| Item | Evidence | Look again when |
+|---|---|---|
+| You approve and the lead merges, through a machine user | Needs a new account and token, your `gh` login removed from this machine, and a gate change. The lead recommends a machine user over a GitHub App; the GitHub details are unverified. It would also solve item 1 | When you choose. Phase 3 doesn't need it |
+| Test author's value | See above | Phase 3 milestone |
+| Automatic compaction | See above; also `AUTOMATION.md` §16 | The first mid-batch compaction |
+| Agents running from the main checkout | 2 cases, nothing lost | A third case adds a check to the brief |
+
+**Small edits, part of item 3:** "PRs merged by agents" counts pipeline code only (§10); a `REVIEW.md` line that a new item in a first-match list must be checked against those above it.
 
 **Changes from the last milestone:** none to review, since this is the first under this way of working. PRs #151 and #167 changed the process during the phase: the cost-of-failure statement and the firm review limit are too recent to judge, since later PRs were small automation work. Rework fell to two rounds on #147, before them, because its design was settled first. The Phase Log stopped friction being lost.
 
 **The lead's phase-boundary gap:** the architect hasn't run yet, because Phase 2 predates it. PR #167 fixed its brief, so Phase 3 is its first real test.
 
-**Your notes:** the Phase Log comments of 2026-11-01. Cost of failure and warnings scaled to the stage, delivered in PR #151. PRs readable without the issue, delivered in PR #160. Process steps as defaults, delivered in PR #167. Review notes are item 3 above.
-
-**For you to decide, no work until then:** you approve and the lead merges. It needs a machine user, a token you set up, your `gh` login removed from this machine, and a gate change. The lead recommends a machine user over a GitHub App, though the GitHub details are unverified. It removes one source of friction, item 2, at the cost of an account to keep. No decision is needed for Phase 3 to start.
-
-**Carried forward, smaller:** the reviewer's `Closes #<N>` check on `Refs` PRs; whether `tier.py` should count reviews; the §10 change above; a `REVIEW.md` line that a new item in a first-match list must be checked against those above it.
+**Your notes:** the Phase Log comments of 2026-11-01. Cost of failure and warnings scaled to the stage, delivered in PR #151. PRs readable without the issue, delivered in PR #160. Process steps as defaults, delivered in PR #167. Review notes are item 2 above, and "so what?" is item 3.
 
 `AUTOMATION.md` §15 and §16 are updated in this PR.
 
