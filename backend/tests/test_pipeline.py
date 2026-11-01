@@ -2225,3 +2225,21 @@ def test_two_ok_articles_with_the_same_canonical_still_keep_the_stored_target(
     assert stored.content_ref is not None
     assert services.blobs.get(stored.content_ref) == b"<p>Target body.</p>"
     assert repository.get_article(source.id) is None
+
+
+def test_extract_saved_url_returns_its_own_article_when_the_canonical_target_failed(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    url = "https://m.example.com/feed-link/7"
+    target = _failed(MERGE_TARGET, "timeout", attempts=1, minutes_ago=5)
+    repository.upsert_article(target)
+    fetcher = FakeFetcher({url: FakeResponse(MERGE_PAGE.encode(), headers=HTML)})
+    services = _services(tmp_path, repository, fetcher, FakeExtractor(default=_ok("Saved body.")))
+
+    article = extract_saved_url(services, url)
+
+    assert article.id != target.id
+    assert article.source_id == "adhoc"
+    assert article.extraction.status is ExtractionStatus.OK
+    assert repository.get_article(article.id) == article
+    assert repository.get_article(target.id) == target
