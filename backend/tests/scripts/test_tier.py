@@ -873,6 +873,20 @@ def test_gate_reads_human_review_below_context_task_and_summary() -> None:
     ]
 
 
+def test_gate_passes_a_section_with_why_tier_c_and_lower_priority() -> None:
+    body = CLEAN_BODY.replace(
+        "- Judgement call",
+        "- **Why Tier C:** touches the gate; a bad edit could let a PR merge unreviewed.\n"
+        "- Judgement call",
+    ).replace(
+        "\n## Summary",
+        "- **Lower priority:**\n  - A minor test gap.\n\n## Summary",
+    )
+    assert "**Why Tier C:**" in body
+    assert "**Lower priority:**" in body
+    assert tier.gate_failures(pr(body=body), TIER_A, GREEN, REVIEWED) == []
+
+
 def test_gate_still_passes_the_old_order() -> None:
     assert tier.gate_failures(pr(body=CLEAN_BODY), TIER_A, GREEN, REVIEWED) == []
 

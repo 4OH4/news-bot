@@ -11,7 +11,7 @@ Closes #<!-- N; one line per issue for a chain --> · **Tier** <!-- A/B/C, from 
 <!-- Two or three plain sentences: what was actually done and why. -->
 
 ## For human review
-<!-- Pending independent review. Filled in by the independent reviewer: judgement calls you approve by merging, risks and open questions, one or two lines each. "None" if there are none. This and the sections above are all the human has to read; everything below is evidence, collapsed. -->
+<!-- Pending independent review. Filled in by the independent reviewer: judgement calls you approve by merging, risks and open questions, one or two lines each, most important first. On a Tier C PR, open with a bold **Why Tier C:** line naming what makes it Tier C and what could go wrong with each; end with a **Lower priority:** group of minor notes. Leave out empty parts; "None" if there is nothing at all. This and the sections above are all the human has to read; everything below is evidence, collapsed. -->
 
 <details><summary>Acceptance criteria (<!-- n/n --> met)</summary>
 
