@@ -369,6 +369,18 @@ Permission prompts are counted only when an agent reports them. Usage per issue,
 - **Permissions:** agents work within the allow list in `.claude/settings.json`. A permission prompt would wait for the human, so the list must cover every routine step, and no agent uses `--dangerously-skip-permissions`.
 - **Credentials:** agents use only the short-lived, limited identity described in §6. They never handle keys or secrets directly.
 
+### The compaction hook
+
+`.claude/settings.json` has a `SessionStart` hook with the `compact` matcher, which Claude Code runs when a session restarts from compaction. It prints one line, which is added to the new context:
+
+> Context was just compacted. If this session ran /lead-start, follow its After compaction section before anything else. Subagents and any other session: ignore this.
+
+That section of `/lead-start` has the lead read its handoff note and the Phase Log, then check running agents, scheduled checks and open PRs waiting on it. The hook doesn't compact, clear, start or stop anything. It only tells the lead what to do next.
+
+- **Why `SessionStart`:** `PostCompact` can't add to the context. Its documented use is side effects, such as logging the summary.
+- **Why plain text:** every session sees the line, and the test is a fact a session can check about itself, so the lead always gets it. Limiting the hook to the lead would need a marker file keyed by session ID, because a variable set by a Bash command never reaches the hook. A broken marker would silently hide the message from the one session that needs it, while a wrongly read message costs a few harmless reads.
+- **Who changes it:** the human, because agents can't edit `.claude/settings.json`.
+
 ### Usage limits
 
 Two limits apply: a 5-hour window and a weekly one. Agents are cut off when either reaches 100%. That costs no money and does no damage, because agents only repeat some work, so the aim for the 5-hour window is to use it fully and recover cheaply. The weekly limit needs more care, because reaching it can stop development and the human's own use for days.
@@ -548,7 +560,8 @@ The problem: the lead's context grew from 44k to 210k tokens over three batches,
 
 Still unknown:
 
-- whether recovery works when compaction lands mid-batch, and whether the hook fires as expected, because neither has happened yet;
+- whether the hook fires as expected, which a manual `/compact` in a new session after merging can show;
+- whether recovery works when compaction lands mid-batch, which only a real case can show;
 - whether scheduled checks survive compaction, on which the docs are silent;
 - how much usage a large context really costs;
 - whether 150k is the right threshold, as it rests on one session.

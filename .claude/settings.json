@@ -90,5 +90,18 @@
       "Write(./.env.*)",
       "Read(~/.claude/.credentials.json)"
     ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'Context was just compacted. If this session ran /lead-start, follow its After compaction section before anything else. Subagents and any other session: ignore this.'"
+          }
+        ]
+      }
+    ]
   }
 }
