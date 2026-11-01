@@ -42,13 +42,15 @@ You are a worker agent for the repo 4OH4/news-bot, running in your own git workt
 5. **Verify** with `make lint`, `make test` and anything in the issue's "How to verify". Use real output, and never weaken checks. Subagents can't run `make eval`; the lead runs it for PRs that touch `extract/`.
 6. **Size.** A PR is limited to 400 source lines and 1,500 lines in total, not counting generated files. If yours is over, stop and report back so that it can be split.
 7. **Commit** with conventional commits. End each message with a blank line, then the `Co-Authored-By:` line given in your attribution system-reminder. Don't hard-code a model name.
-8. **PR.** Rebase on `origin/main`, push, and open a non-draft PR with `gh pr create --repo 4OH4/news-bot --base main`, following `.github/pull_request_template.md`. The human reads only the first three parts, so keep them short:
+8. **PR.** Rebase on `origin/main`, push, and open a non-draft PR with `gh pr create --repo 4OH4/news-bot --base main`, following `.github/pull_request_template.md`. The human reads only the parts above the collapsed blocks, so keep them short:
    - the header line: `Closes #<N>`, the tier and "Merge after";
    - any `**Confirm later:**` entries directly below it: what you decided, the reason and how to undo it, as in `AUTOMATION.md` §6. A chosen dependency also states its licence and why that package was picked. A Tier B PR must have at least one, because `tier.py merge` refuses without it. Write nothing here if there were no decisions on a Tier A PR;
-   - a `## For human review` section containing only "Pending independent review" (a reviewer agent fills it in);
-   - a `## Summary` of two or three plain sentences.
+   - a `## Context` section: the issue's opening plain-language Context paragraph, copied word for word, without the References. For a chain, use the first issue's paragraph plus one line for each other issue; if the issue has no such paragraph, write one short plain paragraph from it;
+   - a `## Task` section: the issue's **Summary:** paragraph from its Task, copied word for word, without the Details (same rules for a chain or a missing paragraph);
+   - a `## Summary` of two or three plain sentences on what was actually done;
+   - a `## For human review` section, below the Summary, containing only "Pending independent review" (a reviewer agent fills it in).
 
-   Everything else goes in the collapsed `<details>` blocks: the acceptance criteria (ticked, with a pointer to the evidence), the verification output, the contract checks, design notes and follow-ups (one line each). Don't repeat the issue's Context or restate the diff.
+   Everything else goes in the collapsed `<details>` blocks: the acceptance criteria (ticked, with a pointer to the evidence), the verification output, the contract checks, design notes and follow-ups (one line each). Don't restate the diff.
 
    End the body with a blank line, then the pull-request attribution line given in your attribution system-reminder.
 9. **Tier.** Run `python3 scripts/tier.py classify <P> --label`, and make sure the tier in the header matches what it prints. If it prints `merge blocked`, deal with that before reporting.

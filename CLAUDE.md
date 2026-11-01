@@ -105,7 +105,7 @@ Agents write most new issues. The human reads an issue first to understand what 
 - Small, coherent commits. Don't mix formatting-only changes with logic changes.
 
 ### Pull requests
-- Follow `.github/pull_request_template.md`. The top is a header line (`Closes #<issue>`, the risk tier, the merge order), any `Confirm later` entries, "For human review" and a Summary of two or three sentences. The ticked acceptance criteria, verification (commands and results), design notes and follow-ups go in the collapsed sections below.
+- Follow `.github/pull_request_template.md`. The top is a header line (`Closes #<issue>`, the risk tier, the merge order), any `Confirm later` entries, Context and Task (copied from the issue), a Summary of two or three sentences and "For human review", in that order. The ticked acceptance criteria, verification (commands and results), design notes and follow-ups go in the collapsed sections below.
 - Update docs (`CLAUDE.md`, `PROJECT_PLAN.md`, ADRs, README) if your change affects them.
 - The tier comes from the diff: `python3 scripts/tier.py classify <PR>`. The human merges Tier C. The delivery manager merges Tier A and B, and only through `python3 scripts/tier.py merge`. Never merge to `main` any other way. One size limit applies to every PR: 400 source lines and 1,500 lines in total, not counting generated files.
 

@@ -840,6 +840,57 @@ def test_needs_human_marker_variants_block(item: str) -> None:
     ]
 
 
+NEW_ORDER_BODY = """Closes #70 · Tier A
+
+## Context
+Why this is wanted.
+
+## Task
+**Summary:** what is built.
+
+## Summary
+Fixes the thing.
+
+## For human review
+- **Defect:** the gate must see this item.
+
+<details><summary>Acceptance criteria</summary>
+
+- [x] done
+
+</details>
+"""
+
+
+def test_gate_reads_human_review_below_context_task_and_summary() -> None:
+    section = tier.human_review_section(NEW_ORDER_BODY)
+    assert section is not None
+    assert "the gate must see this item" in section
+    assert "Fixes the thing" not in section
+    assert "Why this is wanted" not in section
+    assert tier.gate_failures(pr(body=NEW_ORDER_BODY), TIER_A, GREEN, REVIEWED) == [
+        "1 unresolved **Defect:** item(s)"
+    ]
+
+
+def test_gate_passes_a_section_with_why_tier_c_and_lower_priority() -> None:
+    body = CLEAN_BODY.replace(
+        "- Judgement call",
+        "- **Why Tier C:** touches the gate; a bad edit could let a PR merge unreviewed.\n"
+        "- Judgement call",
+    ).replace(
+        "\n## Summary",
+        "- **Lower priority:**\n  - A minor test gap.\n\n## Summary",
+    )
+    assert "**Why Tier C:**" in body
+    assert "**Lower priority:**" in body
+    assert tier.gate_failures(pr(body=body), TIER_A, GREEN, REVIEWED) == []
+
+
+def test_gate_still_passes_the_old_order() -> None:
+    assert tier.gate_failures(pr(body=CLEAN_BODY), TIER_A, GREEN, REVIEWED) == []
+
+
 def test_a_second_human_review_section_is_refused() -> None:
     body = CLEAN_BODY + "\n## For human review\n- **Defect:** hidden down here\n"
     assert "body has more than one 'For human review' section" in tier.gate_failures(
