@@ -123,13 +123,23 @@ def tidy_worktrees(root: Path, merged_heads: set[str]) -> list[str]:
         branch = fields.get("branch", "").removeprefix("refs/heads/")
         if not path.exists():
             continue  # pruned below
-        if out("git", "status", "--porcelain", cwd=path):
+        if "locked" in fields or "locked" in block.split():
+            reason = fields.get("locked", "").strip()
+            kept.append(
+                f"{path.name} ({branch or 'detached'}): locked"
+                + (f" ({reason})" if reason else "")
+            )
+        elif out("git", "status", "--porcelain", cwd=path):
             kept.append(f"{path.name} ({branch or 'detached'}): uncommitted changes")
         elif branch and not is_merged(branch, root, merged_heads):
             kept.append(f"{path.name} ({branch}): not merged yet")
         else:
-            run("git", "worktree", "remove", str(path), cwd=root)
-            print(f"removed worktree {path.name}")
+            # Never force: a refusal (e.g. a lock taken since listing) is reported.
+            result = run("git", "worktree", "remove", str(path), cwd=root, check=False)
+            if result.returncode == 0:
+                print(f"removed worktree {path.name}")
+            else:
+                kept.append(f"{path.name} ({branch or 'detached'}): {result.stderr.strip()}")
     run("git", "worktree", "prune", cwd=root)
     return kept
 
