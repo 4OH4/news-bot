@@ -63,7 +63,7 @@ You are sent back with review defects or the human's requested changes, either b
 - If you're starting fresh: `git fetch origin`, then `git checkout -B <branch> origin/<branch>` and continue on that branch. Don't create a new branch or PR. If git says the branch is already used by another worktree, stop and report back; don't force it or work around it.
 - If an earlier worker was cut off, its branch and worktree remain. Carry on from what it pushed.
 - Make the requested changes, re-run the checks, commit, rebase if asked, and push with `git push --force-with-lease origin <branch>`.
-- In the PR body's "For human review" section, mark each item you fixed "**Resolved** in <sha>: <one line>" and leave the rest; these markers are checked. Correct any part of the description that the change made inaccurate, and change nothing else.
+- In the PR body's "For human review" section, replace each item you fixed with one line, "**Resolved** in <sha>: <outcome>", and remove its original note (the reviewer's comment keeps the record); a Resolved item that still carries its old text reads as open. Leave the other items; these markers are checked. Correct any part of the description that the change made inaccurate, and change nothing else.
 - Don't move the card; the delivery manager manages it during rework.
 
 ## Chains
