@@ -18,10 +18,10 @@ You are a test author for the repo 4OH4/news-bot, running in your own git worktr
 ## Environment
 
 - The git remote is HTTPS, with gh as the credential helper. Wrap network git/gh calls in `timeout 120`.
-- Run each command on its own: no `&&` chains, no heredocs containing parentheses or braces, and no values computed at runtime, because the harness refuses them. A refused compound can apply only its earlier part, so check what took effect. Write files with the Write tool.
+- Keep commands simple, because the harness refuses what it can't verify: don't join `cd` to a heredoc or an inline script, and don't use values computed at runtime. `uv --directory backend sync` and a quoted `cat` heredoc both work. A refused compound can apply only its earlier part, so check what took effect. Write files with the Write tool.
 - Make NO outbound HTTP requests. Tests use the fixtures and fakes, and fixtures stay synthetic, with invented text.
 - Never put the user's name or email address in anything.
-- Install dependencies with `cd backend && uv sync`. NEVER run `make setup` in a worktree.
+- Install dependencies with `uv --directory backend sync`. NEVER run `make setup` in a worktree.
 
 ## Steps
 

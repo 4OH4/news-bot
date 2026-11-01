@@ -22,7 +22,7 @@ To protect your context, read agents' reports, not diffs. Send agents issue and 
 - GraphQL points are shared, so prefer REST and don't call `board.py show` in a loop.
 - You run isolated, so the harness refuses git commands aimed at another agent's worktree, whether by `git -C` or by `cd`. Run git only from your own checkout, as plain single commands, and take what you need about another agent's work from its report.
 - Check that `git rev-parse --show-toplevel` is under `.claude/worktrees/` before any `git checkout`, at the start and again each time you are resumed. If it isn't, you're in the main checkout: don't run it, and tell the lead.
-- Run each command on its own: no `&&` chains, no heredocs containing parentheses or braces, and no values computed at runtime, because the harness refuses them. A refused compound can apply only its earlier part, so check what took effect.
+- Keep commands simple, because the harness refuses what it can't verify: don't join `cd` to a heredoc or an inline script, and don't use values computed at runtime. `uv --directory backend sync` and a quoted `cat` heredoc both work. A refused compound can apply only its earlier part, so check what took effect.
 
 ## Before starting each issue
 
@@ -40,7 +40,7 @@ Run `python3 scripts/usage.py`.
 4. **Review.** Start a `reviewer` with only the PR number, the issue number and the consuming issues. Pass on nothing from the worker's report. Only start it once that PR's worker has finished.
 5. **Rework.** Send each defect back by SendMessage, or start a fresh worker after freeing the branch as in step 1. If the rework changed behaviour, start a fresh reviewer, whose message says "Second review." There are at most two reviews. If the second still finds defects, don't loop: pass the PR to the lead, and never start a third review unless the lead says so. Plain notes in the review don't send a PR back: keep them for your report. A **Needs human:** item also goes to the lead, and you carry on with other issues.
 6. **Evaluation.** If `backend/src/newsfeed/extract/` changed, ask the lead to run the evaluation, by the means below, and wait for that PR's "Evaluation scores" comment. This comes before the next step because it adds a commit.
-7. **Delivery review.** In a detached checkout (`git fetch origin`, then `git checkout --detach origin/<branch>`), run `cd backend && uv sync`, then `make lint` and `make test`. Confirm CI is green at the same commit. Run `python3 scripts/tier.py classify <P> --label`. Post a PR comment headed "Delivery review":
+7. **Delivery review.** In a detached checkout (`git fetch origin`, then `git checkout --detach origin/<branch>`), run `uv --directory backend sync`, then `make lint` and `make test`. Confirm CI is green at the same commit. Run `python3 scripts/tier.py classify <P> --label`. Post a PR comment headed "Delivery review":
 
    ```
    ## Delivery review
@@ -55,7 +55,7 @@ Run `python3 scripts/usage.py`.
    - **Tier C:** `python3 scripts/board.py set <N> "Human review"`. Work that doesn't depend on it continues.
 9. **After a merge.** Run `python3 scripts/board.py promote`. Check the other open PRs' `mergeable_state`, and send any that are `dirty` back to a worker to rebase.
 
-10. **Before your report.** If reviewers named a new kind of defect for `REVIEW.md`, send the lines to a worker as a small docs PR, and take it through the steps above, so the next batch has them.
+10. **Before your report.** If reviewers named a new kind of defect for `REVIEW.md`, open an issue for them, send the lines to a worker as a small docs PR that closes it, with the `Confirm later` entry Tier B needs, and take it through the steps above, so the next batch has them.
 
 Never merge any other way, and never run `gh pr merge`.
 

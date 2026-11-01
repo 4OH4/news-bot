@@ -97,7 +97,7 @@ The rules:
 
 | Role | Gear | Runs as | Model | Can change code? |
 |---|---|---|---|---|
-| Lead | 1 | Main session | Opus | Only generated evaluation results, the milestone report and §15 |
+| Lead | 1 | Main session | Opus | Only generated evaluation results, the milestone report, §15 and the cost-of-failure statement in `CLAUDE.md` |
 | Architect | 1 | Subagent, fresh per phase or epic | Opus | The phase design and issues only |
 | Delivery manager | 2 | Background subagent, fresh per batch | Sonnet, Opus if that falls short | No, except merging through `tier.py` |
 | Test author | 2 | Subagent, one per issue | Sonnet, Opus for high-risk issues | Tests only |
@@ -253,7 +253,7 @@ In addition to the current review, the reviewer:
 - **reads the test change report:** `tier.py` lists deleted or changed assertions, added skips and `live` markers, and any edits to the test author's tests. Each needs a good reason;
 - **checks against `REVIEW.md`:** a list of failure patterns taken from real defects in this repo.
 
-**What counts as a defect.** The reviewer does every check, and lists everything it finds, but marks an item **Defect:** only if it states the concrete failure and its cost, and at least one of these holds: it breaks an acceptance example or a hard rule in `CLAUDE.md`, it matches a failure that matters in the cost-of-failure statement (§6), or it would be seen routinely. A rare case with a cheap outcome is a plain note. Notes don't send a PR back, and the delivery manager carries them to the Phase Log as follow-ups.
+**What counts as a defect.** The reviewer does every check, and lists everything it finds, but marks an item **Defect:** only if it states the concrete failure and its cost, and at least one of these holds: it breaks an acceptance example or a hard rule in `CLAUDE.md`, it matches a failure that matters in the cost-of-failure statement (§6), or it would be seen routinely. A rare case with a cheap outcome is a plain note. Notes don't send a PR back. The delivery manager lists them in its batch report, and the lead adds them to the Phase Log as follow-ups.
 
 ### 7.4 `REVIEW.md`
 
@@ -314,7 +314,7 @@ Bucket `name` and `location` changes stay Tier B: Terraform replaces the bucket,
 - a Tier B PR has a `Confirm later` entry;
 - a PR that touches `extract/` records its evaluation scores with no drop in the overall score, unless the lead gives a reason, which goes in the Phase Log.
 
-A feature with resolved defects can now merge after a clean second review, and one size limit applies to every PR: 400 source lines and 1,500 lines in total. The old feature conditions, including `Deviations: none` and `Tier A feature: confirmed`, are removed. The human can still revert any merge, or add `hold` to stop one.
+A feature with resolved defects can now merge after a clean second review, or after the lead accepts what remains (§8), when the delivery manager, or a new one if the batch has ended, posts the Delivery review. One size limit applies to every PR: 400 source lines and 1,500 lines in total. The old feature conditions, including `Deviations: none` and `Tier A feature: confirmed`, are removed. The human can still revert any merge, or add `hold` to stop one.
 
 The delivery manager sends an oversized PR back to a worker to split. On the 25 tiered PRs, these rules would have allowed 19 agent merges (76%) and left 6 for the human: three that set up the workflow itself, #125, which includes billing and IAM, #109, which added a `mypy` override, and #103, which edited a comment in one. #108 counts as an agent merge on the assumption that it would have been split. #110, #117 and #124 carried the old `needs-human` label, and count as agent merges because their files are Tier B and such changes are now decide-and-record.
 

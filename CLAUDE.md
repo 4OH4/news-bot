@@ -49,13 +49,13 @@ These are hard rules. If a task seems to require breaking one, stop and say so i
 
 ## Cost of failure
 
-Use this to judge how much a problem matters. The human confirms it at each milestone (`AUTOMATION.md` §6). Confirmed for Phase 2 on merging #150.
+Use this to judge how much a problem matters. The human confirms it at each milestone (`AUTOMATION.md` §6). Confirmed for Phase 2 by merging PR #151.
 
 - **Stage:** development. There are no users, not even the owner yet, and no release to roll back to.
 - **Cheap:** a duplicate, stale or missing feed item, poor ranking, a failed run that the next run recovers, and a data problem that can be repaired or recreated. These are slightly annoying, and can be fixed later.
 - **Matters:** harm to third-party sites, including robots.txt, paywalls and rate limits; third-party content in the public repo; a bill; a leaked secret; and losing data that can't be recreated.
 
-Put effort where it matters. Report cheap problems in a line, with the fix or recovery step, and don't escalate them or rework a PR for a rare case. This never relaxes the rules above or the stop-the-line list.
+Put effort where it matters. Report cheap problems in a line, with the fix or recovery step, and don't escalate them or rework a PR for a rare case. This never relaxes any other rule in this file, including the stop-the-line list.
 
 ## Code conventions
 

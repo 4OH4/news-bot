@@ -70,7 +70,7 @@ When the batch report arrives, review it:
 - check the numbers against `AUTOMATION.md` §10, and raise anything drifting;
 - report to the human (below), then start the next batch or go to step 6.
 
-If a delivery manager stops early with no report, start a new one. All its state is on GitHub and the board.
+A one-line status saying what it's waiting for isn't a stop: notifications resume it, so don't start a second one. If a delivery manager stops early with no report and nothing is running (`ListAgents`), start a new one. All its state is on GitHub and the board.
 
 ## 5. The Phase Log
 

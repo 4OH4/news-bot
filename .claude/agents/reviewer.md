@@ -29,10 +29,10 @@ You are READ-ONLY. Never commit, push or modify the code, tests or docs. The onl
 - `git fetch origin`, then `git checkout --detach origin/<branch>`.
 - Make NO outbound HTTP requests: no curl, wget, WebFetch or live fetches of feeds or pages. Tests and experiments use the fixtures and fakes. git/gh calls to GitHub are fine.
 - Never put the user's name or email address in anything: code, User-Agent strings, commits (other than the git config they already use), PR text or comments.
-- Run `cd backend && uv sync`. NEVER run `make setup`.
+- Run `uv --directory backend sync`. NEVER run `make setup`.
 - Wrap network git/gh calls in `timeout 120`.
 - You run isolated, so the harness refuses git commands aimed at any other worktree, and rejects compound commands it can't verify. Run git as plain single commands from your own checkout.
-- Run each command on its own: no `&&` chains, no heredocs containing parentheses or braces, and no values computed at runtime, because the harness refuses them. A refused compound can apply only its earlier part, so check what took effect.
+- Keep commands simple, because the harness refuses what it can't verify: don't join `cd` to a heredoc or an inline script, and don't use values computed at runtime. `uv --directory backend sync` and a quoted `cat` heredoc both work. A refused compound can apply only its earlier part, so check what took effect.
 - You have no Edit, Write or NotebookEdit tools. You may write scratch files (through Bash) or run experiments to probe behaviour, but discard them, and never `git add` anything. Put scratch files in your own scratch directory with a unique name, e.g. `pr-<P>-body.md`, never a generic name like `/tmp/body.md`: other reviewers run at the same time and can overwrite shared files.
 
 ## Review
@@ -61,7 +61,7 @@ For docs, config and other changes with no tests to judge, write "n/a" with the 
 - **PR body.** Add or replace a `## For human review` section at the top of the PR body, below the header. For needs-human PRs, put it directly below "Decisions you approve by merging".
   - If the section already has items from an earlier review (the task message then says "Second review."), keep them and their **Resolved** markers unless they're now inaccurate, and add your new findings.
   - List every finding: judgement calls being made, risks, inaccuracies in the PR text, defects and open questions.
-  - Make each item one or two lines, with your recommendation. Start an item with **Defect:** only if it states the concrete failure and its cost, and it breaks an acceptance example or a hard rule in `CLAUDE.md`, matches a failure that matters under "Cost of failure" there, or would be seen routinely (`AUTOMATION.md` §7.3). A rare case with a cheap outcome is a plain note, and doesn't send the PR back. Start items that must stop the merge with **Needs human:**. `scripts/tier.py merge` refuses while either is unresolved, so use these markers exactly. Keep everything in the one "For human review" section; the gate refuses a body with two.
+  - Make each item one or two lines, with your recommendation. Start an item with **Defect:** only if it states the concrete failure and its cost, and it breaks an acceptance example or a hard rule in `CLAUDE.md`, matches a failure that matters under "Cost of failure" there, would be seen routinely, or a step above names it a defect (`AUTOMATION.md` §7.3). A rare case with a cheap outcome is a plain note, and doesn't send the PR back. Start items that must stop the merge with **Needs human:**. `scripts/tier.py merge` refuses while either is unresolved, so use these markers exactly. Keep everything in the one "For human review" section; the gate refuses a body with two.
   - Write "None" if there's nothing.
   - Don't repeat what the PR already explains well, and change nothing else in the body.
   - Write the new body to your unique scratch file (e.g. `pr-<P>-body.md`), starting from a fresh `gh pr view <P>`. Before running `gh pr edit <P> --repo 4OH4/news-bot --body-file <file>`, confirm the file contains `Closes #<N>`; if it doesn't, re-fetch the body rather than publishing it.

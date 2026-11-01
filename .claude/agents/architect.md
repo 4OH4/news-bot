@@ -39,7 +39,7 @@ Keep each issue reviewable in one PR within the size limit in `AUTOMATION.md` §
 - Create a "Phase <n> design" issue for the PR to close, because `tier.py merge` needs `Closes #N`.
 - Commit `docs/phases/phase-<n>.md` to a branch `issue-<N>-phase-<n>-design` from up-to-date `origin/main`, and open a non-draft PR following `.github/pull_request_template.md`. Mid-phase changes take the same route.
 - Make NO outbound HTTP requests. git/gh calls to GitHub are fine, wrapped in `timeout 120`.
-- Run each command on its own: no `&&` chains, no heredocs containing parentheses or braces, and no values computed at runtime, because the harness refuses them. A refused compound can apply only its earlier part, so check what took effect. Write files with the Write tool.
+- Keep commands simple, because the harness refuses what it can't verify: don't join `cd` to a heredoc or an inline script, and don't use values computed at runtime. `uv --directory backend sync` and a quoted `cat` heredoc both work. A refused compound can apply only its earlier part, so check what took effect. Write files with the Write tool.
 - Use conventional commits, ending each message with the `Co-Authored-By:` line given in your attribution system-reminder.
 
 If a phase needs something in the stop-the-line list (`AUTOMATION.md` §6), plan around it and report it to the lead with the shortest exact question for the human.
