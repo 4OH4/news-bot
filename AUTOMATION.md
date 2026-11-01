@@ -71,9 +71,10 @@ The report lives at `docs/milestones/phase-<n>.md`, following the pattern of `do
 - **Goal check:** the exit criterion and the evidence that it is met.
 - **Decisions to confirm:** every `Confirm later` item, with its reason and how to undo it.
 - **What was built:** a short summary, with links to the PRs that agents merged.
+- **Deferred work:** each entry in `DEFERRED_WORK.md` that is due for a look gets address, accept or stays deferred, and resolved entries are removed.
 - **Risks and parked work:** anything unresolved, any PR the review process could not clear, and anything carried forward to the next phase.
 - **Process measures:** the numbers in §10.
-- **Process review:** the §10 numbers against the previous milestone, a status table with one row for every friction item, follow-up and proposal in the Phase Log, each marked address (the recommended change and the measure that shows it worked), accept (the reason) or defer (where it is logged and when to look again), how the last milestone's changes turned out, and the human's own friction notes.
+- **Process review:** the §10 numbers against the previous milestone, a status table with one row for every friction item, follow-up and proposal in the Phase Log, each marked address (the recommended change and the measure that shows it worked), accept (the reason) or defer (an entry in `DEFERRED_WORK.md` saying why and when to look again), how the last milestone's changes turned out, and the human's own friction notes.
 - **Next phase:** proposed goal, and anything found this phase that changes the plan.
 - **Cost of failure:** the lead's statement for the next phase, and what changed (§6). Merging the report confirms it.
 
