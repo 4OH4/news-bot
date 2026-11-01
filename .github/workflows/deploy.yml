@@ -89,14 +89,16 @@ jobs:
         run: gcloud run jobs update "$JOB" --image="$IMAGE" --region="$REGION" --project="$PROJECT" --quiet
 
   # A failed deploy leaves the old image running and shows only in the Actions
-  # tab, so raise an issue (#149). Only a failed deploy triggers it: a skipped or
-  # successful one leaves needs.deploy.result as 'skipped' or 'success'. It uses
+  # tab, so raise an issue (#149). failure() is needed because a job whose
+  # dependency failed is skipped unless its condition has a status function; the
+  # result check then limits it to a failed deploy, not a skipped or successful
+  # one ('skipped' or 'success'). It uses
   # the gh CLI on the runner, so there is no extra action to pin and no credential
   # beyond the job's own token. A second failure while the issue is open adds a
   # comment instead of a duplicate.
   alert:
     needs: deploy
-    if: needs.deploy.result == 'failure'
+    if: failure() && needs.deploy.result == 'failure'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
