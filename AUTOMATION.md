@@ -46,7 +46,7 @@ The aim is a phase that runs from start to finish with no human input. Agents ma
 5. The tier comes from the diff, so nobody's judgement decides their own level of scrutiny.
 6. Agents can't loosen their own limits.
 7. Agents do all the preparation. The human never edits files, ticks boxes or tidies PRs.
-8. These steps are defaults, not barriers. The lead uses judgement and can propose skipping or reordering one, the human agrees in the chat, and the lead records it in one line in the Phase Log. Stop-the-line items, the tiers, the architecture rules and merging only through `tier.py` are outside this.
+8. The steps in this process are defaults, not barriers. The lead uses judgement and can propose skipping or reordering one, the human agrees in the chat, and the lead records it in one line in the Phase Log. Stop-the-line items, the tiers, the architecture rules and merging only through `tier.py` are outside this.
 
 ## 4. Phases, epics and milestones
 

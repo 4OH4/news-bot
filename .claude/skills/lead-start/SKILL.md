@@ -27,13 +27,13 @@ Then read the handoff note, the Phase Log (step 5) and "Cost of failure" in `CLA
 
 ## 2. Find where the phase stands
 
-The current phase is the earliest one with no merged milestone report. Take the first of these that applies:
+The current phase is the earliest one, from Phase 2 on, with no merged milestone report. Take the first of these that applies:
 
 1. **The milestone is awaiting sign-off:** the report PR is open and not a draft. A draft report is a preview: it doesn't mean this, and it isn't an unfinished PR for item 3. Act on any comments from the human (step 7). Building stops until the human merges it, though the architect may draft the next phase, and that design PR can merge.
 2. **The phase has no design:** no `docs/phases/phase-<n>.md`. Phases 0 to 2 predate the architect and need none. Confirm the goal and exit criterion from `PROJECT_PLAN.md` §6, then start the architect (step 3).
-3. **Ready issues or unfinished PRs exist:** start the next batch (step 4).
-4. **The phase's work is done:** every issue in the phase is closed or parked, or the human has agreed what carries forward. The Phase Log doesn't count, because the report closes it. Prepare the milestone (step 6).
-5. **The phase is waiting on evidence or the human:** for example, an exit criterion that needs elapsed time. Say what it's waiting for, and go idle.
+3. **Ready issues, other than those agreed to carry forward, or unfinished PRs exist:** start the next batch (step 4).
+4. **The phase is waiting on evidence or the human:** for example, an exit criterion that needs elapsed time, until the human says it's enough. Say what it's waiting for, and go idle.
+5. **The phase's work is done:** every issue in the phase is closed or parked, or the human has agreed what carries forward, recorded in the Phase Log. The Phase Log itself doesn't count, because the report closes it. Prepare the milestone (step 6).
 
 The six PRs open when this model began (#123, #124, #125, #126, #129, #130) finish under the rules they were written for: the human merges them, and `tier.py merge` refuses them. Keep them in the merge queue until they are merged, and send them back for a rebase if they conflict.
 
@@ -107,7 +107,7 @@ Anything the human rejects at the milestone becomes a normal issue.
 
 ## 7. Milestone review
 
-Sign-off is the human merging the report PR. Nothing moves on automatically, and there is no time limit. Fixes during the review go through a delivery manager as normal. Comments on the report are change requests, and each rejected decision becomes a normal issue in the next phase, which doesn't block sign-off unless the human says so. Once it is merged, close the phase's GitHub milestone, move carried items to the next phase's milestone, and open a `process` issue for each proposed process change the human didn't reject, at most three per phase, stating what should improve and which measure shows it; `process` issues follow the normal tier rules, so changes to the automation are Tier C. Only fixes that the next phase relies on go first, and the rest carry forward. Then go back to step 2 for the next phase.
+Sign-off is the human merging the report PR. Nothing moves on automatically, and there is no time limit. Fixes during the review go through a delivery manager as normal. Comments on the report are change requests, and each rejected decision becomes a normal issue in the next phase, which doesn't block sign-off unless the human says so. Once it is merged, close the phase's GitHub milestone, move carried items to the next phase's milestone, and open a `process` issue for each proposed process change the human didn't reject, at most three per phase, stating what should improve and which measure shows it; `process` issues follow the normal tier rules, so changes to the automation are Tier C. Only process fixes that the next phase relies on go first, and the rest carry forward. Then go back to step 2 for the next phase.
 
 ## Usage pauses
 
