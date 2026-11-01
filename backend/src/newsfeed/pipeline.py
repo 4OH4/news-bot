@@ -577,6 +577,41 @@ def _merge(
     )
 
 
+_QUALITY = {ExtractionStatus.OK: 2, ExtractionStatus.PARTIAL: 1}
+
+
+def _is_better(new: ExtractionStatus, new_words: int, old: ArticleExtraction) -> bool:
+    """Whether a retry's result should replace a stored ``partial`` one.
+
+    ``ok`` beats ``partial`` beats anything else; between two partials the
+    longer wins, and a tie keeps the earlier one. A ``paywalled`` result
+    replaces a partial too: partials include paywall previews, which ADR-0003
+    keeps out of the reader, so this retry is a correction.
+    """
+    if new is ExtractionStatus.PAYWALLED and old.status is ExtractionStatus.PARTIAL:
+        return True
+    new_q, old_q = _QUALITY.get(new, 0), _QUALITY.get(old.status, 0)
+    if new_q != old_q:
+        return new_q > old_q
+    return new is ExtractionStatus.PARTIAL and new_words > old.word_count
+
+
+def _keeping_partial(article: Article, error: str | None, now: datetime) -> Article:
+    """``article`` with its partial extraction kept, recording only the attempt and latest error.
+
+    Readable text already in the feed must not be lost to a transient outage or
+    a thinner page on retry.
+    """
+    kept = article.extraction.model_copy(
+        update={
+            "error": error[:500] if error else None,
+            "error_type": reason_category(error) if error else None,
+            **_attempt(article, now),
+        }
+    )
+    return _with_changes(article, extraction=kept)
+
+
 @dataclass(frozen=True)
 class _ExtractRun:
     services: Services
@@ -622,14 +657,16 @@ def _log_outcome(outcome: _Outcome, elapsed_ms: int) -> None:
 
 
 def _finish_skipped(run: _ExtractRun, article: Article, reason: str, domain: str) -> _Outcome:
-    run.services.repository.upsert_article(
-        _with_changes(
+    if article.extraction.status is ExtractionStatus.PARTIAL:
+        recorded = _keeping_partial(article, reason, run.clock())
+    else:
+        recorded = _with_changes(
             article,
             extraction=ArticleExtraction(
                 status=ExtractionStatus.SKIPPED, error=reason, **_attempt(article, run.clock())
             ),
         )
-    )
+    run.services.repository.upsert_article(recorded)
     run.tally.extraction(ExtractionRecord(domain, ExtractionStatus.SKIPPED, error=reason))
     run.tally.count(PipelineStage.EXTRACT, ExtractionStatus.SKIPPED.value)
     return _Outcome(article, domain, ExtractionStatus.SKIPPED.value, error=reason)
@@ -652,17 +689,20 @@ def _finish_failed(
     run.tally.extraction(ExtractionRecord(domain, ExtractionStatus.FAILED, error=error))
     run.tally.count(PipelineStage.EXTRACT, ExtractionStatus.FAILED.value)
     try:
-        run.services.repository.upsert_article(
-            _with_changes(
+        message = f"{error_type}: {error}"[:500]
+        if article.extraction.status is ExtractionStatus.PARTIAL:
+            recorded = _keeping_partial(article, message, run.clock())
+        else:
+            recorded = _with_changes(
                 article,
                 extraction=ArticleExtraction(
                     status=ExtractionStatus.FAILED,
-                    error=f"{error_type}: {error}"[:500],
+                    error=message,
                     error_type=reason_category(error),
                     **_attempt(article, run.clock()),
                 ),
             )
-        )
+        run.services.repository.upsert_article(recorded)
     except Exception as exc:  # the repository itself is failing; nothing more to do
         _warn(
             "couldn't record the failure",
@@ -699,8 +739,10 @@ def _paywall_refusal(extractor: Extractor, url: str, status_code: int | None) ->
 
 def _finish_paywalled(run: _ExtractRun, article: Article, reason: str, domain: str) -> _Outcome:
     """Record a page refused for want of a subscription; not an error (rule 6)."""
-    run.services.repository.upsert_article(
-        _with_changes(
+    if article.extraction.status is ExtractionStatus.PARTIAL:
+        recorded = _keeping_partial(article, reason, run.clock())
+    else:
+        recorded = _with_changes(
             article,
             extraction=ArticleExtraction(
                 status=ExtractionStatus.PAYWALLED,
@@ -709,7 +751,7 @@ def _finish_paywalled(run: _ExtractRun, article: Article, reason: str, domain: s
                 **_attempt(article, run.clock()),
             ),
         )
-    )
+    run.services.repository.upsert_article(recorded)
     run.tally.extraction(ExtractionRecord(domain, ExtractionStatus.PAYWALLED, error=reason))
     run.tally.count(PipelineStage.EXTRACT, ExtractionStatus.PAYWALLED.value)
     return _Outcome(article, domain, ExtractionStatus.PAYWALLED.value, error=reason)
@@ -737,24 +779,43 @@ def _extract_article(run: _ExtractRun, article: Article) -> _Outcome:
     # After redirects the domain may differ; per-domain behaviour (overrides,
     # stats) follows the page we actually got.
     domain = url_domain(page.final_url) or domain
-    refined = _refine_canonical(run, article, page)
-    if refined is None:
-        return _Outcome(article, domain, "merged", error="duplicate of a stored canonical URL")
-
+    # A stored partial must survive a worse retry, so re-keying or merging it
+    # waits until the result is known to be better.
+    stored_partial = article.extraction.status is ExtractionStatus.PARTIAL
+    current = article
     try:
-        return _extract_content(run, refined, page, domain)
+        if not stored_partial:
+            refined = _refine_canonical(run, article, page)
+            if refined is None:
+                return _merged_outcome(article, domain)
+            current = refined
+        result = services.extractor.extract(page.html, page.final_url)
+        if stored_partial and _is_better(result.status, result.word_count, article.extraction):
+            refined = _refine_canonical(run, article, page)
+            if refined is None:
+                return _merged_outcome(article, domain)
+            current = refined
+        return _extract_content(run, current, result, domain)
     except Exception as exc:
         # Report against the refined article: the original id is already retired.
-        return _finish_failed(run, refined, type(exc).__name__, str(exc), domain)
+        return _finish_failed(run, current, type(exc).__name__, str(exc), domain)
+
+
+def _merged_outcome(article: Article, domain: str) -> _Outcome:
+    return _Outcome(article, domain, "merged", error="duplicate of a stored canonical URL")
 
 
 def _extract_content(
-    run: _ExtractRun, article: Article, page: FetchedPage, domain: str
+    run: _ExtractRun, article: Article, result: ExtractionResult, domain: str
 ) -> _Outcome:
     services = run.services
-    result = services.extractor.extract(page.html, page.final_url)
     content_ref = None
-    if result.content_html:
+    keep_earlier = article.extraction.status is ExtractionStatus.PARTIAL and not _is_better(
+        result.status, result.word_count, article.extraction
+    )
+    if keep_earlier:
+        services.repository.upsert_article(_keeping_partial(article, result.error, run.clock()))
+    elif result.content_html:
         # Blob first, article second: a crash in between leaves an orphan blob,
         # not an article pointing at nothing (ports.py).
         content_ref = services.blobs.put(
@@ -762,7 +823,8 @@ def _extract_content(
             result.content_html.encode("utf-8"),
             "text/html; charset=utf-8",
         )
-    services.repository.upsert_article(_merge(article, result, content_ref, run.clock()))
+    if not keep_earlier:
+        services.repository.upsert_article(_merge(article, result, content_ref, run.clock()))
     run.tally.extraction(
         ExtractionRecord(domain, result.status, word_count=result.word_count, error=result.error)
     )
