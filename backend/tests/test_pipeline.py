@@ -2074,3 +2074,97 @@ def test_extract_saved_url_keeps_a_stored_partial_against_a_thinner_page(
 
     _kept_unchanged(services, url)
     assert article.extraction.status is ExtractionStatus.PARTIAL
+
+
+# --- A canonical merge never replaces readable text with an empty article ----------
+
+MERGE_TARGET = "https://m.example.com/story"
+MERGE_PAGE = f'<html><head><link rel="canonical" href="{MERGE_TARGET}"></head><body></body></html>'
+
+
+def _merge_services(
+    tmp_path: Path, repository: SqliteRepository, source_url: str, result: ExtractionResult
+) -> Services:
+    fetcher = FakeFetcher({source_url: FakeResponse(MERGE_PAGE.encode(), headers=HTML)})
+    return _services(
+        tmp_path,
+        repository,
+        fetcher,
+        FakeExtractor(default=result),
+        retry=PARTIAL_POLICY,
+        concurrency=1,
+    )
+
+
+def _stored_ok_target(services: Services) -> Article:
+    base = _article_for(MERGE_TARGET)
+    ref = services.blobs.put(f"articles/{base.id}.html", b"<p>Target body.</p>", "text/html")
+    article = base.model_copy(
+        update={
+            "content_ref": ref,
+            "extraction": ArticleExtraction(
+                status=ExtractionStatus.OK, method="earlier", word_count=300
+            ),
+        }
+    )
+    services.repository.upsert_article(article)
+    return article
+
+
+def test_an_ok_result_pointing_at_a_stored_failed_article_keeps_its_text(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    source = _article_for("https://m.example.com/feed-link/1")
+    repository.upsert_article(_failed(MERGE_TARGET, "timeout", attempts=1, minutes_ago=5))
+    repository.upsert_article(source)
+    services = _merge_services(tmp_path, repository, source.url, _ok("Readable body."))
+
+    run_pipeline(services, [], ingest=False, rank=False, publish=False, clock=lambda: RETRY_NOW)
+
+    (stored,) = repository.list_articles()
+    assert stored.canonical_url == MERGE_TARGET
+    assert stored.extraction.status is ExtractionStatus.OK
+    assert stored.extraction.word_count == 150
+    assert stored.content_ref is not None
+    assert "Readable body." in services.blobs.get(stored.content_ref).decode()
+    assert repository.get_article(source.id) is None
+
+
+def test_a_better_partial_retry_pointing_at_a_stored_failed_article_keeps_its_text(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    source_url = "https://m.example.com/feed-link/2"
+    services = _merge_services(
+        tmp_path, repository, source_url, _ok("Better body.", word_count=500)
+    )
+    repository.upsert_article(_failed(MERGE_TARGET, "timeout", attempts=1, minutes_ago=5))
+    partial = _stored_partial(services, source_url)
+
+    _retry_partial(services)
+
+    (stored,) = repository.list_articles()
+    assert stored.canonical_url == MERGE_TARGET
+    assert stored.extraction.status is ExtractionStatus.OK
+    assert stored.extraction.word_count == 500
+    assert stored.content_ref is not None
+    assert "Better body." in services.blobs.get(stored.content_ref).decode()
+    assert repository.get_article(partial.id) is None
+
+
+def test_two_ok_articles_with_the_same_canonical_still_keep_the_stored_target(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    source = _article_for("https://m.example.com/feed-link/3")
+    repository.upsert_article(source)
+    services = _merge_services(tmp_path, repository, source.url, _ok("Incoming body."))
+    target = _stored_ok_target(services)
+
+    run_pipeline(services, [], ingest=False, rank=False, publish=False, clock=lambda: RETRY_NOW)
+
+    (stored,) = repository.list_articles()
+    assert stored.id == target.id
+    assert stored.extraction.word_count == 300
+    assert stored.extraction.method == "earlier"
+    assert stored.content_ref is not None
+    assert services.blobs.get(stored.content_ref) == b"<p>Target body.</p>"
+    assert repository.get_article(source.id) is None
