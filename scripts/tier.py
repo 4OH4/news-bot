@@ -53,6 +53,8 @@ from typing import Any
 REPO = "4OH4/news-bot"
 TIMEOUT = 120
 REQUIRED_CHECKS = ("lint", "test", "docker")  # must match the "Protect main" ruleset
+# Runs only on PRs touching infra/ (the infra workflow's job), so absent is fine; present must pass.
+CONDITIONAL_CHECKS = ("terraform",)
 TIER_LABELS = ("tier:A", "tier:B", "tier:C")
 HOLD_LABEL = "hold"
 MERGED_LABEL = "agent-merged"
@@ -250,7 +252,14 @@ REQUIRED_CHECK_WORDS = {
     "test change report": re.compile(r"\btest change report\b", re.IGNORECASE),
     "REVIEW.md": re.compile(r"\bREVIEW\.md\b", re.IGNORECASE),
 }
-CHECK_NOT_DONE_RE = re.compile(r"\bnot done\b|\bskipped\b", re.IGNORECASE)
+# "skipped" is also an article status, so a mutation described as "from skipped to failed" or
+# "`skipped` articles" is not a skipped check. Those uses are exempt; any other "skipped"
+# (including "skipped mutation") still counts as a check left undone.
+CHECK_NOT_DONE_RE = re.compile(
+    r"\bnot done\b"
+    r"|(?<![`\w])(?<!\bfrom )(?<!\bto )\bskipped\b(?![`\w])(?! (?:to|articles?|status|items?)\b)",
+    re.IGNORECASE,
+)
 
 EVAL_BEFORE_RE = re.compile(r"^[^\w\n]*before[^\w\n]+(\d+(?:\.\d+)?)", re.IGNORECASE | re.MULTILINE)
 EVAL_AFTER_RE = re.compile(r"^[^\w\n]*after[^\w\n]+(\d+(?:\.\d+)?)", re.IGNORECASE | re.MULTILINE)
@@ -524,6 +533,9 @@ def gate_failures(
     for name in REQUIRED_CHECKS:
         if checks.get(name) != "success":
             failures.append(f"check '{name}' is {checks.get(name, 'missing')}")
+    for name in CONDITIONAL_CHECKS:
+        if name in checks and checks[name] != "success":
+            failures.append(f"check '{name}' is {checks[name]}")
 
     body = pr.get("body") or ""
     if not CLOSES_RE.search(body):
