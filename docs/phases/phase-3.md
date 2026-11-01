@@ -30,7 +30,7 @@ The three items the Phase 2 report left for this design are settled here. ADR wo
 **3. Feedback identity: keep `Feedback.article_id`, and add `story_id` to the feed.**
 
 - Feedback events store the id of the row the owner saw. They are never rewritten.
-- `story_id` is a new additive feed field: the id of the row at the end of the `declared_canonical` chain, which publish already works out in `_story_end`. It stays the same when a target recovers, so the client keys seen, liked and dismissed state on it (#173). A seen story doesn't return as new.
+- `story_id` is a new additive feed field: the id of the row at the end of the `declared_canonical` chain, which publish already works out in `_story_end`. It stays the same when a target recovers, so the client keys seen, liked and dismissed state on it (#184). A seen story doesn't return as new when its target recovers. That doesn't cover a re-key on retry: a `failed` row shown as a link, whose page later declares a canonical with no stored row, gets a new `id` and so a new `story_id`, and a dismissed story comes back. That's cheap, so the design accepts it.
 - Nothing is lost when an id changes. Phase 4 joins an event to its story like this: a row that still exists follows `declared_canonical`, and that covers the recovery case in PR #148, where both rows stay stored. A row re-keyed on retry is found through its first-seen URL, because `with_canonical_url` keeps `url`, so `article_id(canonical(row.url))` is the old id. Only a row merged into another on retry can't be joined, which loses one signal in a rare case. That is cheap, so `Feedback` doesn't change.
 
 **The API writes no article rows.** ADR-0005 decision 6 says a like points `content_ref` at the saved copy. But `upsert_article` replaces the whole row and the rank stage rewrites every row in its window from a snapshot, so a like during a run would be overwritten silently (`REVIEW.md`: a batch article is a snapshot). Instead the API copies the blob to `saved/<id>.html` and reads that key first. `content_ref` stays as it is, and #171 records the amendment. The API's only `Repository` write is `save_feedback`, which is keyed by a client-made id, so a retry is harmless.
@@ -43,9 +43,13 @@ The three items the Phase 2 report left for this design are settled here. ADR wo
 
 **Dismiss and mute act in the client in this phase.** Events are stored for Phase 4, and the client hides the story or source. A lasting pipeline mute stays a rule in `config/interests.yaml` (architecture rule 5), and `newsfeed report` lists the sources muted from the phone so they can be moved there. Pipeline use of feedback is Phase 4.
 
-**A like can be taken back.** `FeedbackEvent` has no `unlike`, so `like` carries `value` 1 or 0 and the latest event wins, with no contract change. The saved copy stays.
+**A like, dismiss or mute can be taken back.** `FeedbackEvent` has no `unlike`, so `like`, `dismiss` and `mute_source` carry `value` 1 or 0 and the latest event wins, with no contract change. Without this, Phase 4 would learn from dismissals taken back, and feedback is the one store that can't be recreated (#184, #185). The saved copy of an unliked article stays.
 
-**Client tooling runs in Docker through `make`.** This machine has no Node, and `.claude/settings.json` allows neither `npm` nor `npx`. `make` and Docker are allowed and available, so `make client-*` runs pinned Node and Playwright images. Nothing has to be installed or allow-listed, and CI runs the same targets.
+**Client tooling runs in Docker through `make`.** This machine has no Node, and `.claude/settings.json` allows neither `npm` nor `npx`. `make` and Docker are allowed and available, so `make client-*` runs pinned Node and Playwright images. Nothing has to be installed or allow-listed, and CI runs the same targets. These targets mount only `client/` and `docs/`, so a check that needs backend code is a pytest test instead (#182's tag list, #184's payload).
+
+**Merge gate.** #174 leaves `TEST_PATHS` out of source lines in `tier.py`, because `SRC_PATHS` includes `client/*`, so test-first client PRs would otherwise hit the 400-line limit. It also adds `client/firebase.json` to `TIER_C_PATHS`, because that file holds the CSP and the `/api/**` rewrite.
+
+**Deploy.** The region isn't in the repo, so `client/firebase.json` commits the placeholder `__GCP_REGION__` (#174), and #178 fills it in from `vars.GCP_REGION`. #178 installs `firebase-tools` from a lockfile in `tools/firebase/` with `--ignore-scripts`, not `npx`, and builds before the auth step, so third-party code doesn't run with the deploy identity.
 
 ## The demo
 
@@ -55,7 +59,7 @@ The milestone report will carry exact URLs. On the Android phone:
 2. Open the app from the home screen and read today's ranked feed.
 3. Open an article and check the reader in light and dark mode. Like it, and dismiss another story.
 4. Turn on aeroplane mode, close and reopen the app. The feed shows, and the liked article opens with its text.
-5. Turn aeroplane mode off and pull to refresh. On the laptop, `uv run --project backend newsfeed report` shows the like and the dismiss.
+5. Turn aeroplane mode off and pull to refresh. On the laptop, with the `NEWSFEED_STORAGE=gcp` exports from step 3 of the Phase 2 report, because with no settings it reads local SQLite, `uv run --project backend newsfeed report` shows the like and the dismiss.
 6. Try `https://<project>.web.app` signed in with any other Google account: no feed, and the API answers 403.
 
 ## Issue graph
@@ -65,7 +69,7 @@ There are 15 issues in one line of work, with one demo, so epics would add nothi
 ```
 #171 ADRs (B)
 #172 contract (B) ─────► #175 read API ──► #176 feedback API ──► #184 ◄─┐
-#173 story_id (B)                                                      │
+#173 story_id (B) ──► #181                                             │
 #174 scaffold (C) ─┬───► #180 sign-in ──► #181 feed list ──► #182 reader ──► #183 offline
                    └───► #178 deploy (C)
 #177 Terraform (C) ────► #178 ──► #179 human setup
@@ -143,13 +147,14 @@ Each is reversible. The owning issue repeats it in its PR header.
 | Preact, TypeScript, Vite and `vite-plugin-pwa` | Replace `client/`; the API and feed format are unaffected |
 | `story_id` in the feed, `Feedback` unchanged, merged rows accepted as unjoinable | Add `url` to `Feedback`, which helps only events recorded after that |
 | Saved copies at `saved/<id>.html` with `content_ref` left alone, amending ADR-0005 decision 6 | Add a repository method that updates one field |
-| `like` with `value` 0 retracts | Add an `unlike` event |
+| `like`, `dismiss` and `mute_source` with `value` 0 retract | Add explicit undo events |
 | Dismiss and mute act in the client only in this phase | Phase 4 reads them in the pipeline |
 | Top 50 article items prefetched, images online-only | Change the constant, or cache images |
 | DOMPurify as a second sanitiser pass in the client | Remove it and rely on extraction and the CSP |
 | Client tooling runs in Docker through `make` | Install Node and allow-list `npm` |
 | `FirebaseTokenVerifier` lives in `adapters/` and delegates to `firebase_admin.auth.verify_id_token`, so the project writes no HTTP of its own (rules 1 and 6). The library's key fetch is a cloud SDK's internal traffic, not project HTTP | Delegate to `google-auth` inside the same adapter |
 | API limits: 0 to 2 instances, 512 MiB | Change the Terraform variables |
+| `firebase-tools` locked in `tools/firebase/`, installed with `--ignore-scripts` | Use `npx` with an exact version |
 
 **Unverified, because this design made no outbound requests.** These come from memory of Google's documentation, and the first run of #179 tests them. If one fails, the lead calls the architect back.
 
@@ -157,3 +162,11 @@ Each is reversible. The owning issue repeats it in its PR header.
 - The `google-beta` Terraform resources for Firebase are as named in #177.
 - An installed Android PWA returns from Google's sign-in page. Fallback: sign in in Chrome first, since the installed app shares its storage.
 - Firestore rules are not open on a database that predates Firebase. #177 pins them to deny-all, so this holds either way.
+- `signInWithCredential` accepts the Google ID token with its `nonce`. It may instead answer `auth/missing-or-invalid-nonce`. Fallback: send Google the SHA-256 hex of the nonce and pass the raw nonce through `OAuthProvider('google.com').credential({ idToken, rawNonce })`. #180 checks this in the Firebase SDK source.
+- `firebase deploy --only hosting` works with install scripts off. Fallback: `npm rebuild <package>` for the one package that needs it.
+
+## Follow-ups and a decision for the lead
+
+- **For the lead to decide:** `client` in `CONDITIONAL_CHECKS` passes the gate when absent, so a renamed job drops out silently. `REQUIRED_CHECKS` is stricter, but must match the `Protect main` ruleset, which the human changes. #174 uses `CONDITIONAL_CHECKS` until the lead chooses.
+- #175: `newsfeed serve` goes through `cli.py`, which still loads `trafilatura` and `newspaper` (0.4 s, 67 MiB). Lazy-import them if cold start matters.
+- #175: a sustained flood of 2 instances would cost roughly $130 a month (an estimate from memory). It's unlikely, and the budget alert covers it, so no change.
