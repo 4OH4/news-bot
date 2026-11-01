@@ -622,6 +622,10 @@ class _ExtractRun:
     # Old id -> the id it now lives under, for articles re-keyed or merged by
     # canonical refinement in this run. Written under ``refine_lock``.
     rekeyed: dict[str, str] = field(default_factory=dict)
+    # Id of a failed article an incoming one took over -> that incoming article's
+    # url. A batch holds a snapshot of the failed article; once taken over, a
+    # snapshot with another url must not write over the new content.
+    taken_over: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -666,7 +670,7 @@ def _finish_skipped(run: _ExtractRun, article: Article, reason: str, domain: str
                 status=ExtractionStatus.SKIPPED, error=reason, **_attempt(article, run.clock())
             ),
         )
-    run.services.repository.upsert_article(recorded)
+    _store_unless_stale(run, recorded)
     run.tally.extraction(ExtractionRecord(domain, ExtractionStatus.SKIPPED, error=reason))
     run.tally.count(PipelineStage.EXTRACT, ExtractionStatus.SKIPPED.value)
     return _Outcome(article, domain, ExtractionStatus.SKIPPED.value, error=reason)
@@ -702,7 +706,7 @@ def _finish_failed(
                     **_attempt(article, run.clock()),
                 ),
             )
-        run.services.repository.upsert_article(recorded)
+        _store_unless_stale(run, recorded)
     except Exception as exc:  # the repository itself is failing; nothing more to do
         _warn(
             "couldn't record the failure",
@@ -751,7 +755,7 @@ def _finish_paywalled(run: _ExtractRun, article: Article, reason: str, domain: s
                 **_attempt(article, run.clock()),
             ),
         )
-    run.services.repository.upsert_article(recorded)
+    _store_unless_stale(run, recorded)
     run.tally.extraction(ExtractionRecord(domain, ExtractionStatus.PAYWALLED, error=reason))
     run.tally.count(PipelineStage.EXTRACT, ExtractionStatus.PAYWALLED.value)
     return _Outcome(article, domain, ExtractionStatus.PAYWALLED.value, error=reason)
@@ -760,6 +764,8 @@ def _finish_paywalled(run: _ExtractRun, article: Article, reason: str, domain: s
 def _extract_article(run: _ExtractRun, article: Article) -> _Outcome:
     services = run.services
     domain = url_domain(article.url) or "unknown"
+    if _is_stale_copy(run, article):
+        return _merged_outcome(article, domain)
     reason = _skip_reason(article.url)
     if reason is None and _summary_only(services.extractor, article.url):
         reason = f"extraction skipped: {domain} is configured summary_only"
@@ -801,6 +807,21 @@ def _extract_article(run: _ExtractRun, article: Article) -> _Outcome:
         return _finish_failed(run, current, type(exc).__name__, str(exc), domain)
 
 
+def _is_stale_copy(run: _ExtractRun, article: Article) -> bool:
+    """True if ``article`` is a snapshot of a failed article that another has since taken over."""
+    with run.refine_lock:
+        owner = run.taken_over.get(article.id)
+    return owner is not None and owner != article.url
+
+
+def _store_unless_stale(run: _ExtractRun, article: Article) -> None:
+    """Upsert ``article`` unless a takeover replaced it (checked under the takeover lock)."""
+    with run.refine_lock:
+        if run.taken_over.get(article.id, article.url) != article.url:
+            return
+        run.services.repository.upsert_article(article)
+
+
 def _merged_outcome(article: Article, domain: str) -> _Outcome:
     return _Outcome(article, domain, "merged", error="duplicate of a stored canonical URL")
 
@@ -809,12 +830,15 @@ def _extract_content(
     run: _ExtractRun, article: Article, result: ExtractionResult, domain: str
 ) -> _Outcome:
     services = run.services
+    if _is_stale_copy(run, article):
+        # Its blob key is the taken-over article's too, so don't even write that.
+        return _merged_outcome(article, domain)
     content_ref = None
     keep_earlier = article.extraction.status is ExtractionStatus.PARTIAL and not _is_better(
         result.status, result.word_count, article.extraction
     )
     if keep_earlier:
-        services.repository.upsert_article(_keeping_partial(article, result.error, run.clock()))
+        _store_unless_stale(run, _keeping_partial(article, result.error, run.clock()))
     elif result.content_html:
         # Blob first, article second: a crash in between leaves an orphan blob,
         # not an article pointing at nothing (ports.py).
@@ -824,7 +848,7 @@ def _extract_content(
             "text/html; charset=utf-8",
         )
     if not keep_earlier:
-        services.repository.upsert_article(_merge(article, result, content_ref, run.clock()))
+        _store_unless_stale(run, _merge(article, result, content_ref, run.clock()))
     run.tally.extraction(
         ExtractionRecord(domain, result.status, word_count=result.word_count, error=result.error)
     )
@@ -877,6 +901,19 @@ def _refine_canonical(run: _ExtractRun, article: Article, page: FetchedPage) -> 
     with run.refine_lock:
         run.rekeyed[article.id] = new.id
         target = services.repository.get_article(new.id)
+        if target is not None and target.extraction.status is ExtractionStatus.FAILED:
+            # Keep the failure history rather than resetting the retry count.
+            new = new.model_copy(
+                update={
+                    "extraction": new.extraction.model_copy(
+                        update={
+                            "attempts": target.extraction.attempts,
+                            "last_attempt_at": target.extraction.last_attempt_at,
+                        }
+                    )
+                }
+            )
+            run.taken_over[new.id] = new.url
         # A failed target holds no text, so it must not swallow the incoming
         # article: take over its id and let extraction fill it in.
         if target is not None and target.extraction.status is not ExtractionStatus.FAILED:
@@ -1003,7 +1040,8 @@ def extract_saved_url(
     feed metadata intact rather than replaced by an ad hoc one; this includes
     an article stored under a refined canonical URL whose first-seen URL is
     ``url``. If the page's canonical URL belongs to another stored article, the
-    ad hoc row merges into it and that article is returned.
+    ad hoc row merges into it and that article is returned; if that article
+    failed, the re-extracted one takes over its id instead.
     """
     canonical = normalise_url(url, rules=services.url_rules)
     existing = services.repository.get_article(article_id(canonical)) or _find_by_first_url(

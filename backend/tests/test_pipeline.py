@@ -2168,3 +2168,65 @@ def test_two_ok_articles_with_the_same_canonical_still_keep_the_stored_target(
     assert stored.content_ref is not None
     assert services.blobs.get(stored.content_ref) == b"<p>Target body.</p>"
     assert repository.get_article(source.id) is None
+
+
+def test_a_failed_target_due_a_retry_does_not_overwrite_the_article_that_took_it_over(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    source = _article_for("https://m.example.com/feed-link/4")
+    repository.upsert_article(_failed(MERGE_TARGET, "timeout", attempts=1, minutes_ago=90))
+    repository.upsert_article(source)
+    # The target's own page has no canned response, so its retry would fail.
+    services = _merge_services(tmp_path, repository, source.url, _ok("Readable body."))
+
+    run_pipeline(services, [], ingest=False, rank=False, publish=False, clock=lambda: RETRY_NOW)
+
+    (stored,) = repository.list_articles()
+    assert stored.canonical_url == MERGE_TARGET
+    assert stored.extraction.status is ExtractionStatus.OK
+    assert stored.content_ref is not None
+    assert "Readable body." in services.blobs.get(stored.content_ref).decode()
+
+
+def test_a_takeover_of_a_failed_article_carries_its_attempts_over(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    source = _article_for("https://m.example.com/feed-link/5")
+    repository.upsert_article(_failed(MERGE_TARGET, "timeout", attempts=3, minutes_ago=5))
+    repository.upsert_article(source)
+    failing = ExtractionResult(status=ExtractionStatus.FAILED, error="no content")
+    services = _merge_services(tmp_path, repository, source.url, failing)
+
+    run_pipeline(services, [], ingest=False, rank=False, publish=False, clock=lambda: RETRY_NOW)
+
+    (stored,) = repository.list_articles()
+    assert stored.extraction.status is ExtractionStatus.FAILED
+    assert stored.extraction.attempts == 4
+
+
+@pytest.mark.parametrize(
+    "status",
+    [ExtractionStatus.PARTIAL, ExtractionStatus.PAYWALLED, ExtractionStatus.SKIPPED],
+)
+def test_an_ok_result_still_merges_into_a_stored_target_that_has_not_failed(
+    tmp_path: Path, repository: SqliteRepository, status: ExtractionStatus
+) -> None:
+    source = _article_for("https://m.example.com/feed-link/6")
+    target = _article_for(MERGE_TARGET).model_copy(
+        update={
+            "extraction": ArticleExtraction(
+                status=status, word_count=80, last_attempt_at=RETRY_NOW - timedelta(minutes=5)
+            )
+        }
+    )
+    repository.upsert_article(target)
+    repository.upsert_article(source)
+    services = _merge_services(tmp_path, repository, source.url, _ok("Incoming body."))
+
+    run_pipeline(services, [], ingest=False, rank=False, publish=False, clock=lambda: RETRY_NOW)
+
+    (stored,) = repository.list_articles()
+    assert stored.id == target.id
+    assert stored.extraction.status is status
+    assert stored.extraction.word_count == 80
+    assert repository.get_article(source.id) is None
