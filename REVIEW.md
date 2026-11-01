@@ -29,6 +29,7 @@ Failure patterns taken from real defects in this repo. Test authors and workers 
 ## Rules that classify changes
 
 - A rule must match the whole class of change, not one example path or line. In #133, only the top-level `conftest.py` was covered, though each tool takes the nearest configuration file, and IAM was matched on changed lines, so a one-line `member` change inside an IAM resource passed as routine. Ask what else does the same job under another name or in another place.
+- A new item in a first-match list (rules checked in order, the first hit wins) must be checked against the items above it, because one of them may already match.
 
 ## Agent briefs
 

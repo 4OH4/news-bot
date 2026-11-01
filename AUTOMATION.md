@@ -59,7 +59,7 @@ Each phase runs through these stages:
 1. **Agree the goal.** The goal and exit criterion come from `PROJECT_PLAN.md`, confirmed at the previous milestone review.
 2. **Design.** The architect writes the phase design and issues (§5.2). The lead checks them against the project goals and later phases.
 3. **Build.** Issues run through Gear 2 (§8) in dependency order.
-4. **Prepare the milestone.** Once the phase's work is done, or the human has agreed what carries forward, the lead runs as much of the demo as it can from a clean checkout, then writes the milestone report. The report says which demo steps are untested, and the human's own run tests them.
+4. **Prepare the milestone.** Once the phase's work is done, or the human has agreed what carries forward, the lead runs `/lead-milestone`: it runs as much of the demo as it can from a clean checkout, then writes the milestone report. The report says which demo steps are untested, and the human's own run tests them.
 5. **Milestone review.** The human uses the demo, reviews the decisions, and comments. Agents make any requested changes.
 6. **Sign-off.** The human merges the milestone report PR. Declining or commenting asks for changes, as with any other PR.
 
@@ -73,7 +73,7 @@ The report lives at `docs/milestones/phase-<n>.md`, following the pattern of `do
 - **What was built:** a short summary, with links to the PRs that agents merged.
 - **Risks and parked work:** anything unresolved, any PR the review process could not clear, and anything carried forward to the next phase.
 - **Process measures:** the numbers in §10.
-- **Process review:** the §10 numbers against the previous milestone, the top three friction points from the Phase Log, each with evidence and a proposed change, how the last milestone's changes turned out, and the human's own friction notes.
+- **Process review:** the §10 numbers against the previous milestone, a status table with one row for every friction item, follow-up and proposal in the Phase Log, each marked address (the recommended change and the measure that shows it worked), accept (the reason) or defer (where it is logged and when to look again), how the last milestone's changes turned out, and the human's own friction notes.
 - **Next phase:** proposed goal, and anything found this phase that changes the plan.
 - **Cost of failure:** the lead's statement for the next phase, and what changed (§6). Merging the report confirms it.
 
@@ -333,7 +333,7 @@ The lead reports these at each milestone. The thresholds are starting proposals,
 
 | Measure | Target |
 |---|---|
-| PRs merged by agents | At least 80% |
+| PRs merged by agents (pipeline code only) | At least 80% |
 | Stop-the-line events per phase | As few as possible, each with a reason |
 | Agent-merged PRs later reverted or needing a behaviour fix | No more than 1 in 10 |
 | Decisions the human overturns at review | No more than 1 in 5 |
@@ -350,8 +350,8 @@ Friction is recorded as it happens and reviewed once per milestone:
 
 - Each batch report has a "Friction" section: rework rounds and defects found, permission prompts (those the agents tell it about), usage pauses and cut-offs, failed gates and escalations.
 - Workers, test authors and reviewers may add one line, `**Friction:** <what wasted effort>`, to their report. The delivery manager collects these into its batch report.
-- The milestone report's "Process review" (§4) takes the top three friction points, with evidence and a proposed change. The human may add notes of their own.
-- Once the milestone report is merged, the lead opens a `process` issue for each proposed change the human didn't reject, stating what should improve and which measure shows it, at most three per phase. `process` issues follow the normal tier rules, so changes to the automation are Tier C.
+- The milestone report's "Process review" (§4) gives every friction item, follow-up and proposal a status and a recommendation: address, accept or defer. The human may add notes of their own.
+- Once the milestone report is merged, the lead opens a `process` issue for each item marked address that the human didn't reject, stating what should improve and which measure shows it, at most three per phase. `process` issues follow the normal tier rules, so changes to the automation are Tier C.
 - The lead updates §15 at each milestone, including what didn't work.
 - Friction data is kept in the Phase Log (§4): the lead merges each batch's "Friction" section into it, records its own friction there as it happens, and adds the human's notes.
 
@@ -439,7 +439,7 @@ Each kind of information has one home, and other documents link to it instead of
 │   └── ...                 reference docs, such as the feed schema
 ├── .claude/
 │   ├── agents/             agent briefs, one file per role
-│   └── skills/             /lead-start and /lead-finish
+│   └── skills/             /lead-start, /lead-milestone and /lead-finish
 ├── .github/                CI, issue templates, PR template
 ├── scripts/                board.py, context.py, lead.py, tier.py, usage.py
 ├── config/                 sources, interests, extraction rules
@@ -460,6 +460,7 @@ Each kind of information has one home, and other documents link to it instead of
 | Current work and its status | GitHub issues and the Project board |
 | Decisions, friction and follow-ups for the current phase | The "Phase N log" issue, until the milestone report records them |
 | Work put off on purpose, across phases | `DEFERRED_WORK.md`, reviewed at each milestone |
+| How the lead prepares a milestone and acts on sign-off | `.claude/skills/lead-milestone/SKILL.md` |
 | What failure costs right now | `CLAUDE.md`, "Cost of failure" |
 
 Some things are deliberately kept out of the repo:
