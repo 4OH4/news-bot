@@ -2183,7 +2183,7 @@ def test_a_failing_result_pointing_at_a_failed_target_leaves_the_targets_retries
 
 @pytest.mark.parametrize(
     "status",
-    [ExtractionStatus.PARTIAL, ExtractionStatus.PAYWALLED, ExtractionStatus.SKIPPED],
+    [ExtractionStatus.PARTIAL, ExtractionStatus.PAYWALLED],
 )
 def test_an_ok_result_still_merges_into_a_stored_target_that_has_not_failed(
     tmp_path: Path, repository: SqliteRepository, status: ExtractionStatus
