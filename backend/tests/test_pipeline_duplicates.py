@@ -30,6 +30,7 @@ from newsfeed.models import (
     ArticleExtraction,
     ExtractionResult,
     ExtractionStatus,
+    PipelineStage,
     RunStats,
     Source,
     SourceType,
@@ -283,6 +284,25 @@ def test_a_thin_partial_target_does_not_swallow_an_ok_article(
 
     assert {a.url for a in repository.list_articles()} == {ALIAS, TARGET}
     _assert_shows(services, ALIAS, "Copy body.")
+
+
+def test_a_target_of_exactly_the_minimum_length_still_absorbs_an_ok_article(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    """The feed shows a partial this long as an article, so extract must count it too."""
+    extraction = ArticleExtraction(status=ExtractionStatus.PARTIAL, word_count=PARTIAL_MIN_WORDS)
+    repository.upsert_article(_row(TARGET, extraction=extraction))
+    alias = _pending_alias()
+    repository.upsert_article(alias)
+    fetcher = _fetcher({ALIAS: _page(TARGET)})
+    services = _services(
+        tmp_path, repository, fetcher, FakeExtractor(results={ALIAS: _ok("Copy body.")})
+    )
+
+    _run(services)
+
+    assert repository.get_article(alias.id) is None
+    assert [a.url for a in repository.list_articles()] == [TARGET]
 
 
 # --- Which row publish chooses ------------------------------------------------------
@@ -545,6 +565,64 @@ def test_a_retry_that_never_reads_the_page_does_not_forget_the_declared_canonica
     _run(services, LATER)
 
     _assert_shows(services, TARGET, "Target body.")
+
+
+def _copy_that_retries(tmp_path: Path, repository: SqliteRepository) -> tuple[FakeFetcher, Article]:
+    """Run 1: a failed copy records its failed target; both are due a retry by ``LATER``."""
+    repository.upsert_article(_failed_row(error_type="timeout"))
+    alias = _pending_alias()
+    repository.upsert_article(alias)
+    fetcher = _fetcher({ALIAS: _page(TARGET)})
+    extractor = FakeExtractor(results={ALIAS: _failed_result("upstream timed out")})
+    _run(_services(tmp_path, repository, fetcher, extractor))
+    stored = repository.get_article(alias.id)
+    assert stored is not None
+    assert stored.extraction.declared_canonical == TARGET
+    fetcher.add(TARGET, _page(TARGET), headers=HTML)
+    return fetcher, alias
+
+
+def test_a_page_that_stops_declaring_its_target_is_no_longer_hidden_behind_it(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    fetcher, alias = _copy_that_retries(tmp_path, repository)
+    fetcher.add(ALIAS, _page(), headers=HTML)
+    extractor = FakeExtractor(results={ALIAS: _ok("Own body."), TARGET: _ok("Target body.")})
+    services = _services(tmp_path, repository, fetcher, extractor)
+
+    _run(services, LATER)
+
+    stored = repository.get_article(alias.id)
+    assert stored is not None
+    assert stored.extraction.declared_canonical is None
+    assert {i["url"] for i in _items(services)} == {ALIAS, TARGET}
+
+
+def test_a_row_rekeyed_to_a_new_address_does_not_keep_its_old_link(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    fetcher, _ = _copy_that_retries(tmp_path, repository)
+    fetcher.add(ALIAS, _page(FINAL), headers=HTML)
+    extractor = FakeExtractor(results={ALIAS: _ok("Own body."), TARGET: _ok("Target body.")})
+    services = _services(tmp_path, repository, fetcher, extractor)
+
+    _run(services, LATER)
+
+    assert {i["url"] for i in _items(services)} == {FINAL, TARGET}
+
+
+def test_the_run_stats_count_the_duplicates_publish_dropped(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    repository.upsert_article(_failed_row())
+    repository.upsert_article(_pending_alias(ALIAS))
+    repository.upsert_article(_pending_alias(SECOND_ALIAS))
+    fetcher = _fetcher({ALIAS: _page(TARGET), SECOND_ALIAS: _page(TARGET)})
+    services = _services(tmp_path, repository, fetcher, FakeExtractor(default=_ok("Copy body.")))
+
+    stats = _run(services)
+
+    assert stats.stage_counts[PipelineStage.PUBLISH]["duplicates"] == 2
 
 
 # --- Guards: these pass before #147 and must still pass after it --------------------
