@@ -511,7 +511,7 @@ Some things are deliberately kept out of the repo:
 
 ## 15. Learnings
 
-What building this way has taught so far, written to be reused on other projects. The items on test authors, the delivery manager and milestones are reasoning from this project's history, because those parts haven't run yet. The first milestone will test them.
+What building this way has taught so far, written to be reused on other projects. The delivery manager and milestones have now run once. The architect hasn't, and the test author's value is still unproven (`docs/milestones/phase-2.md`).
 
 ### Conceptual
 
@@ -527,6 +527,9 @@ What building this way has taught so far, written to be reused on other projects
 - **A single large process PR is expensive to review.** #133 mixed rule changes with document changes. Split them where possible.
 - **Tell agents what failure costs.** Reviewers given no sense of stakes treat every gap as a defect. State the stakes once, where every agent sees them, and have the human confirm them at each milestone.
 - **Settle the rule before reworking.** #131 and #146 took four and five rounds because their issues named a symptom. #147, with its design settled first, took two.
+- **Measure agent merges on product code.** In the first phase under this model, 15 of 18 PRs changed the automation or infrastructure, which is Tier C by rule, so the share of agent merges said nothing about trust.
+- **A human's merge can overtake agents.** PR #160 merged during its review, and PR #167 merged with a comment unactioned. A draft shows the status of a review, but it doesn't stop a comment being missed, so the lead has to check for comments too.
+- **What didn't work:** a rule with no enforcement. The two-review limit was passed twice, because nothing enforced it. A delivery manager brief saying "one report" was also missed in every batch, at no real cost.
 - **Don't shape a design around process friction.** Phase designs briefly moved from a file to an issue, only because nobody owned the file's PR. The fix was to assign an owner.
 
 ### Practical
@@ -568,13 +571,12 @@ The problem: the lead's context grew from 44k to 210k tokens over three batches,
 
 Still unknown:
 
-- whether the hook fires as expected, which a manual `/compact` in a new session after merging can show;
 - whether recovery works when compaction lands mid-batch, which only a real case can show;
 - whether scheduled checks survive compaction, on which the docs are silent;
 - how much usage a large context really costs;
 - whether 150k is the right threshold, as it rests on one session.
 
-Evidence goes in the Phase Log. If compaction proves costly, the next step is a spike on restarting from outside the session.
+The Phase 2 milestone reviewed this: the hook fired on a manual `/compact`, and the approach stays. Evidence goes in the Phase Log. If compaction proves costly, the next step is a spike on restarting from outside the session.
 
 ## Appendix A: the compaction hook
 
