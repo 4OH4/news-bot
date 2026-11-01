@@ -9,6 +9,8 @@ You are the **lead** in `AUTOMATION.md` §5.1: accountable for delivering the ph
 
 To protect your context, read batch reports, not diffs or per-agent results, and send agents issue numbers instead of restating issues.
 
+These steps are defaults, not barriers. Use judgement, and where a step doesn't fit, propose skipping or reordering it. Once the human agrees in the chat, record it in one line in the Phase Log. Stop-the-line items, the tiers, the architecture rules and merging only through `tier.py` are outside this.
+
 ## 1. Sync
 
 Run `python3 scripts/lead.py start` from the repo root. It:
@@ -25,12 +27,13 @@ Then read the handoff note, the Phase Log (step 5) and "Cost of failure" in `CLA
 
 ## 2. Find where the phase stands
 
-Take the first of these that applies:
+The current phase is the earliest one with no merged milestone report. Take the first of these that applies:
 
-1. **The milestone is awaiting sign-off:** the report PR is open. Act on any comments from the human (step 7). Building stops until the human merges it, though the architect may draft the next phase.
-2. **The phase has no design:** no `docs/phases/phase-<n>.md`. Confirm the goal and exit criterion from `PROJECT_PLAN.md` §6, then start the architect (step 3).
+1. **The milestone is awaiting sign-off:** the report PR is open and not a draft. A draft report is a preview: it doesn't mean this, and it isn't an unfinished PR for item 3. Act on any comments from the human (step 7). Building stops until the human merges it, though the architect may draft the next phase, and that design PR can merge.
+2. **The phase has no design:** no `docs/phases/phase-<n>.md`. Phases 0 to 2 predate the architect and need none. Confirm the goal and exit criterion from `PROJECT_PLAN.md` §6, then start the architect (step 3).
 3. **Ready issues or unfinished PRs exist:** start the next batch (step 4).
-4. **Every issue in the phase is closed, or parked:** prepare the milestone (step 6).
+4. **The phase's work is done:** every issue in the phase is closed or parked, or the human has agreed what carries forward. The Phase Log doesn't count, because the report closes it. Prepare the milestone (step 6).
+5. **The phase is waiting on evidence or the human:** for example, an exit criterion that needs elapsed time. Say what it's waiting for, and go idle.
 
 The six PRs open when this model began (#123, #124, #125, #126, #129, #130) finish under the rules they were written for: the human merges them, and `tier.py merge` refuses them. Keep them in the merge queue until they are merged, and send them back for a rebase if they conflict.
 
@@ -80,30 +83,31 @@ A one-line status saying what it's waiting for isn't a stop: notifications resum
 Keep one issue titled "Phase <n> log" open for the phase (`AUTOMATION.md` §4). Create it the first time you need it. The body is the curated summary, with the sections What's new, Decisions to confirm, Friction, Proposed process changes and Follow-ups. Comments hold raw notes.
 
 - **As it happens:** add a comment for anything you tell the human will be recorded, in the same step you say it, and for your own friction, decisions made outside a PR, and the human's corrections and notes. Name the "Cost of failure" line a decision relied on. The handoff note isn't a record.
-- **At each batch close:** rewrite the body to take in the batch report and the comments. Merge friction with what's there and count it, and give each follow-up a state: drop, an issue number, or undecided.
+- **At each batch close:** rewrite the body to take in the batch report and the comments. Merge friction with what's there and count it, and give each follow-up a state: drop, an issue number, carried forward, or undecided.
+- **If the human comments on work in progress,** in the chat or here, turn each comment into an issue or a follow-up. They can try it at any time.
 - **If the human corrects the cost of failure,** or the project gains a user who is not also a developer, data that can't be recreated, new spending or anything newly public, propose the change to `CLAUDE.md` at once as a Tier C PR (`AUTOMATION.md` §6).
 
 Anything the human rejects at the milestone becomes a normal issue.
 
 ## 6. Prepare the milestone
 
-1. Confirm the demo works from a clean checkout. Run it yourself, following the phase design.
+1. Run as much of the demo as you can from a clean checkout, following the phase design, or `PROJECT_PLAN.md` §6 if there's none. Where you can't, such as on the human's phone or without a cloud identity, the report says which steps are untested, and the human's own run tests them.
 2. Write the report at `docs/milestones/phase-<n>.md`, following `AUTOMATION.md` §4 and the pattern of `docs/phase1-review.md`, so it takes a few minutes to read:
    - **Try it:** the exact command or URL, and what to do with it.
    - **Goal check:** the exit criterion and the evidence that it is met. Where a criterion mentions elapsed time, give the evidence so far. The human judges when it's enough.
-   - **Decisions to confirm:** every `Confirm later` item from the Phase Log, with its reason and how to undo it. Settle any follow-up still undecided.
+   - **Decisions to confirm:** every `Confirm later` item from the Phase Log, with its reason and how to undo it. Give any follow-up still undecided a state; carried forward is fine.
    - **What was built:** a short summary, with links to the PRs agents merged (`label:agent-merged`).
-   - **Risks and parked work:** anything unresolved, any PR the review process could not clear, and any cloud resources still running.
+   - **Risks and parked work:** anything unresolved, any PR the review process could not clear, anything carried forward to the next phase, and any cloud resources still running.
    - **Process measures:** the numbers in `AUTOMATION.md` §10.
    - **Process review:** those numbers against the previous milestone, the top three friction points from the Phase Log (evidence and a proposed change each), how the last milestone's changes turned out, and the human's own friction notes. Update `AUTOMATION.md` §15, including what didn't work.
    - **Next phase:** proposed goal, and anything found this phase that changes the plan.
    - **Cost of failure:** your statement for the next phase, and what changed. Update `CLAUDE.md` in the same PR, so that merging the report confirms it.
-3. Open it as a normal PR on `issue-<n>-phase-<n>-milestone`, closing the Phase Log. It is Tier C.
+3. Update the phase's status in `PROJECT_PLAN.md` §6 in the same PR. Open it as a normal PR on `issue-<n>-phase-<n>-milestone`, closing the Phase Log. It is Tier C. The human is its reviewer, so it needs no independent one.
 4. Tell the human the milestone is ready, with the link and the "Try it" line.
 
 ## 7. Milestone review
 
-Sign-off is the human merging the report PR. Nothing moves on automatically, and there is no time limit. Fixes during the review go through a delivery manager as normal. Comments on the report are change requests, and each rejected decision becomes a normal issue. Once it is merged, open a `process` issue for each proposed process change the human didn't reject, at most three per phase, stating what should improve and which measure shows it; `process` issues follow the normal tier rules, so changes to the automation are Tier C. Then go back to step 2 for the next phase.
+Sign-off is the human merging the report PR. Nothing moves on automatically, and there is no time limit. Fixes during the review go through a delivery manager as normal. Comments on the report are change requests, and each rejected decision becomes a normal issue in the next phase, which doesn't block sign-off unless the human says so. Once it is merged, close the phase's GitHub milestone, move carried items to the next phase's milestone, and open a `process` issue for each proposed process change the human didn't reject, at most three per phase, stating what should improve and which measure shows it; `process` issues follow the normal tier rules, so changes to the automation are Tier C. Only fixes that the next phase relies on go first, and the rest carry forward. Then go back to step 2 for the next phase.
 
 ## Usage pauses
 
