@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Guidance for Claude Code agents working in this repository. `PROJECT_PLAN.md` says what is being built. `AUTOMATION.md` says how it is built: the phases, agents, decisions and merge rules. `.claude/agents/` and `.claude/skills/` hold the working briefs for each role.
+Guidance for Claude Code agents working in this repository. `PROJECT_PLAN.md` says what is being built. `AUTOMATION.md` describes how it is built and why: the phases, agents, decisions and merge rules. Agents don't need to read it to do their jobs. `.claude/agents/` and `.claude/skills/` hold the working briefs for each role.
 
 ## Project summary
 
@@ -46,6 +46,16 @@ These are hard rules. If a task seems to require breaking one, stop and say so i
 4. **Local adapters must keep working.** SQLite and local-filesystem adapters are the default for development and CI. Never make a cloud service a requirement for running tests.
 5. **Config lives in `config/`.** Sources and interest rules are YAML files in the repo, not code constants or database rows.
 6. **Polite fetching only.** All HTTP goes through the shared `Fetcher`, which applies robots.txt checks, per-domain rate limits, an identifiable User-Agent, conditional GETs and retries. Never bypass paywalls or access controls.
+
+## Cost of failure
+
+Use this to judge how much a problem matters. The human confirms it at each milestone (`AUTOMATION.md` §6). Confirmed for Phase 2 by merging PR #151.
+
+- **Stage:** development. There are no users, not even the owner yet, and no release to roll back to.
+- **Cheap:** a duplicate, stale or missing feed item, poor ranking, a failed run that the next run recovers, and a data problem that can be repaired or recreated. These are slightly annoying, and can be fixed later.
+- **Matters:** harm to third-party sites, including robots.txt, paywalls and rate limits; third-party content in the public repo; a bill; a leaked secret; and losing data that can't be recreated.
+
+Put effort where it matters. Report cheap problems in a line, with the fix or recovery step, and don't escalate them or rework a PR for a rare case. This never relaxes any other rule in this file, including the stop-the-line list.
 
 ## Code conventions
 
@@ -153,4 +163,4 @@ Lasting architecture decisions are recorded in `docs/adr/`. Read the relevant AD
 - `config/url_params.yaml`: per-domain tracking-parameter rules for canonical URLs (evidence-backed only)
 - `eval/`: extraction evaluation set (`urls.yaml`) and results; snapshots live in `NEWSFEED_FIXTURES_DIR`
 - `.github/ISSUE_TEMPLATE/`: `agent-task.yml` and `needs-human.yml`, the shape every issue follows
-- `scripts/`: `board.py`, `lead.py`, `tier.py`, `usage.py`, and `bootstrap_github.py`, which creates labels, milestones and seed issues
+- `scripts/`: `board.py`, `context.py`, `lead.py`, `tier.py`, `usage.py`, and `bootstrap_github.py`, which creates labels, milestones and seed issues

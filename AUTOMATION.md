@@ -2,6 +2,10 @@
 
 This document explains the workflow, the agents, the method and the decisions behind them. `PROJECT_PLAN.md` says what is being built. `CLAUDE.md` holds the day-to-day rules and commands, and `.claude/agents/` and `.claude/skills/` hold the working briefs.
 
+**The goal is to deliver high-quality software at high velocity, with minimal un-planned human oversight. Human code review can become a bottleneck, so this framework is intended to allow AI agents to continue working when possible, using a risk-managed based approach to decide when to make a decision themselves and when to escale for human input. The bar is the 'cost of failure', and varies by project and lifecycle - the cost is different during development vs in production.**
+
+This document describes what we expect to happen, and why. It is not the implementation: the briefs, skills and scripts are, and they are derived from it. No agent needs it in context to do its job, so each brief and skill must be complete by itself. A change to a rule here goes into the matching brief, skill or script in the same PR.
+
 ## 1. The model in brief
 
 The human sets the intent and reviews working software at the end of each phase. Agents do everything in between.
@@ -68,16 +72,36 @@ The report lives at `docs/milestones/phase-<n>.md`, following the pattern of `do
 - **What was built:** a short summary, with links to the PRs that agents merged.
 - **Risks and parked work:** anything unresolved, and any PR the review process could not clear.
 - **Process measures:** the numbers in §10.
-- **Process review:** the §10 numbers against the previous milestone, the top three friction points from the batch reports' "Friction" sections, each with evidence and a proposed change, how the last milestone's changes turned out, and the human's own friction notes.
+- **Process review:** the §10 numbers against the previous milestone, the top three friction points from the Phase Log, each with evidence and a proposed change, how the last milestone's changes turned out, and the human's own friction notes.
 - **Next phase:** proposed goal, and anything found this phase that changes the plan.
+- **Cost of failure:** the lead's statement for the next phase, and what changed (§6). Merging the report confirms it.
 
 Sign-off is always a positive confirmation from the human. Nothing moves on automatically, and no time limit or waiting period applies to a milestone review. Where an exit criterion mentions elapsed time, such as "runs hourly for a week", the report gives the evidence so far, and the human judges when it's enough. Fixes during the review go through Gear 2 as normal.
+
+### The Phase Log
+
+The Phase Log is one GitHub issue, titled "Phase N log", that the lead keeps throughout a phase. The human can read it at any time to see where the phase stands, and the milestone report is written from it. It is an issue, not a file, because a file would need a PR for every update and would conflict across parallel PRs.
+
+The issue body is the curated summary, and only the lead rewrites it. Comments hold raw notes, including the human's. The body has these sections:
+
+- **What's new:** one plain line per merged change, saying what the human would see or try.
+- **Decisions to confirm:** every `Confirm later` item, with its reason and how to undo it, plus "Revisit when" if a later event should reopen it.
+- **Friction:** merged and counted across batches, not listed batch by batch.
+- **Proposed process changes:** each with the friction behind it.
+- **Follow-ups:** anything found and not acted on, marked drop, an issue number, or undecided. Nothing stays undecided past the milestone.
+
+The rules:
+
+- **Write it when it happens.** Anything the lead tells the human will be recorded goes into a comment at that moment, as do the lead's own observations and any correction from the human. The handoff note holds session state only, because each session overwrites it.
+- **Curate at each batch close.** The lead merges the batch report and the comments into the body.
+- **Reconcile before finishing.** `/lead-finish` checks the session's reports against the log before it replaces the handoff note.
+- **The milestone report closes it.** Its "Decisions to confirm", "Risks and parked work" and "Process review" come from the log.
 
 ## 5. The agents
 
 | Role | Gear | Runs as | Model | Can change code? |
 |---|---|---|---|---|
-| Lead | 1 | Main session | Opus | Only generated evaluation results, the milestone report and §15 |
+| Lead | 1 | Main session | Opus | Only generated evaluation results, the milestone report, §15 and the cost-of-failure statement in `CLAUDE.md` |
 | Architect | 1 | Subagent, fresh per phase or epic | Opus | The phase design and issues only |
 | Delivery manager | 2 | Background subagent, fresh per batch | Sonnet, Opus if that falls short | No, except merging through `tier.py` |
 | Test author | 2 | Subagent, one per issue | Sonnet, Opus for high-risk issues | Tests only |
@@ -97,7 +121,7 @@ The lead is accountable for delivering the phase. It:
 - reviews each batch report;
 - handles usage pauses (§11);
 - runs `make eval` when a delivery manager asks, because subagents can't run it;
-- keeps the list of decisions and writes the milestone report.
+- keeps the Phase Log (§4) and the cost-of-failure statement (§6), and writes the milestone report.
 
 To protect its context, the lead reads batch reports, not diffs or per-agent results. It sends agents issue numbers instead of restating them. It restarts between sessions as it does today, with `/lead-start`, `/lead-finish` and a handoff note.
 
@@ -123,9 +147,10 @@ The delivery manager is Gear 2's orchestrator. A fresh one runs each batch of ab
 - paces work against the usage limit (§11);
 - re-runs the checks, posts the "Delivery review" and merges through `tier.py`;
 - sends design problems and stop-the-line items to the lead as they arise, and carries on with other issues;
-- finishes with one report: what merged, what's parked, and any `Confirm later` items.
+- sends any new `REVIEW.md` lines to a worker as a small docs PR before it reports (§7.4);
+- finishes with one report: what merged, what's parked, any `Confirm later` items and the reviewers' notes.
 
-All its state is on GitHub and the board. If a batch stops, a new delivery manager picks up from there.
+It can't wait in place for background agents, so it hands back a short status while they run, and their notifications resume it. Only its last message is the batch report. All its state is on GitHub and the board. If a batch stops, a new delivery manager picks up from there.
 
 ### 5.4 Test author
 
@@ -137,7 +162,7 @@ The delivery manager frees the test author's worktree with `git worktree remove`
 
 ### 5.6 Reviewer
 
-The reviewer works in a fresh context, as today, and sees only the PR and its issue. It checks the PR's claims against its own `make lint` and `make test` runs, and looks for ways the change falls short of the issue's goal. It also carries out the checks in §7.3. It can write only the "For human review" section of the PR body.
+The reviewer works in a fresh context, as today, and sees only the PR and its issue. It checks the PR's claims against its own `make lint` and `make test` runs, and looks for ways the change falls short of the issue's goal. It also carries out the checks in §7.3, and reserves **Defect:** for what the cost of failure justifies. It can write only the "For human review" section of the PR body.
 
 ## 6. Who decides what
 
@@ -162,16 +187,29 @@ Agents decide, unless the change falls into one of the groups below.
 
 In these cases the lead adds a comment on the issue with the shortest exact question or steps, and labels it `needs-human`. Other work continues. The human sees these in the lead chat or on GitHub.
 
+**Example: where the line sits.** In PR #148 a story's canonical page was paywalled, but an openly served copy existed at another URL. The feed keeps the copy's text. That is decide and record, not stop the line, because the test is whether we bypassed anything: the copy was served openly, through the `Fetcher`, at its own URL. Reasoning like this, with the undo recorded, is what `Confirm later` is for.
+
+### Cost of failure
+
+An agent can only judge how much a problem matters if it knows what failure costs. Each project therefore keeps a short statement of its stage, the failures that are cheap and the failures that matter. Review depth, rework and warnings follow that statement, not how interesting a problem is.
+
+- **Who owns it.** The human owns it, and the lead keeps it up to date. Agents never settle it alone.
+- **Where it lives.** In `CLAUDE.md`, because every agent has that file in context, so no brief has to carry it. That file is Tier C, so agents can't lower their own scrutiny (principle 6).
+- **When it is set.** At each milestone, which is the planned conversation. The report states the lead's understanding for the next phase and what changed, and merging the report confirms it. There's no separate meeting.
+- **How it stays current.** The lead re-reads it at the start of each session, and names the line it relied on when it records a decision in the Phase Log, so the human can see its understanding in use and correct it. It proposes a change at once, as a Tier C PR, when the human corrects it or when the project gains a user who is not also a developer, data that can't be recreated, new spending, or anything newly public. A higher cost applies from the moment the lead sees it. A lower one waits for the merge.
+- **How it reaches the work.** The phase design says where the phase differs from the statement, and issues that sit above it get `**Risk:** high`. The reviewer uses it to separate defects from notes (§7.3). The delivery manager and the lead use it at the review limit (§8). The lead uses it to size what it raises with the human: in development, a data problem that can be repaired or recreated is a note with its recovery step, not a warning.
+- **What it can't do.** It never relaxes the stop-the-line list, the tiers, the architecture rules or an issue's acceptance examples.
+
 ### Recording a decision
 
-The agent that made the decision adds this to the PR header. Decisions made outside a PR go straight to the decisions issue:
+The agent that made the decision adds this to the PR header. Decisions made outside a PR go straight to the Phase Log:
 
 ```
 **Confirm later:** Weighted body-only demotions at 0.25. Reason: keeps relevant articles
 visible while still ranking them lower. To undo: change `body_only_demotion` in config/interests.yaml.
 ```
 
-Chosen dependencies also state the licence and why that package was picked. The delivery manager lists these in its batch report, and the lead copies them to one "Phase N decisions" issue, so parallel PRs don't conflict over a shared file. The milestone report then lists them all. Anything the human rejects becomes a normal issue.
+Chosen dependencies also state the licence and why that package was picked. The delivery manager lists these in its batch report, and the lead copies them to the Phase Log (§4). The milestone report then lists them all. Anything the human rejects becomes a normal issue.
 
 ### Cloud resources
 
@@ -219,9 +257,11 @@ In addition to the current review, the reviewer:
 - **reads the test change report:** `tier.py` lists deleted or changed assertions, added skips and `live` markers, and any edits to the test author's tests. Each needs a good reason;
 - **checks against `REVIEW.md`:** a list of failure patterns taken from real defects in this repo.
 
+**What counts as a defect.** The reviewer does every check, and lists everything it finds, but marks an item **Defect:** only if it states the concrete failure and its cost, and at least one of these holds: it breaks an acceptance example or a hard rule in `CLAUDE.md`, it matches a failure that matters in the cost-of-failure statement (§6), or it would be seen routinely. A rare case with a cheap outcome is a plain note. Notes don't send a PR back. The delivery manager lists them in its batch report, and the lead adds them to the Phase Log as follow-ups.
+
 ### 7.4 `REVIEW.md`
 
-`REVIEW.md` records what failure looks like here, and workers and test authors read it before starting. It grows when a review finds a new kind of defect. Examples:
+`REVIEW.md` records what failure looks like here, and workers and test authors read it before starting. It grows when a review finds a new kind of defect. The delivery manager gets new lines merged before its batch report, so the next batch has them, instead of leaving them for the milestone. Examples:
 
 - A field a feature reads must be set by the real pipeline, shown by a test that runs it.
 - Code that promises never to raise must handle malformed input, including non-ASCII digits and malformed URLs.
@@ -236,12 +276,12 @@ In addition to the current review, the reviewer:
 3. **Green.** The worker implements the issue, verifies it and opens the PR.
 4. **CI.** Lint, test and Docker build must pass.
 5. **Review.** A fresh reviewer writes its findings.
-6. **Rework.** Defects return to a worker, and a new review follows if behaviour changed. There are at most two reviews.
+6. **Rework.** Defects return to a worker, and a new review follows if behaviour changed. There are at most two reviews. The limit is firm: only the lead can allow a third, for a failure that matters, with its reason in the Phase Log.
 7. **Evaluation.** If `extract/` changed, the delivery manager asks the lead to run the evaluation (§6). This comes before the next step because it adds a commit.
 8. **Delivery review.** The delivery manager runs `make lint` and `make test` on the final commit, confirms CI is green, then posts a "Delivery review" comment with its verdict and the head SHA it checked. This replaces today's "Lead review". Any later push invalidates it.
 9. **Merge.** The delivery manager merges Tier A and B through `tier.py merge`. A Tier C PR moves to Human review on the board.
 
-If the second review still finds defects, the delivery manager doesn't loop. It passes the PR to the lead, which decides whether the issue is wrong, in which case the architect revises it, or parks the PR. Parked PRs appear in the milestone report, and they stop the line only if other work depends on them.
+If the second review still finds defects, the delivery manager doesn't loop. It passes the PR to the lead, which decides whether the issue is wrong, in which case the architect revises it, accepts what remains as cheap and marks it resolved with its reason, or parks the PR. Repeated defects on one path usually mean the issue names a symptom, not the rule, so the lead settles the design before any more rework. Parked PRs appear in the milestone report, and they stop the line only if other work depends on them.
 
 A reviewer's **Needs human:** item also goes to the lead. The lead either treats it as stop-the-line, or decides it, records a `Confirm later` entry and marks the item resolved.
 
@@ -276,9 +316,9 @@ Bucket `name` and `location` changes stay Tier B: Terraform replaces the bucket,
 - it has an independent review, and the review states that the §7.3 checks were done;
 - the "Delivery review" says "Verdict: merge" and names the head SHA;
 - a Tier B PR has a `Confirm later` entry;
-- a PR that touches `extract/` records its evaluation scores with no drop in the overall score, unless the lead gives a reason, which goes in the decisions list.
+- a PR that touches `extract/` records its evaluation scores with no drop in the overall score, unless the lead gives a reason, which goes in the Phase Log.
 
-A feature with resolved defects can now merge after a clean second review, and one size limit applies to every PR: 400 source lines and 1,500 lines in total. The old feature conditions, including `Deviations: none` and `Tier A feature: confirmed`, are removed. The human can still revert any merge, or add `hold` to stop one.
+A feature with resolved defects can now merge after a clean second review, or after the lead accepts what remains (§8), when the delivery manager, or a new one if the batch has ended, posts the Delivery review. One size limit applies to every PR: 400 source lines and 1,500 lines in total. The old feature conditions, including `Deviations: none` and `Tier A feature: confirmed`, are removed. The human can still revert any merge, or add `hold` to stop one.
 
 The delivery manager sends an oversized PR back to a worker to split. On the 25 tiered PRs, these rules would have allowed 19 agent merges (76%) and left 6 for the human: three that set up the workflow itself, #125, which includes billing and IAM, #109, which added a `mypy` override, and #103, which edited a comment in one. #108 counts as an agent merge on the assumption that it would have been split. #110, #117 and #124 carried the old `needs-human` label, and count as agent merges because their files are Tier B and such changes are now decide-and-record.
 
@@ -308,7 +348,7 @@ Friction is recorded as it happens and reviewed once per milestone:
 - The milestone report's "Process review" (§4) takes the top three friction points, with evidence and a proposed change. The human may add notes of their own.
 - Once the milestone report is merged, the lead opens a `process` issue for each proposed change the human didn't reject, stating what should improve and which measure shows it, at most three per phase. `process` issues follow the normal tier rules, so changes to the automation are Tier C.
 - The lead updates §15 at each milestone, including what didn't work.
-- Friction data is kept in the "Phase N decisions" issue: the lead copies each batch's "Friction" section there, and the human's notes go there too.
+- Friction data is kept in the Phase Log (§4): the lead merges each batch's "Friction" section into it, records its own friction there as it happens, and adds the human's notes.
 
 | Signal | Suggests |
 |---|---|
@@ -325,10 +365,23 @@ Permission prompts are counted only when an agent reports them. Usage per issue,
 
 - **Parallelism:** up to 3 issues in progress, each using one test author and then one worker. Reviewers, the architect and the delivery manager don't count. No two in-progress issues touch the same files, and only one delivery manager runs at a time.
 - **Sessions:** the lead finishes after 45 idle minutes, and restarting is cheaper than reloading a cold session. A usage pause doesn't count as idle.
+- **Context checkpoint (not fully resolved, see §16):** the lead can't clear or compact its own context, and stopping would end unattended work, so it lets automatic compaction happen and makes sure little depends on the summary. At each batch close it runs `python3 scripts/lead.py context`. At 150k tokens or more, or after three batches if that can't be read, it curates the Phase Log, rewrites the handoff note, tells the human they can restart to save usage, and starts the next batch. A batch costs about 55k tokens, so compaction may come mid-batch. Agents keep running through it, and a `SessionStart` hook sends the lead back to its handoff note, the Phase Log and its open work. The lead also records each batch in the handoff note as it starts. Agents don't depend on the lead's memory: a delivery manager with an unanswered request sends it again.
 - **GitHub API:** 5,000 GraphQL points an hour are shared across every agent, so prefer REST in loops.
 - **Worktrees:** each agent works in its own, under `.claude/worktrees/`.
 - **Permissions:** agents work within the allow list in `.claude/settings.json`. A permission prompt would wait for the human, so the list must cover every routine step, and no agent uses `--dangerously-skip-permissions`.
 - **Credentials:** agents use only the short-lived, limited identity described in §6. They never handle keys or secrets directly.
+
+### The compaction hook
+
+Appendix A has the code, for use on other projects. `.claude/settings.json` has a `SessionStart` hook with the `compact` matcher, which Claude Code runs when a session restarts from compaction. It prints one line, which is added to the new context:
+
+> Context was just compacted. If this session ran /lead-start, follow its After compaction section before anything else. Subagents and any other session: ignore this.
+
+That section of `/lead-start` has the lead read its handoff note and the Phase Log, then check running agents, scheduled checks and open PRs waiting on it. The hook doesn't compact, clear, start or stop anything. It only tells the lead what to do next.
+
+- **Why `SessionStart`:** `PostCompact` can't add to the context. Its documented use is side effects, such as logging the summary.
+- **Why plain text:** every session sees the line, and the test is a fact a session can check about itself, so the lead always gets it. Limiting the hook to the lead would need a marker file keyed by session ID, because a variable set by a Bash command never reaches the hook. A broken marker would silently hide the message from the one session that needs it, while a wrongly read message costs a few harmless reads.
+- **Who changes it:** the human, because agents can't edit `.claude/settings.json`.
 
 ### Usage limits
 
@@ -383,7 +436,7 @@ Each kind of information has one home, and other documents link to it instead of
 │   ├── agents/             agent briefs, one file per role
 │   └── skills/             /lead-start and /lead-finish
 ├── .github/                CI, issue templates, PR template
-├── scripts/                board.py, lead.py, tier.py, usage.py
+├── scripts/                board.py, context.py, lead.py, tier.py, usage.py
 ├── config/                 sources, interests, extraction rules
 ├── eval/                   evaluation expectations and results
 ├── backend/                pipeline code and tests
@@ -400,7 +453,8 @@ Each kind of information has one home, and other documents link to it instead of
 | What a phase delivered, and what the human confirmed | `docs/milestones/phase-<n>.md` |
 | Rules for how agents work | `AUTOMATION.md`, then `.claude/agents/` for each role |
 | Current work and its status | GitHub issues and the Project board |
-| Decisions awaiting confirmation | The "Phase N decisions" issue, until the milestone report records them |
+| Decisions, friction and follow-ups for the current phase | The "Phase N log" issue, until the milestone report records them |
+| What failure costs right now | `CLAUDE.md`, "Cost of failure" |
 
 Some things are deliberately kept out of the repo:
 
@@ -443,6 +497,11 @@ Some things are deliberately kept out of the repo:
 | 2026-10-31 | The development service account gets read-only roles, including `roles/secretmanager.viewer` (names and metadata, never values) | `terraform apply` must refresh the resources it can't change, or "Agents apply later changes" can't work |
 | 2026-10-31 | Monitor the way of working with a light loop: friction notes, a batch "Friction" section and a milestone "Process review", with at most three `process` issues per phase | Without a source for the numbers and an owner for the changes, friction would stay in place; automated metrics wait until it is clear which ones matter |
 | 2026-10-31 | Record learnings in §15 | The human wants to reuse this document on other projects, and the evidence is freshest now |
+| 2026-11-01 | The lead keeps a curated Phase Log as a GitHub issue, and writes the milestone report from it | Collating at the end loses things, and a repo file would need a PR for every update |
+| 2026-11-01 | State the cost of failure in `CLAUDE.md`, confirmed at each milestone, and reserve **Defect:** for failures that justify rework | Without it, rare and cheap cases took four and five review rounds, and warnings outgrew the project's stage |
+| 2026-11-01 | The two-review limit is firm, and only the lead can allow a third review | It was passed twice in the pilot with no decision recorded |
+| 2026-11-01 | At 150k tokens the lead checkpoints at a batch close and carries on, and a hook recovers it after compaction | Stopping would end unattended work, and neither the lead nor a timer can run `/clear` or `/compact`, so durable state protects it instead |
+| 2026-11-01 | This document describes the method, and no agent needs it in context | The briefs and skills are the implementation, and reading it costs the lead 12k tokens a session |
 
 ## 15. Learnings
 
@@ -460,6 +519,8 @@ What building this way has taught so far, written to be reused on other projects
 - **The rules that govern agents need the closest scrutiny.** They fail quietly, and agents shouldn't be able to loosen them.
 - **Review has diminishing returns on rule code.** #133 had four reviews, against §8's limit of two, and the later ones found narrower gaps. Agree a stopping rule, and treat tier rules as a safety net against mistakes, not a security boundary.
 - **A single large process PR is expensive to review.** #133 mixed rule changes with document changes. Split them where possible.
+- **Tell agents what failure costs.** Reviewers given no sense of stakes treat every gap as a defect. State the stakes once, where every agent sees them, and have the human confirm them at each milestone.
+- **Settle the rule before reworking.** #131 and #146 took four and five rounds because their issues named a symptom. #147, with its design settled first, took two.
 - **Don't shape a design around process friction.** Phase designs briefly moved from a file to an issue, only because nobody owned the file's PR. The fix was to assign an owner.
 
 ### Practical
@@ -479,8 +540,75 @@ What building this way has taught so far, written to be reused on other projects
 - **`Closes #N` closes an issue on merge even if human steps remain.** #125 closed #74 before the human's first apply.
 - **Rebases rewrite SHAs.** Remap "Resolved in" markers afterwards, and use each merge order to limit conflicts on shared files.
 - **The role that can run a check must own it.** `make eval` can't run in subagents, so the lead owns it.
+- **A promise to record something is not a record.** A slip reported to the human as going in the Friction notes was only in the handoff note, which the next session overwrites. Write it down in the same step, and reconcile before finishing.
+- **Measure agent context from the transcript.** Claude Code records token counts per turn. Three batches took the lead from 44k to 210k tokens, about 55k a batch, and most of that was its own work, not file reads.
 - **The git stash list is shared across worktrees.** Never use bare stash commands in a shared repo.
 
 ## 16. Open questions
 
-None at present.
+### How the lead keeps working as its context fills
+
+**Status: not fully resolved.** §11 describes the current approach, which is a working choice and not a settled answer. Review it at the first mid-batch compaction, and at the first milestone at the latest.
+
+The problem: the lead's context grew from 44k to 210k tokens over three batches, about 55k a batch, and most of that was its own work. Automatic compaction summarises the context at an unplanned moment, and a large context uses the usage limits faster because every turn re-sends it. The lead can't clear or compact its own context, and a timer can't either: scheduled prompts run skills, but built-in commands reach the model as plain text. So a timer can resume work in the same session, but it can't empty the context.
+
+| Option | For | Against |
+|---|---|---|
+| **Checkpoint and carry on, with a recovery hook (current)** | Unattended work continues, no new infrastructure, and little depends on the summary | Compaction can land mid-batch, and the context stays large between compactions, which costs more usage |
+| **Stop at a threshold and wait for the human** | A clean handoff at a chosen moment, and a small context | Ends unattended work after about three batches, against the aim in §1. Rejected, though the human can still choose to restart when present |
+| **Restart from outside the session** | Clean restarts with no human, and the only unattended way to keep context small | Reverses §14 and needs a spike: `claude -p` waits about 10 minutes for background agents by default, a permission prompt has nobody to answer it, the human can't follow the session in the chat, and the machine must stay on. Cloud scheduled tasks have no local evaluation snapshots |
+| **Leave compaction to happen unaided** | The simplest, and it hasn't caused harm yet | Nothing makes sure the record is fresh, or brings the lead back to its open work |
+| **Use less lead context per batch** | Delays the problem, and also saves usage | Moves decisions away from the agent keeping the overview, and doesn't remove the limit |
+
+Still unknown:
+
+- whether the hook fires as expected, which a manual `/compact` in a new session after merging can show;
+- whether recovery works when compaction lands mid-batch, which only a real case can show;
+- whether scheduled checks survive compaction, on which the docs are silent;
+- how much usage a large context really costs;
+- whether 150k is the right threshold, as it rests on one session.
+
+Evidence goes in the Phase Log. If compaction proves costly, the next step is a spike on restarting from outside the session.
+
+## Appendix A: the compaction hook
+
+§11 explains why this exists. To use it on another project, copy the two parts below, then replace `/lead-start` with the skill that starts your orchestrating session. It suits any long-running session that keeps its state outside the conversation.
+
+**1. The hook.** Merge this into `.claude/settings.json`. The hook's output is added to the context after compaction.
+
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'Context was just compacted. If this session ran /lead-start, follow its After compaction section before anything else. Subagents and any other session: ignore this.'"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+**2. The recovery steps.** Add this section to the start skill, and change the steps to match where your project keeps its state.
+
+````markdown
+## After compaction
+
+A hook tells you when your context has just been compacted. Agents keep running through it, so carry on without restarting anything:
+
+1. Read the handoff note and the Phase Log.
+2. Run `ListAgents`, and don't start a second delivery manager if one is running.
+3. Run `CronList`. If the handoff records a usage pause and its check is gone, schedule it again.
+4. Check the open PRs for anything waiting on you, such as an "Evaluation scores" comment that was requested and is missing.
+
+If the handoff is out of date, trust the board and GitHub.
+````
+
+**To test it,** start a new session, because hooks load at session start, run the start skill, then run `/compact`. The session should follow the steps. Other sessions should ignore the message.
+
+**Limits.** The hook needs `SessionStart` with the `compact` matcher, because `PostCompact` can't add to the context. It fires only when compaction happens, and neither the model nor a timer can trigger that. It tells the session where to look, so it helps only if the state there is current.

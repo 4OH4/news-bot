@@ -3,6 +3,7 @@
 
   python3 scripts/lead.py start     # before starting work
   python3 scripts/lead.py finish    # before ending the session
+  python3 scripts/lead.py context   # at a batch close: is it time to checkpoint?
 
 Both commands are safe to re-run. They run from any worktree, but always act on
 the main checkout:
@@ -220,11 +221,16 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument("command", choices=["start", "finish"])
+    parser.add_argument("command", choices=["start", "finish", "context"])
     args = parser.parse_args()
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8", errors="replace")
+    if args.command == "context":
+        import context
+
+        context.main(main_checkout())
+        return
     cmd(args.command)
 
 

@@ -24,18 +24,22 @@ Run `python3 scripts/lead.py finish` from the repo root. It:
 
 Anything with uncommitted or unmerged work is **kept and listed**. Never force-delete those. Report them instead.
 
-## 3. Hand off
+## 3. Reconcile the Phase Log
+
+Before you replace the handoff note, go through this session's reports to the human. Anything you said would be recorded, any decision or friction you raised, and any correction from the human must be in the Phase Log (`/lead-start` step 5). Add what's missing now, because the handoff note isn't a record and the next finish overwrites it.
+
+## 4. Hand off
 
 Update the `lead-handoff` memory file, replacing its contents. Use absolute dates. Record:
-- the phase, its stage (`/lead-start` step 2) and the decisions issue number;
+- the phase, its stage (`/lead-start` step 2) and the Phase Log's issue number;
 - what the last batch merged and what is parked, and the merge queue (cards in "Human review") with what each merge unlocks;
 - what is In progress, in Agent review or kept back, and why;
 - any usage pause: which limit and when it resets. A scheduled check dies with the session, so the next `/lead-start` picks the work up;
 - the next steps, including the next batch and any decision waiting on the user.
 
-Don't copy information the board or git history already holds. Record only what the next session needs to act.
+Don't copy information the board, git history or the Phase Log already holds. Record only what the next session needs to act.
 
-## 4. Report
+## 5. Report
 
 Tell the user, briefly:
 - where the phase stands, and the report sections from `/lead-start` that have anything in them (at a milestone, also the milestone report's "Process review", which is step 6 of `/lead-start`, not a report section);
