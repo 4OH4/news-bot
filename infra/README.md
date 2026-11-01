@@ -31,7 +31,8 @@ read-only roles let it refresh them, but never read secret values.
 | `terraform/firestore.tf` | The `(default)` Firestore database (Native mode, delete-protected) and the four composite indexes the repository adapter needs. |
 | `terraform/storage.tf` | The private content bucket: `articles/` expires after 30 days and `feeds/` after 7 (ADR-0005); the runtime account may read and write its objects. |
 | `terraform/secrets.tf` | Secret Manager secrets, none yet. Terraform never holds secret values. |
-| `terraform/deploy.tf` | The deploy service account for GitHub Actions (#75): push to the registry, update the job, act as the runtime account. #75 adds `wif.tf`. |
+| `terraform/deploy.tf` | The deploy service account for GitHub Actions (#75): push to the registry, update the job, act as the runtime account. |
+| `terraform/wif.tf` | Workload Identity Federation: GCP accepts GitHub's short-lived tokens only from `deploy.yml` on `main`, so no key exists. |
 | `terraform/outputs.tf` | Names the deploy workflow and the steps below need. |
 
 Firestore and the content bucket hold the data, so both have `prevent_destroy`:
@@ -134,7 +135,8 @@ fails, the schedule stays paused until a later `deploy` succeeds.
    gcloud run jobs update newsfeed --region=<region> --image="$TAG"
    ```
 
-   After #75 is merged, the deploy workflow does this on every merge to `main`.
+   Once the deploy workflow is set up (see [Deploying on merge](#deploying-on-merge)),
+   it does this on every merge to `main`.
 
 7. Run the job once and wait for it:
 
@@ -157,6 +159,30 @@ fails, the schedule stays paused until a later `deploy` succeeds.
    ```bash
    gcloud billing budgets list --billing-account=<billing-account-id>
    ```
+
+## Deploying on merge
+
+`.github/workflows/deploy.yml` runs when CI passes on a push to `main`. It builds
+the image, tags it with the commit SHA, pushes it and updates the job's image, and
+the next scheduled run uses it. It skips itself until `GCP_WIF_PROVIDER` is set, so
+merges before the setup below stay green. Re-running CI for an older commit on
+`main` deploys that commit, so it also works as a rollback.
+
+To set it up, after `wif.tf` is merged and with the repository's admin rights in
+`gh`, apply as in [Later changes](#later-changes), then from the repo root:
+
+```bash
+tf() { terraform -chdir=infra/terraform output -raw "$1"; }
+gh variable set GCP_PROJECT_ID --repo 4OH4/news-bot --body "$(tf project_id)"
+gh variable set GCP_REGION --repo 4OH4/news-bot --body "$(tf region)"
+gh variable set GCP_IMAGE_REPOSITORY --repo 4OH4/news-bot --body "$(tf image_repository)"
+gh variable set GCP_JOB_NAME --repo 4OH4/news-bot --body "$(tf job_name)"
+gh variable set GCP_DEPLOY_SERVICE_ACCOUNT --repo 4OH4/news-bot --body "$(tf deploy_service_account)"
+gh variable set GCP_WIF_PROVIDER --repo 4OH4/news-bot --body "$(tf workload_identity_provider)"
+```
+
+These are identifiers, not secrets. The apply creates IAM, so the human runs it
+(ADR-0007). The next merge to `main` then deploys.
 
 ## Later changes
 

@@ -9,9 +9,11 @@ locals {
     "cloudscheduler.googleapis.com",
     "firestore.googleapis.com",
     "iam.googleapis.com",
+    "iamcredentials.googleapis.com", # the deploy workflow impersonates its account
     "monitoring.googleapis.com",
     "run.googleapis.com",
     "secretmanager.googleapis.com",
+    "sts.googleapis.com", # swaps GitHub's token for a Google one (wif.tf)
   ])
 }
 

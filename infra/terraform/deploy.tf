@@ -1,6 +1,6 @@
-# The deploy service account that GitHub Actions impersonates (#75). #75 adds
-# wif.tf: the Workload Identity Federation pool and provider, and the binding
-# that lets the main branch of the repository act as this account.
+# The deploy service account that GitHub Actions impersonates (#75). wif.tf holds
+# the Workload Identity Federation pool and provider, and the binding that lets
+# the deploy workflow on the main branch act as this account.
 #
 # It may only push images to the one repository and update the one job. To set
 # the job's image it must also act as the job's runtime account, because
