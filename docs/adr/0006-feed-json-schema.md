@@ -47,6 +47,7 @@ The JSON Schema in `docs/feed.schema.json` (draft 2020-12) is the authoritative 
 - **Candidates:** articles with a score (ranked), from a source that is still enabled in `config/sources.yaml`, whose effective time is within **72 hours** of `generated_at`. The effective time is `published_at`, or `fetched_at` when there is none, the same fallback the rank stage uses for recency.
 - **Muted articles are left out entirely.** An article is muted when its `score_breakdown` has a `muted` key (#81 writes it only when a mute applies, and keeps the article stored so the reason can be inspected). The schema rejects a `muted` key in a feed item.
 - **Order:** `score` descending, then effective time descending, then `id` ascending, so the same inputs always give the same feed.
+- **One item per story (#147):** rows linked by the canonical URL their page declared (`ArticleExtraction.declared_canonical`) take one place. The row shown is one that would display as an article; among those, the canonical target, then the highest in the order above.
 - **Limit:** the first **200** items. At the live run's volume that is between one and two days of articles, more than a day's reading.
 - Items with non-clean extraction stay in the feed as links; they are not filtered out.
 

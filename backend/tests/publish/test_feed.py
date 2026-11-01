@@ -283,3 +283,68 @@ def test_publish_writes_the_fixed_key_and_a_timestamped_copy() -> None:
     }
     assert isinstance(svc.blobs, InMemoryBlobStore)
     assert svc.blobs.content_type("memory://feed.json") == "application/json"
+
+
+# --- One item per story (#147) ------------------------------------------------------
+
+
+def copy_of(name: str, target: str, **changes: Any) -> Article:
+    """A row whose page declared ``target``, another row's canonical URL."""
+    row = article(name, **changes)
+    extraction = row.extraction.model_copy(
+        update={"declared_canonical": f"https://www.news.example.com/{target}"}
+    )
+    return row.model_copy(update={"extraction": extraction})
+
+
+def shown_names(articles: list[Article], **kwargs: Any) -> list[str]:
+    return [i["url"].rsplit("/", 1)[1] for i in build(articles, **kwargs)["items"]]
+
+
+def test_the_target_is_shown_over_a_copy_ranked_above_it() -> None:
+    rows = [copy_of("copy", "target", score=9.0), article("target", score=1.0)]
+
+    assert shown_names(rows) == ["target"]
+
+
+def test_a_copy_with_text_is_shown_over_a_target_without_any() -> None:
+    rows = [article("target", status=ExtractionStatus.FAILED), copy_of("copy", "target")]
+
+    assert shown_names(rows) == ["copy"]
+
+
+def test_a_full_copy_is_shown_over_a_target_too_thin_to_be_an_article() -> None:
+    rows = [article("target", status=ExtractionStatus.PARTIAL, words=40), copy_of("copy", "target")]
+
+    assert shown_names(rows) == ["copy"]
+
+
+def test_the_target_is_shown_when_no_row_has_text() -> None:
+    rows = [
+        copy_of("copy", "target", status=ExtractionStatus.FAILED, score=9.0),
+        article("target", status=ExtractionStatus.SKIPPED),
+    ]
+
+    assert shown_names(rows) == ["target"]
+
+
+def test_a_story_stays_whole_when_the_row_in_the_middle_is_not_a_candidate() -> None:
+    middle = copy_of("middle", "end", score=None)
+    rows = [copy_of("copy", "middle"), middle, article("end")]
+
+    assert shown_names(rows) == ["end"]
+
+
+def test_a_loop_and_the_row_leading_into_it_are_one_story() -> None:
+    rows = [copy_of("lead", "one"), copy_of("one", "two"), copy_of("two", "one")]
+
+    assert len(shown_names(rows)) == 1
+
+
+def test_duplicates_are_counted_and_unrelated_rows_are_left_alone() -> None:
+    rows = [copy_of("copy", "target"), article("target"), article("other", score=0.5)]
+
+    built = build_feed(rows, SOURCES, now=NOW, run_id=RUN_ID)
+
+    assert built.duplicates == 1
+    assert [i["title"] for i in built.feed["items"]] == ["Story target", "Story other"]
