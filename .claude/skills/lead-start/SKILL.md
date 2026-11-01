@@ -19,6 +19,8 @@ Run `python3 scripts/lead.py start` from the repo root. It:
 
 Read its "Kept back" list. A worktree that is unmerged or has uncommitted changes means an earlier agent's work was left behind, which is normal after a usage cut-off. Check its PR (`gh pr list --head <branch>`). A new delivery manager picks up work from the board and open branches, so list anything it needs to know in its task message.
 
+Also check for an open deploy alert: `gh issue list --repo 4OH4/news-bot --state open --search '"Deploy failed: the Cloud Run Job is running an older image" in:title'` (the title is set in `.github/workflows/deploy.yml`). One means the last deploy failed and the Cloud Run Job runs an older image, so treat it as work to handle before the next batch. It is not on the board.
+
 Then read the handoff note, the Phase Log (step 5) and "Cost of failure" in `CLAUDE.md`, and run `python3 scripts/usage.py`.
 
 ## 2. Find where the phase stands
