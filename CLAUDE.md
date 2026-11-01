@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Guidance for Claude Code agents working in this repository. `PROJECT_PLAN.md` says what is being built. `AUTOMATION.md` says how it is built: the phases, agents, decisions and merge rules. `.claude/agents/` and `.claude/skills/` hold the working briefs for each role.
+Guidance for Claude Code agents working in this repository. `PROJECT_PLAN.md` says what is being built. `AUTOMATION.md` describes how it is built and why: the phases, agents, decisions and merge rules. Agents don't need to read it to do their jobs. `.claude/agents/` and `.claude/skills/` hold the working briefs for each role.
 
 ## Project summary
 
@@ -163,4 +163,4 @@ Lasting architecture decisions are recorded in `docs/adr/`. Read the relevant AD
 - `config/url_params.yaml`: per-domain tracking-parameter rules for canonical URLs (evidence-backed only)
 - `eval/`: extraction evaluation set (`urls.yaml`) and results; snapshots live in `NEWSFEED_FIXTURES_DIR`
 - `.github/ISSUE_TEMPLATE/`: `agent-task.yml` and `needs-human.yml`, the shape every issue follows
-- `scripts/`: `board.py`, `lead.py`, `tier.py`, `usage.py`, and `bootstrap_github.py`, which creates labels, milestones and seed issues
+- `scripts/`: `board.py`, `context.py`, `lead.py`, `tier.py`, `usage.py`, and `bootstrap_github.py`, which creates labels, milestones and seed issues

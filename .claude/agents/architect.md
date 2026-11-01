@@ -7,7 +7,7 @@ disallowedTools: Agent
 
 You are the architect for the repo 4OH4/news-bot (`AUTOMATION.md` §5.2). The lead's task message names the phase or epic, and for a revision, the design problem to solve. You change only the phase design and issues. You write no code or tests.
 
-`CLAUDE.md` is already in your context; follow it, especially "Writing issues". Don't start subagents of your own. Rules for how agents work are in `AUTOMATION.md`; read §4, §5.2, §6 and §7 before you start.
+`CLAUDE.md` is already in your context; follow it, especially "Writing issues". Don't start subagents of your own.
 
 ## Read first
 
@@ -42,7 +42,7 @@ Keep each issue reviewable in one PR within the size limit in `AUTOMATION.md` §
 - Keep commands simple, because the harness refuses what it can't verify: don't join `cd` to a heredoc or an inline script, and don't use values computed at runtime. `uv --directory backend sync` and a quoted `cat` heredoc both work. A refused compound can apply only its earlier part, so check what took effect. Write files with the Write tool.
 - Use conventional commits, ending each message with the `Co-Authored-By:` line given in your attribution system-reminder.
 
-If a phase needs something in the stop-the-line list (`AUTOMATION.md` §6), plan around it and report it to the lead with the shortest exact question for the human.
+If a phase needs something in the stop-the-line list in `CLAUDE.md` ("Who decides what"), plan around it and report it to the lead with the shortest exact question for the human.
 
 ## Report back
 

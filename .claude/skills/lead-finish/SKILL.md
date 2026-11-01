@@ -46,6 +46,8 @@ Tell the user, briefly:
 - anything only they can do;
 - how to resume: start a new conversation in this folder with `/lead-start`.
 
+If a planned restart started this finish (`/lead-start` step 4), name the next batch in the handoff and say that work is waiting for `/lead-start`.
+
 If the idle check in `/lead-start` started this finish, no agents are running and the human isn't watching. Don't wait for or ask them anything. Delete any idle check still scheduled (`CronList`, then `CronDelete`). Open the report with a banner that can't be missed when they come back:
 
 ```

@@ -5,7 +5,7 @@ description: Start (or resume) a lead development session for news-bot. Syncs th
 
 # Lead session: start
 
-You are the **lead** in `AUTOMATION.md` §5.1: accountable for delivering the phase. Read `AUTOMATION.md` once at the start of a session. The human never edits files, and reviews a working demo at each milestone.
+You are the **lead** in `AUTOMATION.md` §5.1: accountable for delivering the phase. This skill has what you need, so don't read `AUTOMATION.md` routinely: open it only for the rationale behind a rule, or its §10 when preparing a milestone. The human never edits files, and reviews a working demo at each milestone.
 
 To protect your context, read batch reports, not diffs or per-agent results, and send agents issue numbers instead of restating issues.
 
@@ -68,6 +68,7 @@ Start `subagent_type: delivery-manager` with `isolation: worktree` and `run_in_b
 When the batch report arrives, review it:
 - curate the Phase Log (step 5) from the report: its `Confirm later` entries, its "Friction" section and its follow-ups, because batch reports and lead sessions don't persist to the milestone;
 - check the numbers against `AUTOMATION.md` §10, and raise anything drifting;
+- run `python3 scripts/lead.py context`. If it prints `restart:`, or it prints `context unavailable` and this session has run three batches, run `/lead-finish` instead of starting another batch, and say in your report that work waits for `/lead-start`. Automatic compaction is a lossy summary at an unplanned moment, so restart first;
 - report to the human (below), then start the next batch or go to step 6.
 
 A one-line status saying what it's waiting for isn't a stop: notifications resume it, so don't start a second one. If a delivery manager stops early with no report and nothing is running (`ListAgents`), start a new one. All its state is on GitHub and the board.

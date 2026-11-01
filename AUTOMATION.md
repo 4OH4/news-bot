@@ -2,6 +2,8 @@
 
 This document explains the workflow, the agents, the method and the decisions behind them. `PROJECT_PLAN.md` says what is being built. `CLAUDE.md` holds the day-to-day rules and commands, and `.claude/agents/` and `.claude/skills/` hold the working briefs.
 
+This document describes what we expect to happen, and why. It is not the implementation: the briefs, skills and scripts are, and they are derived from it. No agent needs it in context to do its job, so each brief and skill must be complete by itself. A change to a rule here goes into the matching brief, skill or script in the same PR.
+
 ## 1. The model in brief
 
 The human sets the intent and reviews working software at the end of each phase. Agents do everything in between.
@@ -361,6 +363,7 @@ Permission prompts are counted only when an agent reports them. Usage per issue,
 
 - **Parallelism:** up to 3 issues in progress, each using one test author and then one worker. Reviewers, the architect and the delivery manager don't count. No two in-progress issues touch the same files, and only one delivery manager runs at a time.
 - **Sessions:** the lead finishes after 45 idle minutes, and restarting is cheaper than reloading a cold session. A usage pause doesn't count as idle.
+- **Planned restart:** automatic compaction is a lossy summary at an unplanned moment, so the lead restarts first. At each batch close it runs `python3 scripts/lead.py context`. At 150k tokens or more, or after three batches if that can't be read, it runs `/lead-finish` instead of starting another batch. A batch costs about 55k tokens, so this leaves room to finish the current one. No timer restarts the lead (§14), so work then waits for the human's `/lead-start`.
 - **GitHub API:** 5,000 GraphQL points an hour are shared across every agent, so prefer REST in loops.
 - **Worktrees:** each agent works in its own, under `.claude/worktrees/`.
 - **Permissions:** agents work within the allow list in `.claude/settings.json`. A permission prompt would wait for the human, so the list must cover every routine step, and no agent uses `--dangerously-skip-permissions`.
@@ -419,7 +422,7 @@ Each kind of information has one home, and other documents link to it instead of
 │   ├── agents/             agent briefs, one file per role
 │   └── skills/             /lead-start and /lead-finish
 ├── .github/                CI, issue templates, PR template
-├── scripts/                board.py, lead.py, tier.py, usage.py
+├── scripts/                board.py, context.py, lead.py, tier.py, usage.py
 ├── config/                 sources, interests, extraction rules
 ├── eval/                   evaluation expectations and results
 ├── backend/                pipeline code and tests
@@ -483,6 +486,8 @@ Some things are deliberately kept out of the repo:
 | 2026-11-01 | The lead keeps a curated Phase Log as a GitHub issue, and writes the milestone report from it | Collating at the end loses things, and a repo file would need a PR for every update |
 | 2026-11-01 | State the cost of failure in `CLAUDE.md`, confirmed at each milestone, and reserve **Defect:** for failures that justify rework | Without it, rare and cheap cases took four and five review rounds, and warnings outgrew the project's stage |
 | 2026-11-01 | The two-review limit is firm, and only the lead can allow a third review | It was passed twice in the pilot with no decision recorded |
+| 2026-11-01 | The lead restarts at a batch close at 150k tokens, measured by `lead.py context`, instead of waiting for compaction | A planned handoff beats a lossy summary at an unplanned moment, though work then waits for the human |
+| 2026-11-01 | This document describes the method, and no agent needs it in context | The briefs and skills are the implementation, and reading it costs the lead 12k tokens a session |
 
 ## 15. Learnings
 
@@ -522,6 +527,7 @@ What building this way has taught so far, written to be reused on other projects
 - **Rebases rewrite SHAs.** Remap "Resolved in" markers afterwards, and use each merge order to limit conflicts on shared files.
 - **The role that can run a check must own it.** `make eval` can't run in subagents, so the lead owns it.
 - **A promise to record something is not a record.** A slip reported to the human as going in the Friction notes was only in the handoff note, which the next session overwrites. Write it down in the same step, and reconcile before finishing.
+- **Measure agent context from the transcript.** Claude Code records token counts per turn. Three batches took the lead from 44k to 210k tokens, about 55k a batch, and most of that was its own work, not file reads.
 - **The git stash list is shared across worktrees.** Never use bare stash commands in a shared repo.
 
 ## 16. Open questions
