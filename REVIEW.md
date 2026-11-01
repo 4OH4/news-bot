@@ -48,3 +48,4 @@ Failure patterns taken from real defects in this repo. Test authors and workers 
 
 - A job or step `if` meant to run after a failure must contain a status function (`failure()`, `always()`), or it is skipped as soon as something fails. A workflow path that was never exercised is unverified.
 - An exemption that needs both sides of a word (such as a backtick on each side) can't be written as two negative lookarounds, because each one alone still lets a half-quoted word through. Remove the whole exempt form first, then search what is left.
+- Moving a section changes where a parser finds its end: test with the real template's shape, not a shortened body.

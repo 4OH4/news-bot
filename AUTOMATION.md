@@ -162,7 +162,7 @@ The delivery manager frees the test author's worktree with `git worktree remove`
 
 ### 5.6 Reviewer
 
-The reviewer works in a fresh context, as today, and sees only the PR and its issue. It checks the PR's claims against its own `make lint` and `make test` runs, and looks for ways the change falls short of the issue's goal. It also carries out the checks in §7.3, and reserves **Defect:** for what the cost of failure justifies. It can write only the "For human review" section of the PR body. A PR body reads in this order: the header, any `Confirm later` entries, Context and Task (copied from the issue by the worker, and checked by the reviewer as a note), Summary, then "For human review", with the evidence collapsed below.
+The reviewer works in a fresh context, as today, and sees only the PR and its issue. It checks the PR's claims against its own `make lint` and `make test` runs, and looks for ways the change falls short of the issue's goal. It also carries out the checks in §7.3, and reserves **Defect:** for what the cost of failure justifies. It can write only the "For human review" section of the PR body. A PR body reads in this order: the header, any `Confirm later` entries, Context and Task (copied from the issue by the worker, and checked by the reviewer as a note), Summary, then "For human review", then a `## Evidence` heading (it ends the section the merge gate reads) with the evidence collapsed below it.
 
 ## 6. Who decides what
 

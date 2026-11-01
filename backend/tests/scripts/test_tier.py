@@ -854,6 +854,15 @@ Fixes the thing.
 ## For human review
 - **Defect:** the gate must see this item.
 
+## Evidence
+
+<details><summary>Contracts, design notes and follow-ups</summary>
+
+**Design notes:** an earlier draft had a **Defect:** here.
+**Needs human:** quoted from the evidence.
+
+</details>
+
 <details><summary>Acceptance criteria</summary>
 
 - [x] done
@@ -868,6 +877,8 @@ def test_gate_reads_human_review_below_context_task_and_summary() -> None:
     assert "the gate must see this item" in section
     assert "Fixes the thing" not in section
     assert "Why this is wanted" not in section
+    assert "earlier draft" not in section
+    assert "quoted from the evidence" not in section
     assert tier.gate_failures(pr(body=NEW_ORDER_BODY), TIER_A, GREEN, REVIEWED) == [
         "1 unresolved **Defect:** item(s)"
     ]
