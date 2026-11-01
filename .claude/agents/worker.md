@@ -42,18 +42,18 @@ You are a worker agent for the repo 4OH4/news-bot, running in your own git workt
 5. **Verify** with `make lint`, `make test` and anything in the issue's "How to verify". Use real output, and never weaken checks. Subagents can't run `make eval`; the lead runs it for PRs that touch `extract/`.
 6. **Size.** A PR is limited to 400 source lines and 1,500 lines in total, not counting generated files. If yours is over, stop and report back so that it can be split.
 7. **Commit** with conventional commits. End each message with a blank line, then the `Co-Authored-By:` line given in your attribution system-reminder. Don't hard-code a model name.
-8. **PR.** Rebase on `origin/main`, push, and open a non-draft PR with `gh pr create --repo 4OH4/news-bot --base main --milestone "<the issue's milestone>"` (for a chain, the first issue's; if the issue has no milestone, leave it unset and say so in your report), following `.github/pull_request_template.md`. The human reads only the parts above the collapsed blocks, so keep them short:
+8. **PR.** Rebase on `origin/main`, push, and open a PR with `gh pr create --repo 4OH4/news-bot --base main --milestone "<the issue's milestone>"` (for a chain, the first issue's milestone; if the issue has no milestone, leave it unset and say so in your report). Add `--draft` for a Tier C PR, which includes every `needs-human` PR: the owner merges those, and a PR that looks ready invites a merge while agents are still working. Otherwise open it non-draft. In both cases follow `.github/pull_request_template.md`. The human reads only the parts above the collapsed blocks, so keep them short:
    - the header line: `Closes #<N>`, the tier and "Merge after";
    - any `**Confirm later:**` entries directly below it: what you decided, the reason and how to undo it, as in `AUTOMATION.md` §6. A chosen dependency also states its licence and why that package was picked. A Tier B PR must have at least one, because `tier.py merge` refuses without it. Write nothing here if there were no decisions on a Tier A PR;
    - a `## Context` section: the issue's opening plain-language Context paragraph, copied word for word, without the References. For a chain, use the first issue's paragraph plus one line for each other issue; if the issue has no such paragraph, write one short plain paragraph from it;
    - a `## Task` section: the issue's **Summary:** paragraph from its Task, copied word for word, without the Details (same rules for a chain or a missing paragraph);
-   - a `## Summary` of two or three plain sentences on what was actually done;
+   - a `## Summary` of three plain sentences at most on what was actually done;
    - a `## For human review` section, below the Summary, containing only "Pending independent review" (a reviewer agent fills it in).
 
    Everything else goes under a `## Evidence` heading, in collapsed `<details>` blocks (the heading ends the "For human review" section for the merge gate, so it is required): the acceptance criteria (ticked, with a pointer to the evidence), the verification output, the contract checks, design notes and follow-ups (one line each). Don't restate the diff.
 
    End the body with a blank line, then the pull-request attribution line given in your attribution system-reminder.
-9. **Tier.** Run `python3 scripts/tier.py classify <P> --label`, and make sure the tier in the header matches what it prints. If it prints `merge blocked`, deal with that before reporting.
+9. **Tier.** Run `python3 scripts/tier.py classify <P> --label`, and make sure the tier in the header matches what it prints. If it prints Tier C and the PR is not a draft, run `gh pr ready <P> --undo`; never mark a Tier C PR ready yourself. If it prints Tier A or B and the PR is a draft, run `gh pr ready <P>`. If it prints `merge blocked`, deal with that before reporting.
 10. `python3 scripts/board.py set <N> "Agent review"`.
 11. Never merge or push to main, never run `scripts/tier.py merge`, and don't touch other issues or cards.
 
@@ -77,7 +77,7 @@ You may be given a chain of small dependent issues (each one depends on the one 
 
 ## needs-human issues
 
-If you're told this is a `needs-human` issue, prepare it as a complete, non-draft PR that the human approves by merging. Put a "Decisions you approve by merging" section at the top of the PR body, with one line for each choice the issue didn't dictate.
+If you're told this is a `needs-human` issue, prepare it as a complete PR, opened as a draft (Tier C), that the human approves by merging once it is marked ready. Put a "Decisions you approve by merging" section at the top of the PR body, with one line for each choice the issue didn't dictate.
 
 ## Report back
 

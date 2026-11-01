@@ -29,7 +29,7 @@ The Phase Log (`/lead-start` step 5) is the source for the report. Agent reports
    - **defer:** an entry in `DEFERRED_WORK.md` at the repo root, saying why it is deferred and when to look at it again. The row points to that entry.
 
    The table replaces a "top three friction points" list. The limit of three `process` issues per phase still applies (part 2): addressed items past the limit get an entry in `DEFERRED_WORK.md`, so that a later milestone reads them.
-4. Update the phase's status in `PROJECT_PLAN.md` §6 in the same PR, and mark the phase **done** there: `/lead-start` step 2 relies on that word. Open it as a draft PR on `issue-<n>-phase-<n>-milestone`, closing the Phase Log. It is Tier C. Start `subagent_type: reviewer` on it, to check the report's claims against the Phase Log and the evidence, clear what it finds, then mark the PR ready.
+4. Update the phase's status in `PROJECT_PLAN.md` §6 in the same PR, and mark the phase **done** there: `/lead-start` step 2 relies on that word. Open it as a draft PR on `issue-<n>-phase-<n>-milestone`, closing the Phase Log. It is Tier C. Start `subagent_type: reviewer` on it, with `isolation: worktree`, to check the report's claims against the Phase Log and the evidence, clear what it finds, then mark the PR ready.
 5. Tell the human the milestone is ready, with the link and the "Try it" line.
 
 ## 2. Milestone review

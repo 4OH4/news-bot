@@ -26,6 +26,8 @@ Anything with uncommitted or unmerged work is **kept and listed**. Never force-d
 
 ## 3. Reconcile the Phase Log
 
+First read the comments on PRs merged since the last check (`/lead-start` step 4), because the owner may have merged one during this session. Turn any unactioned comment into a follow-up issue, and record the last PR checked in the handoff note.
+
 Before you replace the handoff note, go through this session's reports to the human. Anything you said would be recorded, any decision or friction you raised, and any correction from the human must be in the Phase Log (`/lead-start` step 5). Add what's missing now, because the handoff note isn't a record and the next finish overwrites it.
 
 ## 4. Hand off
