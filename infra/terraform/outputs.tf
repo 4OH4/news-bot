@@ -40,3 +40,8 @@ output "deploy_service_account" {
   description = "Service account the deploy workflow impersonates (#75)."
   value       = google_service_account.deploy.email
 }
+
+output "workload_identity_provider" {
+  description = "Full name of the WIF provider the deploy workflow authenticates through (#75)."
+  value       = google_iam_workload_identity_pool_provider.github.name
+}
