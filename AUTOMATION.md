@@ -2,6 +2,8 @@
 
 This document explains the workflow, the agents, the method and the decisions behind them. `PROJECT_PLAN.md` says what is being built. `CLAUDE.md` holds the day-to-day rules and commands, and `.claude/agents/` and `.claude/skills/` hold the working briefs.
 
+**The goal is to deliver high-quality software at high velocity, with minimal human oversight.** Everything here serves that goal.
+
 This document describes what we expect to happen, and why. It is not the implementation: the briefs, skills and scripts are, and they are derived from it. No agent needs it in context to do its job, so each brief and skill must be complete by itself. A change to a rule here goes into the matching brief, skill or script in the same PR.
 
 ## 1. The model in brief
@@ -371,7 +373,7 @@ Permission prompts are counted only when an agent reports them. Usage per issue,
 
 ### The compaction hook
 
-`.claude/settings.json` has a `SessionStart` hook with the `compact` matcher, which Claude Code runs when a session restarts from compaction. It prints one line, which is added to the new context:
+Appendix A has the code, for use on other projects. `.claude/settings.json` has a `SessionStart` hook with the `compact` matcher, which Claude Code runs when a session restarts from compaction. It prints one line, which is added to the new context:
 
 > Context was just compacted. If this session ran /lead-start, follow its After compaction section before anything else. Subagents and any other session: ignore this.
 
@@ -567,3 +569,46 @@ Still unknown:
 - whether 150k is the right threshold, as it rests on one session.
 
 Evidence goes in the Phase Log. If compaction proves costly, the next step is a spike on restarting from outside the session.
+
+## Appendix A: the compaction hook
+
+§11 explains why this exists. To use it on another project, copy the two parts below, then replace `/lead-start` with the skill that starts your orchestrating session. It suits any long-running session that keeps its state outside the conversation.
+
+**1. The hook.** Merge this into `.claude/settings.json`. The hook's output is added to the context after compaction.
+
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'Context was just compacted. If this session ran /lead-start, follow its After compaction section before anything else. Subagents and any other session: ignore this.'"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+**2. The recovery steps.** Add this section to the start skill, and change the steps to match where your project keeps its state.
+
+````markdown
+## After compaction
+
+A hook tells you when your context has just been compacted. Agents keep running through it, so carry on without restarting anything:
+
+1. Read the handoff note and the Phase Log.
+2. Run `ListAgents`, and don't start a second delivery manager if one is running.
+3. Run `CronList`. If the handoff records a usage pause and its check is gone, schedule it again.
+4. Check the open PRs for anything waiting on you, such as an "Evaluation scores" comment that was requested and is missing.
+
+If the handoff is out of date, trust the board and GitHub.
+````
+
+**To test it,** start a new session, because hooks load at session start, run the start skill, then run `/compact`. The session should follow the steps. Other sessions should ignore the message.
+
+**Limits.** The hook needs `SessionStart` with the `compact` matcher, because `PostCompact` can't add to the context. It fires only when compaction happens, and neither the model nor a timer can trigger that. It tells the session where to look, so it helps only if the state there is current.
