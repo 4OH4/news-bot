@@ -855,13 +855,31 @@ def _refine_canonical(run: _ExtractRun, article: Article, page: FetchedPage) -> 
 
     Returns the article to carry on with (a new object when its id changed), or
     None if the page's canonical already exists as another article, in which
-    case the old one is deleted and there is nothing left to extract.
+    case the old one is deleted and there is nothing left to extract. If that
+    other article is a failed one, nothing is merged or re-keyed and the article
+    is returned as it is.
     """
     services = run.services
     refined = canonical_from_html(page.html, page.final_url, rules=services.url_rules)
     if refined is None or refined == article.canonical_url:
         return article
     new = with_canonical_url(article, refined)
+    target = services.repository.get_article(new.id)
+    if target is not None and target.extraction.status is ExtractionStatus.FAILED:
+        # A failed article holds no text, so merging into it would lose this
+        # one's. Leave both rows alone: the failed one keeps its retries. Nothing
+        # merges them later (an ok article is never re-examined), so the story
+        # may show twice; accepted until #147 stores the declared canonical.
+        log.info(
+            "canonical target failed; not merging",
+            extra={
+                "stage": "extract",
+                "source_id": article.source_id,
+                "url": article.url,
+                "canonical": refined,
+            },
+        )
+        return article
     log.info(
         "canonical URL refined",
         extra={
@@ -999,7 +1017,8 @@ def extract_saved_url(
     feed metadata intact rather than replaced by an ad hoc one; this includes
     an article stored under a refined canonical URL whose first-seen URL is
     ``url``. If the page's canonical URL belongs to another stored article, the
-    ad hoc row merges into it and that article is returned.
+    ad hoc row merges into it and that article is returned, unless that article
+    failed: then the ad hoc row stays as its own article.
     """
     canonical = normalise_url(url, rules=services.url_rules)
     existing = services.repository.get_article(article_id(canonical)) or _find_by_first_url(
