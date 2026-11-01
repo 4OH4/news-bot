@@ -27,7 +27,7 @@ Then read the handoff note, the Phase Log (step 5) and "Cost of failure" in `CLA
 
 ## 2. Find where the phase stands
 
-The current phase is the earliest one, from Phase 2 on, with no merged milestone report. Take the first of these that applies:
+The current phase is the first one after the last phase marked done in `PROJECT_PLAN.md` §6. Take the first of these that applies:
 
 1. **The milestone is awaiting sign-off:** the report PR is open and not a draft. A draft report is a preview: it doesn't mean this, and it isn't an unfinished PR for item 3. Act on any comments from the human (step 7). Building stops until the human merges it, though the architect may draft the next phase, and that design PR can merge.
 2. **The phase has no design:** no `docs/phases/phase-<n>.md`. Phases 0 to 2 predate the architect and need none. Confirm the goal and exit criterion from `PROJECT_PLAN.md` §6, then start the architect (step 3).
