@@ -2111,97 +2111,74 @@ def _stored_ok_target(services: Services) -> Article:
     return article
 
 
-def test_an_ok_result_pointing_at_a_stored_failed_article_keeps_its_text(
+def _failed_target_untouched(repository: SqliteRepository, target: Article) -> None:
+    stored = repository.get_article(target.id)
+    assert stored is not None
+    assert stored.extraction == target.extraction
+    assert stored.content_ref is None
+
+
+def test_an_ok_result_pointing_at_a_stored_failed_article_keeps_its_own_row_and_text(
     tmp_path: Path, repository: SqliteRepository
 ) -> None:
     source = _article_for("https://m.example.com/feed-link/1")
-    repository.upsert_article(_failed(MERGE_TARGET, "timeout", attempts=1, minutes_ago=5))
+    target = _failed(MERGE_TARGET, "timeout", attempts=2, minutes_ago=5)
+    repository.upsert_article(target)
     repository.upsert_article(source)
     services = _merge_services(tmp_path, repository, source.url, _ok("Readable body."))
 
     run_pipeline(services, [], ingest=False, rank=False, publish=False, clock=lambda: RETRY_NOW)
 
-    (stored,) = repository.list_articles()
-    assert stored.canonical_url == MERGE_TARGET
-    assert stored.extraction.status is ExtractionStatus.OK
-    assert stored.extraction.word_count == 150
-    assert stored.content_ref is not None
-    assert "Readable body." in services.blobs.get(stored.content_ref).decode()
-    assert repository.get_article(source.id) is None
+    own = repository.get_article(source.id)
+    assert own is not None
+    assert own.extraction.status is ExtractionStatus.OK
+    assert own.content_ref is not None
+    assert "Readable body." in services.blobs.get(own.content_ref).decode()
+    _failed_target_untouched(repository, target)
+    assert len(repository.list_articles()) == 2
 
 
-def test_a_better_partial_retry_pointing_at_a_stored_failed_article_keeps_its_text(
+def test_a_better_partial_retry_pointing_at_a_stored_failed_article_keeps_its_own_row(
     tmp_path: Path, repository: SqliteRepository
 ) -> None:
     source_url = "https://m.example.com/feed-link/2"
     services = _merge_services(
         tmp_path, repository, source_url, _ok("Better body.", word_count=500)
     )
-    repository.upsert_article(_failed(MERGE_TARGET, "timeout", attempts=1, minutes_ago=5))
+    target = _failed(MERGE_TARGET, "timeout", attempts=1, minutes_ago=5)
+    repository.upsert_article(target)
     partial = _stored_partial(services, source_url)
 
     _retry_partial(services)
 
-    (stored,) = repository.list_articles()
-    assert stored.canonical_url == MERGE_TARGET
-    assert stored.extraction.status is ExtractionStatus.OK
-    assert stored.extraction.word_count == 500
-    assert stored.content_ref is not None
-    assert "Better body." in services.blobs.get(stored.content_ref).decode()
-    assert repository.get_article(partial.id) is None
+    own = repository.get_article(partial.id)
+    assert own is not None
+    assert own.extraction.status is ExtractionStatus.OK
+    assert own.extraction.word_count == 500
+    assert own.content_ref is not None
+    assert "Better body." in services.blobs.get(own.content_ref).decode()
+    _failed_target_untouched(repository, target)
 
 
-def test_two_ok_articles_with_the_same_canonical_still_keep_the_stored_target(
-    tmp_path: Path, repository: SqliteRepository
-) -> None:
-    source = _article_for("https://m.example.com/feed-link/3")
-    repository.upsert_article(source)
-    services = _merge_services(tmp_path, repository, source.url, _ok("Incoming body."))
-    target = _stored_ok_target(services)
-
-    run_pipeline(services, [], ingest=False, rank=False, publish=False, clock=lambda: RETRY_NOW)
-
-    (stored,) = repository.list_articles()
-    assert stored.id == target.id
-    assert stored.extraction.word_count == 300
-    assert stored.extraction.method == "earlier"
-    assert stored.content_ref is not None
-    assert services.blobs.get(stored.content_ref) == b"<p>Target body.</p>"
-    assert repository.get_article(source.id) is None
-
-
-def test_a_failed_target_due_a_retry_does_not_overwrite_the_article_that_took_it_over(
+def test_a_failing_result_pointing_at_a_failed_target_leaves_the_targets_retries_alone(
     tmp_path: Path, repository: SqliteRepository
 ) -> None:
     source = _article_for("https://m.example.com/feed-link/4")
-    repository.upsert_article(_failed(MERGE_TARGET, "timeout", attempts=1, minutes_ago=90))
-    repository.upsert_article(source)
-    # The target's own page has no canned response, so its retry would fail.
-    services = _merge_services(tmp_path, repository, source.url, _ok("Readable body."))
-
-    run_pipeline(services, [], ingest=False, rank=False, publish=False, clock=lambda: RETRY_NOW)
-
-    (stored,) = repository.list_articles()
-    assert stored.canonical_url == MERGE_TARGET
-    assert stored.extraction.status is ExtractionStatus.OK
-    assert stored.content_ref is not None
-    assert "Readable body." in services.blobs.get(stored.content_ref).decode()
-
-
-def test_a_takeover_of_a_failed_article_carries_its_attempts_over(
-    tmp_path: Path, repository: SqliteRepository
-) -> None:
-    source = _article_for("https://m.example.com/feed-link/5")
-    repository.upsert_article(_failed(MERGE_TARGET, "timeout", attempts=3, minutes_ago=5))
+    target = _failed(MERGE_TARGET, "timeout", attempts=1, minutes_ago=90)
+    repository.upsert_article(target)
     repository.upsert_article(source)
     failing = ExtractionResult(status=ExtractionStatus.FAILED, error="no content")
     services = _merge_services(tmp_path, repository, source.url, failing)
 
     run_pipeline(services, [], ingest=False, rank=False, publish=False, clock=lambda: RETRY_NOW)
 
-    (stored,) = repository.list_articles()
+    own = repository.get_article(source.id)
+    assert own is not None
+    assert own.extraction.status is ExtractionStatus.FAILED
+    stored = repository.get_article(target.id)
+    assert stored is not None
     assert stored.extraction.status is ExtractionStatus.FAILED
-    assert stored.extraction.attempts == 4
+    assert stored.extraction.attempts == 2  # retried on its own schedule, not reset
 
 
 @pytest.mark.parametrize(
@@ -2228,5 +2205,23 @@ def test_an_ok_result_still_merges_into_a_stored_target_that_has_not_failed(
     (stored,) = repository.list_articles()
     assert stored.id == target.id
     assert stored.extraction.status is status
-    assert stored.extraction.word_count == 80
+    assert repository.get_article(source.id) is None
+
+
+def test_two_ok_articles_with_the_same_canonical_still_keep_the_stored_target(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    source = _article_for("https://m.example.com/feed-link/3")
+    repository.upsert_article(source)
+    services = _merge_services(tmp_path, repository, source.url, _ok("Incoming body."))
+    target = _stored_ok_target(services)
+
+    run_pipeline(services, [], ingest=False, rank=False, publish=False, clock=lambda: RETRY_NOW)
+
+    (stored,) = repository.list_articles()
+    assert stored.id == target.id
+    assert stored.extraction.word_count == 300
+    assert stored.extraction.method == "earlier"
+    assert stored.content_ref is not None
+    assert services.blobs.get(stored.content_ref) == b"<p>Target body.</p>"
     assert repository.get_article(source.id) is None
