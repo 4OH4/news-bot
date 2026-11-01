@@ -854,8 +854,9 @@ def _refine_canonical(run: _ExtractRun, article: Article, page: FetchedPage) -> 
     """Re-key the article if the page declares a different canonical URL.
 
     Returns the article to carry on with (a new object when its id changed), or
-    None if the page's canonical already exists as another article, in which
-    case the old one is deleted and there is nothing left to extract.
+    None if the page's canonical already exists as another, non-failed article,
+    in which case the old one is deleted and there is nothing left to extract.
+    A failed article at that canonical is replaced by this one.
     """
     services = run.services
     refined = canonical_from_html(page.html, page.final_url, rules=services.url_rules)
@@ -875,7 +876,10 @@ def _refine_canonical(run: _ExtractRun, article: Article, page: FetchedPage) -> 
     )
     with run.refine_lock:
         run.rekeyed[article.id] = new.id
-        if services.repository.get_article(new.id) is not None:
+        target = services.repository.get_article(new.id)
+        # A failed target holds no text, so it must not swallow the incoming
+        # article: take over its id and let extraction fill it in.
+        if target is not None and target.extraction.status is not ExtractionStatus.FAILED:
             services.repository.delete_article(article.id)
             run.tally.count(PipelineStage.EXTRACT, "merged")
             return None
