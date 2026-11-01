@@ -71,7 +71,7 @@ def test_the_newest_transcript_is_the_one_read(tmp_path: Path) -> None:
     ("tokens", "expected"),
     [
         (149_999, "ok: below 150k"),
-        (150_000, "restart: finish at this batch close"),
+        (150_000, "checkpoint: rewrite the handoff note, then carry on"),
         (None, "context unavailable"),
     ],
 )

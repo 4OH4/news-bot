@@ -363,7 +363,7 @@ Permission prompts are counted only when an agent reports them. Usage per issue,
 
 - **Parallelism:** up to 3 issues in progress, each using one test author and then one worker. Reviewers, the architect and the delivery manager don't count. No two in-progress issues touch the same files, and only one delivery manager runs at a time.
 - **Sessions:** the lead finishes after 45 idle minutes, and restarting is cheaper than reloading a cold session. A usage pause doesn't count as idle.
-- **Planned restart:** automatic compaction is a lossy summary at an unplanned moment, so the lead restarts first. At each batch close it runs `python3 scripts/lead.py context`. At 150k tokens or more, or after three batches if that can't be read, it runs `/lead-finish` instead of starting another batch. A batch costs about 55k tokens, so this leaves room to finish the current one. No timer restarts the lead (§14), so work then waits for the human's `/lead-start`.
+- **Context checkpoint:** the lead can't clear or compact its own context, and stopping would end unattended work, so it lets automatic compaction happen and makes sure little depends on the summary. At each batch close it runs `python3 scripts/lead.py context`. At 150k tokens or more, or after three batches if that can't be read, it curates the Phase Log, rewrites the handoff note, tells the human they can restart to save usage, and starts the next batch. A batch costs about 55k tokens, so compaction may come mid-batch. Agents keep running through it, and a `SessionStart` hook sends the lead back to its handoff note, the Phase Log and its open work. The lead also records each batch in the handoff note as it starts. Agents don't depend on the lead's memory: a delivery manager with an unanswered request sends it again.
 - **GitHub API:** 5,000 GraphQL points an hour are shared across every agent, so prefer REST in loops.
 - **Worktrees:** each agent works in its own, under `.claude/worktrees/`.
 - **Permissions:** agents work within the allow list in `.claude/settings.json`. A permission prompt would wait for the human, so the list must cover every routine step, and no agent uses `--dangerously-skip-permissions`.
@@ -486,7 +486,7 @@ Some things are deliberately kept out of the repo:
 | 2026-11-01 | The lead keeps a curated Phase Log as a GitHub issue, and writes the milestone report from it | Collating at the end loses things, and a repo file would need a PR for every update |
 | 2026-11-01 | State the cost of failure in `CLAUDE.md`, confirmed at each milestone, and reserve **Defect:** for failures that justify rework | Without it, rare and cheap cases took four and five review rounds, and warnings outgrew the project's stage |
 | 2026-11-01 | The two-review limit is firm, and only the lead can allow a third review | It was passed twice in the pilot with no decision recorded |
-| 2026-11-01 | The lead restarts at a batch close at 150k tokens, measured by `lead.py context`, instead of waiting for compaction | A planned handoff beats a lossy summary at an unplanned moment, though work then waits for the human |
+| 2026-11-01 | At 150k tokens the lead checkpoints at a batch close and carries on, and a hook recovers it after compaction | Stopping would end unattended work, and neither the lead nor a timer can run `/clear` or `/compact`, so durable state protects it instead |
 | 2026-11-01 | This document describes the method, and no agent needs it in context | The briefs and skills are the implementation, and reading it costs the lead 12k tokens a session |
 
 ## 15. Learnings

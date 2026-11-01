@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Print how much context the lead's session is using, and whether to restart.
+"""Print how much context the lead's session is using, and whether to checkpoint.
 
   python3 scripts/lead.py context
 
@@ -67,7 +67,7 @@ def report(tokens: int | None) -> str:
         return "context unavailable: go by the number of batches"
     line = f"context: {tokens // 1000}k tokens"
     if tokens >= RESTART_AT:
-        return f"{line}\nrestart: finish at this batch close"
+        return f"{line}\ncheckpoint: rewrite the handoff note, then carry on"
     return f"{line}\nok: below {RESTART_AT // 1000}k"
 
 

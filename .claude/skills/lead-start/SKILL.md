@@ -47,7 +47,7 @@ Group the Ready issues into a batch of about 5 to 8, in dependency order, with n
 
 If `usage.py` prints `pause:`, don't start a batch: go to "Usage pauses" below.
 
-Start `subagent_type: delivery-manager` with `isolation: worktree` and `run_in_background: true`, using the task message below. Use `model: opus` only if Sonnet has fallen short on an earlier batch. The delivery manager is isolated, so the harness refuses its git commands against another agent's worktree. It frees a test author's worktree with plain `git worktree remove <path>`, which refuses a dirty tree, and takes the SHA from the test author's report. If that's refused it sends you the path: you aren't isolated, so look in that worktree and decide. Then wait for messages from it:
+Add the batch's issues to the handoff note, then start `subagent_type: delivery-manager` with `isolation: worktree` and `run_in_background: true`, using the task message below. Use `model: opus` only if Sonnet has fallen short on an earlier batch. The delivery manager is isolated, so the harness refuses its git commands against another agent's worktree. It frees a test author's worktree with plain `git worktree remove <path>`, which refuses a dirty tree, and takes the SHA from the test author's report. If that's refused it sends you the path: you aren't isolated, so look in that worktree and decide. Then wait for messages from it:
 
 - **Usage unavailable:** pacing is off, because the delivery manager can't see either limit. Run `python3 scripts/usage.py` yourself, watch usage until it's readable again, and mention it in your report to the human.
 - **Design problem:** decide it, or call in the architect.
@@ -68,7 +68,7 @@ Start `subagent_type: delivery-manager` with `isolation: worktree` and `run_in_b
 When the batch report arrives, review it:
 - curate the Phase Log (step 5) from the report: its `Confirm later` entries, its "Friction" section and its follow-ups, because batch reports and lead sessions don't persist to the milestone;
 - check the numbers against `AUTOMATION.md` §10, and raise anything drifting;
-- run `python3 scripts/lead.py context`. If it prints `restart:`, or it prints `context unavailable` and this session has run three batches, run `/lead-finish` instead of starting another batch, and say in your report that work waits for `/lead-start`. Automatic compaction is a lossy summary at an unplanned moment, so restart first;
+- run `python3 scripts/lead.py context`. If it prints `checkpoint:`, or it prints `context unavailable` and this session has run three batches, rewrite the handoff note as in `/lead-finish` step 4, and tell the human they can restart to save usage. Then carry on: don't stop for this, because work must continue unattended;
 - report to the human (below), then start the next batch or go to step 6.
 
 A one-line status saying what it's waiting for isn't a stop: notifications resume it, so don't start a second one. If a delivery manager stops early with no report and nothing is running (`ListAgents`), start a new one. All its state is on GitHub and the board.
@@ -107,11 +107,22 @@ Sign-off is the human merging the report PR. Nothing moves on automatically, and
 
 `scripts/usage.py` reads the 5-hour and weekly limits (`AUTOMATION.md` §11). A delivery manager that hits about 90% reports which limit and when it resets, then ends.
 
-- **5-hour limit:** schedule a one-shot check with `CronCreate`, `recurring: false`, for a few minutes after the reset. Cron fields are in **local time**, and `usage.py` prints the local reset time. Pin the minute, hour, day and month, and nudge the minute off :00 or :30. Prompt: `Lead usage check: follow /lead-start "Usage pauses".` When it fires, run `usage.py`, then start a new delivery manager, which picks up from the board. If the limit is still high, schedule another.
+- **5-hour limit:** schedule a one-shot check with `CronCreate`, `recurring: false`, for a few minutes after the reset. Cron fields are in **local time**, and `usage.py` prints the local reset time. Pin the minute, hour, day and month, and nudge the minute off :00 or :30. Note the pause in the handoff. Prompt: `Lead usage check: follow /lead-start "Usage pauses".` When it fires, run `usage.py`, then start a new delivery manager, which picks up from the board. If the limit is still high, schedule another.
 - **Weekly limit:** start no new batches. Flag the pause and the reset time for the human, leaving the remaining allowance for their use, and wait for their word. Note it in the handoff.
 - **Human override:** the human can tell you to pause, or to carry on past 90%.
 
 If usage can't be read, work continues as normal, and the delivery manager tells you, so that pacing doesn't turn off unnoticed. A scheduled check only fires while your session is open. Otherwise the next `/lead-start` picks the work up, so a pause always goes in the handoff note. A pause isn't idle: stay open, and don't start the idle check for it.
+
+## After compaction
+
+A hook tells you when your context has just been compacted. Agents keep running through it, so carry on without restarting anything:
+
+1. Read the handoff note and the Phase Log.
+2. Run `ListAgents`, and don't start a second delivery manager if one is running.
+3. Run `CronList`. If the handoff records a usage pause and its check is gone, schedule it again.
+4. Check the open PRs for anything waiting on you, such as an "Evaluation scores" comment that was requested and is missing.
+
+If the handoff is out of date, trust the board and GitHub.
 
 ## Report to the human
 

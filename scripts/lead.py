@@ -3,7 +3,7 @@
 
   python3 scripts/lead.py start     # before starting work
   python3 scripts/lead.py finish    # before ending the session
-  python3 scripts/lead.py context   # at a batch close: is it time to restart?
+  python3 scripts/lead.py context   # at a batch close: is it time to checkpoint?
 
 Both commands are safe to re-run. They run from any worktree, but always act on
 the main checkout:

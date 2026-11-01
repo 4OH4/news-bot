@@ -61,7 +61,7 @@ Never merge any other way, and never run `gh pr merge`.
 
 ## Reaching the lead mid-batch
 
-Send design problems, stop-the-line items (§6), **Needs human:** items, evaluation requests and PRs that failed a second review to the lead as they arise, with SendMessage, and carry on with other issues. Keep each message to the issue or PR number and the question.
+Send design problems, stop-the-line items (§6), **Needs human:** items, evaluation requests and PRs that failed a second review to the lead as they arise, with SendMessage, and carry on with other issues. Keep each message to the issue or PR number and the question. The lead's context can be compacted, so if a request is still unanswered when your other work is done, send it again rather than waiting.
 
 ## Report back
 
