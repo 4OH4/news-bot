@@ -263,7 +263,9 @@ In addition to the current review, the reviewer:
 - **reads the test change report:** `tier.py` lists deleted or changed assertions, added skips and `live` markers, and any edits to the test author's tests. Each needs a good reason;
 - **checks against `REVIEW.md`:** a list of failure patterns taken from real defects in this repo.
 
-**What counts as a defect.** The reviewer does every check, and lists everything it finds, but marks an item **Defect:** only if it states the concrete failure and its cost, and at least one of these holds: it breaks an acceptance example or a hard rule in `CLAUDE.md`, it matches a failure that matters in the cost-of-failure statement (§6), or it would be seen routinely. A rare case with a cheap outcome is a plain note. Notes don't send a PR back. The delivery manager lists them in its batch report, and the lead adds them to the Phase Log as follow-ups.
+**What counts as a defect.** The reviewer does every check, and lists everything it finds, but marks an item **Defect:** only if it states the concrete failure and its cost, and at least one of these holds: it breaks an acceptance example or a hard rule in `CLAUDE.md`, it matches a failure that matters in the cost-of-failure statement (§6), or it would be seen routinely. Any estimated cost above the budget, even under a flood, is a defect, with its figures. A rare case with a cheap outcome is a plain note. Notes don't send a PR back. The delivery manager lists them in its batch report, and the lead adds them to the Phase Log as follow-ups.
+
+**Needs human:** is for the stop-the-line list (§6), and also for a residual risk that matters that rework can only reduce.
 
 ### 7.4 `REVIEW.md`
 
@@ -282,12 +284,12 @@ In addition to the current review, the reviewer:
 3. **Green.** The worker implements the issue, verifies it and opens the PR.
 4. **CI.** Lint, test and Docker build must pass.
 5. **Review.** A fresh reviewer writes its findings.
-6. **Rework.** Defects return to a worker, and a new review follows if behaviour changed. There are at most two reviews. The limit is firm: only the lead can allow a third, for a failure that matters, with its reason in the Phase Log.
+6. **Rework.** Defects return to a worker, and a new review follows if behaviour changed. There are at most two reviews. The limit is firm: only the lead can allow a third, with its reason in the Phase Log. A defect that matters (§6) is never merged on an unreviewed fix and never accepted as cheap: its fix gets a third review, on the rework only. Only cheap defects can be accepted without one.
 7. **Evaluation.** If `extract/` changed, the delivery manager asks the lead to run the evaluation (§6). This comes before the next step because it adds a commit.
 8. **Delivery review.** The delivery manager runs `make lint` and `make test` on the final commit, confirms CI is green, then posts a "Delivery review" comment with its verdict and the head SHA it checked. This replaces today's "Lead review". Any later push invalidates it.
-9. **Merge.** The delivery manager merges Tier A and B through `tier.py merge`. A Tier C PR moves to Human review on the board.
+9. **Merge.** The delivery manager merges Tier A and B through `tier.py merge`. A Tier C PR is opened as a draft and stays one until the Delivery review; the delivery manager then marks it ready and moves it to Human review on the board, so a ready PR tells the owner that agents are done. Before a PR joins the merge queue, and after each owner merge, the lead reads the issue and PR comments and turns any unactioned owner comment into a change or a follow-up.
 
-If the second review still finds defects, the delivery manager doesn't loop. It passes the PR to the lead, which decides whether the issue is wrong, in which case the architect revises it, accepts what remains as cheap and marks it resolved with its reason, or parks the PR. Repeated defects on one path usually mean the issue names a symptom, not the rule, so the lead settles the design before any more rework. Parked PRs appear in the milestone report, and they stop the line only if other work depends on them.
+If the second review still finds defects, the delivery manager doesn't loop. It passes the PR to the lead, which decides whether the issue is wrong, in which case the architect revises it, accepts what remains as cheap and marks it resolved with its reason, parks the PR, or refers it to the human. The fourth option is required when a defect that matters can't be fixed, only reduced: the human accepts the remaining risk, the lead recommends an answer and says which figures are estimates, and the merge stays refused until the human answers. Repeated defects on one path usually mean the issue names a symptom, not the rule, so the lead settles the design before any more rework. Parked PRs appear in the milestone report, and they stop the line only if other work depends on them.
 
 A reviewer's **Needs human:** item also goes to the lead. The lead either treats it as stop-the-line, or decides it, records a `Confirm later` entry and marks the item resolved.
 
@@ -508,6 +510,7 @@ Some things are deliberately kept out of the repo:
 | 2026-11-01 | The lead keeps a curated Phase Log as a GitHub issue, and writes the milestone report from it | Collating at the end loses things, and a repo file would need a PR for every update |
 | 2026-11-01 | State the cost of failure in `CLAUDE.md`, confirmed at each milestone, and reserve **Defect:** for failures that justify rework | Without it, rare and cheap cases took four and five review rounds, and warnings outgrew the project's stage |
 | 2026-11-01 | The two-review limit is firm, and only the lead can allow a third review | It was passed twice in the pilot with no decision recorded |
+| 2026-11-01 | Tier C PRs are drafts until the Delivery review; the lead reads owner comments before queueing and after each merge; a defect that matters always gets a reviewed fix, and can be referred to the human | PRs #160 and #167 merged with work or comments outstanding, and the two-review limit was ambiguous for defects that can only be reduced |
 | 2026-11-01 | At 150k tokens the lead checkpoints at a batch close and carries on, and a hook recovers it after compaction | Stopping would end unattended work, and neither the lead nor a timer can run `/clear` or `/compact`, so durable state protects it instead |
 | 2026-11-01 | This document describes the method, and no agent needs it in context | The briefs and skills are the implementation, and reading it costs the lead 12k tokens a session |
 | 2026-11-01 | Process steps are defaults the human can waive, and work can carry forward at a milestone | The steps exist so nothing is lost and work stays efficient. An agent can use judgement, so rigid steps would only become barriers |
