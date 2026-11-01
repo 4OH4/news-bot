@@ -2,7 +2,7 @@
 
 **Goal:** an installable PWA on my Android phone with an offline cache, and feedback capture through a thin API that only I can use. **Exit:** I use it daily in place of the Google feed for two weeks (`PROJECT_PLAN.md` §6).
 
-Building starts after Phase 2 sign-off. This design can merge before that.
+Phase 2 is signed off (PR #163), so building starts once this design merges.
 
 ## Approach
 
@@ -113,7 +113,6 @@ Suggested first batch: #171, #172, #173 and #174, which touch no common files. #
 
 ## What the human must do, and what agents need first
 
-- **Sign off Phase 2** (PR #163). Building waits for it.
 - **Merge the Tier C PRs:** #174, #177 and #178.
 - **#179**, after #177 and #178 merge: one `terraform apply`, a few clicks in the Firebase and Google Cloud consoles, and three repository variables. The issue gives exact steps. Agents can't do these, because the development service account doesn't exist yet (ADR-0007), and IAM and consent screens are the human's in any case.
 - **Carried from Phase 2, alongside the build:** #89, the live extraction check, which also covers run length, and steps 1 and 5 of the Phase 2 report, the feed and cost check. Both need the owner's account. A thin feed is the first thing daily use would show, so they shouldn't wait for the milestone.
@@ -126,7 +125,7 @@ After #175, #177, #178, #179, #180 and #181: the feed list on the phone, signed 
 
 ## Where this phase differs from "Cost of failure"
 
-The statement in `CLAUDE.md` is the Phase 2 one until PR #163 merges. That PR's Phase 3 statement already covers this phase. Treat these as above the bar from now on (`AUTOMATION.md` §6), and each carries `**Risk:** high`:
+The statement in `CLAUDE.md`, confirmed for Phase 3 by merging PR #163, covers this phase. These are the failures above the bar in it, and each carries `**Risk:** high`:
 
 - anyone but the owner reading content or writing feedback (#175, #176, #177, #180);
 - losing a feedback event once it's accepted, or leaving article text in a CDN cache (#175, #176);
