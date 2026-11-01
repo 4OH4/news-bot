@@ -867,11 +867,17 @@ def _refine_canonical(run: _ExtractRun, article: Article, page: FetchedPage) -> 
     target = services.repository.get_article(new.id)
     if target is not None and target.extraction.status is ExtractionStatus.FAILED:
         # A failed article holds no text, so merging into it would lose this
-        # one's. Leave both rows alone: the failed one keeps its retries, and
-        # the normal merge applies if it later succeeds.
+        # one's. Leave both rows alone: the failed one keeps its retries. Nothing
+        # merges them later (an ok article is never re-examined), so the story
+        # may show twice; accepted until #147 stores the declared canonical.
         log.info(
             "canonical target failed; not merging",
-            extra={"stage": "extract", "url": article.url, "canonical": refined},
+            extra={
+                "stage": "extract",
+                "source_id": article.source_id,
+                "url": article.url,
+                "canonical": refined,
+            },
         )
         return article
     log.info(
