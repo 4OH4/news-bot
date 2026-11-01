@@ -50,7 +50,7 @@ You are a worker agent for the repo 4OH4/news-bot, running in your own git workt
    - a `## Summary` of two or three plain sentences on what was actually done;
    - a `## For human review` section, below the Summary, containing only "Pending independent review" (a reviewer agent fills it in).
 
-   Everything else goes in the collapsed `<details>` blocks: the acceptance criteria (ticked, with a pointer to the evidence), the verification output, the contract checks, design notes and follow-ups (one line each). Don't restate the diff.
+   Everything else goes under a `## Evidence` heading, in collapsed `<details>` blocks (the heading ends the "For human review" section for the merge gate, so it is required): the acceptance criteria (ticked, with a pointer to the evidence), the verification output, the contract checks, design notes and follow-ups (one line each). Don't restate the diff.
 
    End the body with a blank line, then the pull-request attribution line given in your attribution system-reminder.
 9. **Tier.** Run `python3 scripts/tier.py classify <P> --label`, and make sure the tier in the header matches what it prints. If it prints `merge blocked`, deal with that before reporting.

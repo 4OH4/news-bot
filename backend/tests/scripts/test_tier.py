@@ -854,6 +854,15 @@ Fixes the thing.
 ## For human review
 - **Defect:** the gate must see this item.
 
+## Evidence
+
+<details><summary>Contracts, design notes and follow-ups</summary>
+
+**Design notes:** an earlier draft had a **Defect:** here.
+**Needs human:** quoted from the evidence.
+
+</details>
+
 <details><summary>Acceptance criteria</summary>
 
 - [x] done
@@ -868,6 +877,8 @@ def test_gate_reads_human_review_below_context_task_and_summary() -> None:
     assert "the gate must see this item" in section
     assert "Fixes the thing" not in section
     assert "Why this is wanted" not in section
+    assert "earlier draft" not in section
+    assert "quoted from the evidence" not in section
     assert tier.gate_failures(pr(body=NEW_ORDER_BODY), TIER_A, GREEN, REVIEWED) == [
         "1 unresolved **Defect:** item(s)"
     ]
@@ -1542,3 +1553,12 @@ def test_patches_reach_the_classifier(monkeypatch: pytest.MonkeyPatch) -> None:
     assert result.reasons == [
         "infra/terraform/deploy.tf changes IAM, access, billing, budgets or service accounts"
     ]
+
+
+def test_pr_template_has_evidence_after_for_human_review() -> None:
+    """The real template keeps `## Evidence` below `## For human review`."""
+    text = (ROOT / ".github" / "pull_request_template.md").read_text(encoding="utf-8")
+    headings = [line.strip() for line in text.splitlines() if line.startswith("## ")]
+    assert "## Evidence" in headings
+    assert "## For human review" in headings
+    assert headings.index("## Evidence") > headings.index("## For human review")

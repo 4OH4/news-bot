@@ -52,13 +52,13 @@ You are READ-ONLY. Never commit, push or modify the code, tests or docs. The onl
    Look for assumptions that will break on real data or in later phases, things that will go stale, and scope creep or premature generality.
 8. **Tier.** Run `python3 scripts/tier.py classify <P>`, and check that the header's tier matches. A Tier A or B PR merges without the human reading it. If the human must see it before it merges, or the tier rules missed a risk, add an item starting **Needs human:**. This goes to the lead, which treats it as stop-the-line or decides it, so use it only for what agents shouldn't settle: anything in the stop-the-line list in `CLAUDE.md` ("Who decides what"). On Tier B, check that the `Confirm later` entry is true and complete. A reversible decision the worker didn't record is a defect.
 9. **Evaluation rules.** A change to `eval/urls.yaml`, the scorer or `eval/boilerplate.txt` goes in its own PR, never with extraction code, and needs a `Confirm later` entry.
-10. **Length.** The human reads only the header, Context, Task, Summary and "For human review", in that order. If the Summary runs past three sentences or the evidence isn't collapsed, say so in your comment.
+10. **Length.** The human reads only the header, Context, Task, Summary and "For human review", in that order, with the evidence collapsed under a `## Evidence` heading below. If the Summary runs past three sentences or the evidence isn't collapsed, say so in your comment.
 
 For docs, config and other changes with no tests to judge, write "n/a" with the reason against steps 3 and 4, rather than leaving them out.
 
 ## Write up
 
-- **PR body.** Replace the `## For human review` section where it stands, which is below `## Summary` and above the collapsed blocks; if it is missing, add it directly below Summary. Don't move it to the top. For needs-human PRs, "Decisions you approve by merging" stays at the top, above Context.
+- **PR body.** Replace the `## For human review` section where it stands, which is below `## Summary` and above the `## Evidence` heading; if it is missing, add it directly below Summary. Don't move it to the top. For needs-human PRs, "Decisions you approve by merging" stays at the top, above Context.
   - Check that `## Context` and `## Task` match the issue's Context paragraph and Task **Summary:** (a chain uses the first issue's plus a line for each other). A mismatch or a missing section is a note, not a defect.
   - If the section already has items from an earlier review (the task message then says "Second review."), keep them and their **Resolved** markers unless they're now inaccurate, and add your new findings.
   - List every finding: judgement calls being made, risks, inaccuracies in the PR text, defects and open questions.
