@@ -196,6 +196,104 @@ the new resources, or its `terraform apply` can't refresh them:
 gcloud projects add-iam-policy-binding <project-id> --member="serviceAccount:<dev-account-email>" --role=roles/iam.workloadIdentityPoolViewer
 ```
 
+## The development identity
+
+Agents reach the project through a limited service account, not the owner's
+login (ADR-0007). The owner sets it up once, with the commands below. They
+change IAM, so only the owner runs them. Replace the placeholders:
+`<project-id>`, `<billing-account-id>` and `<owner-email>`.
+
+### The account and its roles
+
+```bash
+gcloud iam service-accounts create newsfeed-dev --project=<project-id> --display-name="Newsfeed development (agents)"
+
+for role in viewer run.developer cloudscheduler.admin artifactregistry.repoAdmin \
+  datastore.indexAdmin secretmanager.viewer iam.workloadIdentityPoolViewer \
+  storage.bucketViewer storage.objectViewer; do
+  gcloud projects add-iam-policy-binding <project-id> \
+    --member="serviceAccount:newsfeed-dev@<project-id>.iam.gserviceaccount.com" \
+    --role="roles/$role"
+done
+```
+
+The state bucket, which Terraform writes to, is the one place the account can
+write objects:
+
+```bash
+gcloud storage buckets add-iam-policy-binding gs://<project-id>-tfstate \
+  --member="serviceAccount:newsfeed-dev@<project-id>.iam.gserviceaccount.com" \
+  --role=roles/storage.objectAdmin
+```
+
+Billing is read-only, on the billing account:
+
+```bash
+gcloud billing accounts add-iam-policy-binding <billing-account-id> \
+  --member="serviceAccount:newsfeed-dev@<project-id>.iam.gserviceaccount.com" \
+  --role=roles/billing.viewer
+```
+
+To deploy, Terraform and the jobs must act as the two runtime accounts, so the
+account may use those two and no others:
+
+```bash
+for sa in newsfeed-runtime newsfeed-scheduler; do
+  gcloud iam service-accounts add-iam-policy-binding \
+    "$sa@<project-id>.iam.gserviceaccount.com" --project=<project-id> \
+    --member="serviceAccount:newsfeed-dev@<project-id>.iam.gserviceaccount.com" \
+    --role=roles/iam.serviceAccountUser
+done
+```
+
+Finally, the owner may impersonate the account (this is how agents get
+short-lived tokens):
+
+```bash
+gcloud iam service-accounts add-iam-policy-binding \
+  newsfeed-dev@<project-id>.iam.gserviceaccount.com --project=<project-id> \
+  --member="user:<owner-email>" --role=roles/iam.serviceAccountTokenCreator
+```
+
+### How agents use it
+
+No key file is created. Agents use a separate gcloud configuration, so the
+owner's everyday login is not the one they use:
+
+```bash
+export CLOUDSDK_CONFIG=~/.config/gcloud-agents
+gcloud auth login
+gcloud auth application-default login
+gcloud config set auth/impersonate_service_account newsfeed-dev@<project-id>.iam.gserviceaccount.com
+gcloud config set project <project-id>
+```
+
+The login in that directory is the owner's, but every call is made as the
+service account through impersonation. The git-ignored
+`.claude/settings.local.json` then sets three environment variables for agents:
+
+```json
+{
+  "env": {
+    "CLOUDSDK_CONFIG": "/home/<user>/.config/gcloud-agents",
+    "GOOGLE_APPLICATION_CREDENTIALS": "/home/<user>/.config/gcloud-agents/application_default_credentials.json",
+    "GOOGLE_IMPERSONATE_SERVICE_ACCOUNT": "newsfeed-dev@<project-id>.iam.gserviceaccount.com"
+  }
+}
+```
+
+`GOOGLE_APPLICATION_CREDENTIALS` is the Application Default Credentials file in
+that configuration. If these variables aren't set, an agent doesn't use
+`gcloud`, because it would run as the owner's own login.
+
+### The risk
+
+The owner's own gcloud login stays on the machine, so the limit depends on
+agents using this configuration as well as on the roles. The roles do limit
+what the account can do: it has no Firestore or Cloud Storage write access
+outside the state bucket, so it can't delete the feed's data, and it can't
+change IAM, billing, budgets or secrets.
+
 ## Later changes
 
 A PR that changes `infra/terraform/` lists its commands; normally:

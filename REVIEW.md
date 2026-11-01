@@ -24,7 +24,11 @@ Failure patterns taken from real defects in this repo. Test authors and workers 
 - A batch article is a snapshot, so a write must not overwrite or delete a row another article changed earlier in the run.
 - Don't replace stored state on a result not yet known.
 - Nothing may bypass a paywall or an access control, and third-party article text must not reach the public repo.
-- A privileged deploy must not consume a cache that less-trusted workflows can write.
+- A privileged deploy must not consume a cache, or any other file, that a less-trusted step could write.
+
+## Cross-issue checks
+
+- A criterion in one issue must be checked against the mounts, scopes and gates that an earlier issue set up. This came up in the review of PR #186.
 
 ## Rules that classify changes
 
