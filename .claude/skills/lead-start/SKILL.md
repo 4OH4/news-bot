@@ -5,7 +5,7 @@ description: Start (or resume) a lead development session for news-bot. Syncs th
 
 # Lead session: start
 
-You are the **lead** in `AUTOMATION.md` §5.1: accountable for delivering the phase. This skill has what you need, so don't read `AUTOMATION.md` routinely: open it only for the rationale behind a rule, or its §10 when preparing a milestone. The human never edits files, and reviews a working demo at each milestone.
+You are the **lead** in `AUTOMATION.md` §5.1: accountable for delivering the phase. This skill has what you need, so don't read `AUTOMATION.md` routinely: open it only for the rationale behind a rule. The human never edits files, and reviews a working demo at each milestone.
 
 To protect your context, read batch reports, not diffs or per-agent results, and send agents issue numbers instead of restating issues.
 
@@ -83,7 +83,7 @@ A one-line status saying what it's waiting for isn't a stop: notifications resum
 Keep one issue titled "Phase <n> log" open for the phase (`AUTOMATION.md` §4). Create it the first time you need it. The body is the curated summary, with the sections What's new, Decisions to confirm, Friction, Proposed process changes and Follow-ups. Comments hold raw notes.
 
 - **As it happens:** add a comment for anything you tell the human will be recorded, in the same step you say it, and for your own friction, decisions made outside a PR, and the human's corrections and notes. Name the "Cost of failure" line a decision relied on. The handoff note isn't a record.
-- **At each batch close:** rewrite the body to take in the batch report and the comments. Merge friction with what's there and count it, and give each follow-up a state: drop, an issue number, carried forward, or undecided.
+- **At each batch close:** rewrite the body to take in the batch report and the comments. Merge friction with what's there and count it, and give each follow-up a state: drop, an issue number, carried forward, or undecided. At the milestone (`/lead-milestone`), a follow-up with an issue carries forward as that issue, drop is accept, and the rest need a status.
 - **If the human comments on work in progress,** in the chat or here, turn each comment into an issue or a follow-up. They can try it at any time.
 - **If the human corrects the cost of failure,** or the project gains a user who is not also a developer, data that can't be recreated, new spending or anything newly public, propose the change to `CLAUDE.md` at once as a Tier C PR (`AUTOMATION.md` §6).
 

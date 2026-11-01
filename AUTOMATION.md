@@ -74,13 +74,13 @@ The report lives at `docs/milestones/phase-<n>.md`, following the pattern of `do
 - **Deferred work:** each entry in `DEFERRED_WORK.md` that is due for a look gets address, accept or stays deferred, and resolved entries are removed.
 - **Risks and parked work:** anything unresolved, any PR the review process could not clear, and anything carried forward to the next phase.
 - **Process measures:** the numbers in §10.
-- **Process review:** the §10 numbers against the previous milestone, a status table with one row for every friction item, follow-up and proposal in the Phase Log, each marked address (the recommended change and the measure that shows it worked), accept (the reason) or defer (an entry in `DEFERRED_WORK.md` saying why and when to look again), how the last milestone's changes turned out, and the human's own friction notes.
+- **Process review:** the §10 numbers against the previous milestone, a status table giving every friction item and proposal, and every follow-up with no issue, a status with its evidence: address (the recommended change and the measure that shows it worked), accept (the reason; items sharing one are grouped) or defer (an entry in `DEFERRED_WORK.md` saying why and when to look again). A follow-up with an issue carries forward as that issue, a dropped follow-up is accepted, and an undecided one needs a status. Addressed items past the three-issue limit (§10) go to `DEFERRED_WORK.md`. The review also covers how the last milestone's changes turned out, and the human's own friction notes.
 - **Next phase:** proposed goal, and anything found this phase that changes the plan.
 - **Cost of failure:** the lead's statement for the next phase, and what changed (§6). Merging the report confirms it.
 
 Sign-off is always a positive confirmation from the human. Nothing moves on automatically, and no time limit or waiting period applies to a milestone review. Where an exit criterion mentions elapsed time, such as "runs hourly for a week", the report gives the evidence so far, and the human judges when it's enough. Fixes during the review go through Gear 2 as normal.
 
-The report gets an independent review before it reaches the human, and its PR also updates the phase's status in `PROJECT_PLAN.md` §6. A rejected decision becomes an issue in the next phase, and it doesn't block sign-off unless the human says so. After sign-off, the lead closes the GitHub milestone and moves carried items to the next phase. Only process fixes that the next phase relies on go first, and the rest carry forward.
+The report gets an independent review before it reaches the human, and its PR also updates the phase's status in `PROJECT_PLAN.md` §6, marking the phase **done**. A rejected decision becomes an issue in the next phase, and it doesn't block sign-off unless the human says so. After sign-off, the lead closes the GitHub milestone and moves carried items to the next phase. Only process fixes that the next phase relies on go first, and the rest carry forward.
 
 **Feedback during a phase.** The human can try work in progress at any time and comment in the chat or the Phase Log. The lead turns each comment into an issue or a follow-up.
 
@@ -107,7 +107,7 @@ The rules:
 
 | Role | Gear | Runs as | Model | Can change code? |
 |---|---|---|---|---|
-| Lead | 1 | Main session | Opus | Only generated evaluation results, the milestone report, the phase's status line in `PROJECT_PLAN.md`, §15 and the cost-of-failure statement in `CLAUDE.md` |
+| Lead | 1 | Main session | Opus | Only generated evaluation results, the milestone report, the phase's status line in `PROJECT_PLAN.md`, §15, `DEFERRED_WORK.md` and the cost-of-failure statement in `CLAUDE.md` |
 | Architect | 1 | Subagent, fresh per phase or epic | Opus | The phase design and issues only |
 | Delivery manager | 2 | Background subagent, fresh per batch | Sonnet, Opus if that falls short | No, except merging through `tier.py` |
 | Test author | 2 | Subagent, one per issue | Sonnet, Opus for high-risk issues | Tests only |
@@ -351,8 +351,8 @@ Friction is recorded as it happens and reviewed once per milestone:
 
 - Each batch report has a "Friction" section: rework rounds and defects found, permission prompts (those the agents tell it about), usage pauses and cut-offs, failed gates and escalations.
 - Workers, test authors and reviewers may add one line, `**Friction:** <what wasted effort>`, to their report. The delivery manager collects these into its batch report.
-- The milestone report's "Process review" (§4) gives every friction item, follow-up and proposal a status and a recommendation: address, accept or defer. The human may add notes of their own.
-- Once the milestone report is merged, the lead opens a `process` issue for each item marked address that the human didn't reject, stating what should improve and which measure shows it, at most three per phase. `process` issues follow the normal tier rules, so changes to the automation are Tier C.
+- The milestone report's "Process review" (§4) gives every friction item and proposal, and every follow-up with no issue, a status with its evidence and a recommendation: address, accept or defer. The human may add notes of their own.
+- Once the milestone report is merged, the lead opens a `process` issue for each process change marked address that the human didn't reject, stating what should improve and which measure shows it, at most three per phase. `process` issues follow the normal tier rules, so changes to the automation are Tier C.
 - The lead updates §15 at each milestone, including what didn't work.
 - Friction data is kept in the Phase Log (§4): the lead merges each batch's "Friction" section into it, records its own friction there as it happens, and adds the human's notes.
 

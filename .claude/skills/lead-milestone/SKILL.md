@@ -23,12 +23,12 @@ The Phase Log (`/lead-start` step 5) is the source for the report. Agent reports
    - **Process review:** those numbers against the previous milestone, a status table (below), how the last milestone's changes turned out, and the human's own friction notes. Update `AUTOMATION.md` §15, including what didn't work.
    - **Next phase:** proposed goal, and anything found this phase that changes the plan.
    - **Cost of failure:** your statement for the next phase, and what changed. Update `CLAUDE.md` in the same PR, so that merging the report confirms it.
-3. **The status table.** Every friction item, follow-up and proposal in the Phase Log gets one row and one status, so the owner never has to ask "so what?":
+3. **The status table.** Every friction item and proposal in the Phase Log, and every follow-up that has no issue, gets one status with its evidence, so the owner never has to ask "so what?". A follow-up with an issue needs no row: it carries forward as that issue. In the Phase Log's follow-up states, **drop** becomes accept, and **undecided** is an item that still needs a status. Statuses:
    - **address:** the recommended change and the measure that will show it worked;
-   - **accept:** the reason it is left as it is;
+   - **accept:** the reason it is left as it is. Where several accepted items share a reason, group them in one row with that reason, to keep the report short;
    - **defer:** an entry in `DEFERRED_WORK.md` at the repo root, saying why it is deferred and when to look at it again. The row points to that entry.
 
-   The table replaces a "top three friction points" list. The limit of three `process` issues per phase still applies (part 2), so choose which addressed items become issues; the others stay in the table with their status.
+   The table replaces a "top three friction points" list. The limit of three `process` issues per phase still applies (part 2): addressed items past the limit get an entry in `DEFERRED_WORK.md`, so that a later milestone reads them.
 4. Update the phase's status in `PROJECT_PLAN.md` §6 in the same PR, and mark the phase **done** there: `/lead-start` step 2 relies on that word. Open it as a draft PR on `issue-<n>-phase-<n>-milestone`, closing the Phase Log. It is Tier C. Start `subagent_type: reviewer` on it, to check the report's claims against the Phase Log and the evidence, clear what it finds, then mark the PR ready.
 5. Tell the human the milestone is ready, with the link and the "Try it" line.
 
@@ -38,6 +38,6 @@ Sign-off is the human merging the report PR. Nothing moves on automatically, and
 
 Once it is merged:
 1. Close the phase's GitHub milestone, and move carried items to the next phase's milestone.
-2. Open a `process` issue for each item the report marked **address** that the human didn't reject, at most three per phase, stating what should improve and which measure shows it. `process` issues follow the normal tier rules, so changes to the automation are Tier C. Only process fixes that the next phase relies on go first, and the rest carry forward.
+2. Open a `process` issue for each process change the report marked **address** that the human didn't reject, at most three per phase (an addressed item past the limit is already in `DEFERRED_WORK.md`; an addressed pipeline change is a normal issue), stating what should improve and which measure shows it. `process` issues follow the normal tier rules, so changes to the automation are Tier C. Only process fixes that the next phase relies on go first, and the rest carry forward.
 3. Check that each **defer**red item has its entry in `DEFERRED_WORK.md`.
 4. Go back to `/lead-start` step 2 for the next phase.
