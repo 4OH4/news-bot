@@ -47,6 +47,16 @@ These are hard rules. If a task seems to require breaking one, stop and say so i
 5. **Config lives in `config/`.** Sources and interest rules are YAML files in the repo, not code constants or database rows.
 6. **Polite fetching only.** All HTTP goes through the shared `Fetcher`, which applies robots.txt checks, per-domain rate limits, an identifiable User-Agent, conditional GETs and retries. Never bypass paywalls or access controls.
 
+## Cost of failure
+
+Use this to judge how much a problem matters. The human confirms it at each milestone (`AUTOMATION.md` §6). Confirmed for Phase 2 on merging #150.
+
+- **Stage:** development. There are no users, not even the owner yet, and no release to roll back to.
+- **Cheap:** a duplicate, stale or missing feed item, poor ranking, a failed run that the next run recovers, and a data problem that can be repaired or recreated. These are slightly annoying, and can be fixed later.
+- **Matters:** harm to third-party sites, including robots.txt, paywalls and rate limits; third-party content in the public repo; a bill; a leaked secret; and losing data that can't be recreated.
+
+Put effort where it matters. Report cheap problems in a line, with the fix or recovery step, and don't escalate them or rework a PR for a rare case. This never relaxes the rules above or the stop-the-line list.
+
 ## Code conventions
 
 - Python 3.12+, managed with `uv`. Add dependencies with `uv add`, never by editing the lockfile by hand.
