@@ -156,6 +156,7 @@ Lasting architecture decisions are recorded in `docs/adr/`. Read the relevant AD
 - `AUTOMATION.md`: the way of working; §13 says where everything lives
 - `REVIEW.md`: failure patterns from real defects
 - `docs/adr/`: decision records
+- `DEFERRED_WORK.md`: work put off on purpose, reviewed at each milestone
 - `docs/phases/`, `docs/milestones/`: phase designs and milestone reports
 - `docs/feed.schema.json`, `docs/feed.example.json`: the `feed.json` contract between the publish stage and the client (ADR-0006)
 - `config/sources.yaml`, `config/interests.yaml`: sources and ranking rules

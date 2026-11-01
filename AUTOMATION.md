@@ -459,6 +459,7 @@ Each kind of information has one home, and other documents link to it instead of
 | Rules for how agents work | `AUTOMATION.md`, then `.claude/agents/` for each role |
 | Current work and its status | GitHub issues and the Project board |
 | Decisions, friction and follow-ups for the current phase | The "Phase N log" issue, until the milestone report records them |
+| Work put off on purpose, across phases | `DEFERRED_WORK.md`, reviewed at each milestone |
 | What failure costs right now | `CLAUDE.md`, "Cost of failure" |
 
 Some things are deliberately kept out of the repo:

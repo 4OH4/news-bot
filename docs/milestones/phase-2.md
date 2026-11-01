@@ -188,7 +188,7 @@ Counted from PR #133 onwards, when this way of working began. Phase 1 had no equ
 | Board slips: wrong number, new issue not added | 2 | One-line errors with a clear message |
 | Test or brief gaps | `tests/test_wiring.py` outside a checkout; the reviewer's `Closes #<N>` check on `Refs` PRs | Rare, and reviewers now know |
 
-**Defer.** Logged in the Phase 3 log, issue #187, with when to look again.
+**Defer.** Logged in `DEFERRED_WORK.md`, with when to look again.
 
 | Item | Evidence | Look again when |
 |---|---|---|
