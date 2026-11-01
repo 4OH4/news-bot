@@ -190,7 +190,8 @@ These are identifiers, not secrets. The apply creates IAM, so the human runs it
 (ADR-0007). The next merge to `main` then deploys.
 
 If the agents' development service account exists, also give it read access to
-the new resources, or its `terraform apply` can't refresh them:
+the new resources, or its `terraform apply` can't refresh them (see "The
+development identity" below for the account itself):
 
 ```bash
 gcloud projects add-iam-policy-binding <project-id> --member="serviceAccount:<dev-account-email>" --role=roles/iam.workloadIdentityPoolViewer
@@ -201,7 +202,12 @@ gcloud projects add-iam-policy-binding <project-id> --member="serviceAccount:<de
 Agents reach the project through a limited service account, not the owner's
 login (ADR-0007). The owner sets it up once, with the commands below. They
 change IAM, so only the owner runs them. Replace the placeholders:
-`<project-id>`, `<billing-account-id>` and `<owner-email>`.
+`<project-id>`, `<billing-account-id>`, `<owner-email>` and `<user>`.
+
+Prerequisites: the first `terraform apply` is done, because the two runtime
+accounts below must exist. Granting a role on the billing account needs a role
+that can set its policy (from memory, Billing Account Administrator; Costs
+Manager is not enough).
 
 ### The account and its roles
 
@@ -263,13 +269,22 @@ owner's everyday login is not the one they use:
 ```bash
 export CLOUDSDK_CONFIG=~/.config/gcloud-agents
 gcloud auth login
-gcloud auth application-default login
 gcloud config set auth/impersonate_service_account newsfeed-dev@<project-id>.iam.gserviceaccount.com
 gcloud config set project <project-id>
+gcloud auth application-default login
 ```
 
-The login in that directory is the owner's, but every call is made as the
-service account through impersonation. The git-ignored
+Set the impersonation property before `application-default login`: the local
+gcloud reads it at login and, with it set, writes an impersonated credential
+file. With the order reversed, the file is the owner's plain user credential.
+The local gcloud source has no explicit impersonation flag for this command, so
+the order is the way.
+
+The login in that directory is the owner's. Calls made by `gcloud` and Terraform
+(through the gcloud configuration) are made as the service account. Python
+clients (Firestore, Cloud Storage) use the Application Default Credentials file
+alone and ignore `GOOGLE_IMPERSONATE_SERVICE_ACCOUNT`, so they act as the
+service account only if that file is of the impersonated type. The git-ignored
 `.claude/settings.local.json` then sets three environment variables for agents:
 
 ```json
@@ -286,13 +301,32 @@ service account through impersonation. The git-ignored
 that configuration. If these variables aren't set, an agent doesn't use
 `gcloud`, because it would run as the owner's own login.
 
+To confirm the file's type without showing its contents, the owner runs:
+
+```bash
+python3 -c "import json,os; print(json.load(open(os.path.expanduser('~/.config/gcloud-agents/application_default_credentials.json')))['type'])"
+```
+
+`impersonated_service_account` is right; `authorized_user` means the file is the
+owner's own login. Until the owner confirms the type, agents must not use the
+Python cloud clients (for example `NEWSFEED_STORAGE=gcp newsfeed report`).
+
 ### The risk
 
 The owner's own gcloud login stays on the machine, so the limit depends on
-agents using this configuration as well as on the roles. The roles do limit
-what the account can do: it has no Firestore or Cloud Storage write access
-outside the state bucket, so it can't delete the feed's data, and it can't
-change IAM, billing, budgets or secrets.
+agents using this configuration as well as on the roles. The roles stop the
+account changing IAM, billing, budgets or secrets directly, and it has no
+direct Firestore or Cloud Storage write access outside the state bucket.
+
+It can still reach that data by acting as another account. `run.developer` plus
+`iam.serviceAccountUser` on `newsfeed-runtime` lets it update and run the Cloud
+Run job as the runtime account, and `artifactregistry.repoAdmin` lets it supply
+the image, so it can run code as the runtime account. That account reaches
+Firestore (including the owner's feedback), the content bucket and any secret.
+So the account's practical reach includes writing and deleting that data and
+reading secret values. The owner accepts this by merging, or removes the grants.
+The Cloud Run permissions here are from memory, not checked against a cloud
+call.
 
 ## Later changes
 

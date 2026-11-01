@@ -221,7 +221,7 @@ Chosen dependencies also state the licence and why that package was picked. The 
 
 Agents need to create, change and destroy cloud resources during development, so they get a controlled scope (ADR-0007, which supersedes that part of ADR-0004):
 
-- The human sets up the scope once: a separate development project, a service account limited to it, and short-lived credentials. No long-lived keys are stored on disk.
+- The human sets up the scope once: the existing project as the development scope (ADR-0008), a service account limited to it, and short-lived credentials by impersonation. No long-lived keys are stored on disk.
 - The human does the first `terraform apply`, because it creates IAM members, budgets and secrets, which the service account can't. Those stay the human's after that.
 - Inside that scope, agents can run `terraform apply`, `terraform destroy` and `gcloud` commands that change resources.
 - `terraform apply` runs only after a change is merged, from up-to-date `main`, so nothing reaches the cloud before its review.
@@ -416,7 +416,7 @@ This ships as one Tier C PR, which the human approves by merging:
 - **`PROJECT_PLAN.md`:** §9.4 and §9.5 point here, §6 gains the milestone demo for each remaining phase, and §8 lists the new root files and `docs/` folders.
 - **Templates:** the PR header gains `Confirm later`, and issues gain acceptance examples.
 
-Two steps sit outside the PR. The human sets up the development project, its service account and credentials (§6) once, before agents use them. The local usage hook is removed from `.claude/settings.local.json` when the PR merges, because that file is git-ignored.
+Two steps sit outside the PR. The human sets up the development scope (the existing project, per ADR-0008), its service account and credentials (§6) once, before agents use them. The local usage hook is removed from `.claude/settings.local.json` when the PR merges, because that file is git-ignored.
 
 **Pilot.** The first batch after merging is a small pilot. It confirms that the delivery manager can run agents in parallel in the background, handle their results as they finish, and reach the lead mid-batch. If that fails, the fallback is two top-level sessions, with Gear 1 and Gear 2 side by side using `SendMessage`. The first real cut-off at the usage limit will show whether the lead's scheduled check still runs afterwards.
 
