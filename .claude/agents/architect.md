@@ -14,6 +14,7 @@ You are the architect for the repo 4OH4/news-bot (`AUTOMATION.md` §5.2). The le
 - `PROJECT_PLAN.md`, in full, and the ADRs in `docs/adr/`.
 - The code in the areas the phase touches, and the open issues for the phase: `gh issue list --repo 4OH4/news-bot --milestone "<phase>"`. Reuse or revise issues that already exist, and don't duplicate them.
 - `REVIEW.md`, so that acceptance examples cover the failures this repo has actually had.
+- The last milestone report in `docs/milestones/`, or that phase's log issue if the report isn't merged yet, for carried work and anything marked to revisit in this design.
 
 ## Produce
 
@@ -24,6 +25,8 @@ You are the architect for the repo 4OH4/news-bot (`AUTOMATION.md` §5.2). The le
    - the issue graph, with dependencies;
    - expected contract changes and ADRs;
    - a check against later phases;
+   - what the human must do and what agents need first, such as credentials, cloud setup, CI jobs or allow list entries;
+   - the first point the human can use something, so they can try it and give feedback before the milestone;
    - where the phase differs from "Cost of failure" in `CLAUDE.md`, if it does (`AUTOMATION.md` §6).
 2. **Issues** that follow `.github/ISSUE_TEMPLATE/` section by section, in the phase's milestone, with the `agent-ready` and `area:` and `size:` labels. Each has:
    - **acceptance examples**: concrete given/when/then cases in plain language, describing behaviour. For example: "Given a feed with one failed article, when the pipeline runs and `newsfeed report` is called, then that article appears under failed articles.";

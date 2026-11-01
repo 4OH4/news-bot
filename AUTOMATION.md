@@ -46,6 +46,7 @@ The aim is a phase that runs from start to finish with no human input. Agents ma
 5. The tier comes from the diff, so nobody's judgement decides their own level of scrutiny.
 6. Agents can't loosen their own limits.
 7. Agents do all the preparation. The human never edits files, ticks boxes or tidies PRs.
+8. The steps in this process are defaults, not barriers. The lead uses judgement and can propose skipping or reordering one, the human agrees in the chat, and the lead records it in one line in the Phase Log. Stop-the-line items, the tiers, the architecture rules and merging only through `tier.py` are outside this.
 
 ## 4. Phases, epics and milestones
 
@@ -58,7 +59,7 @@ Each phase runs through these stages:
 1. **Agree the goal.** The goal and exit criterion come from `PROJECT_PLAN.md`, confirmed at the previous milestone review.
 2. **Design.** The architect writes the phase design and issues (§5.2). The lead checks them against the project goals and later phases.
 3. **Build.** Issues run through Gear 2 (§8) in dependency order.
-4. **Prepare the milestone.** The lead confirms the demo works from a clean checkout, then writes the milestone report.
+4. **Prepare the milestone.** Once the phase's work is done, or the human has agreed what carries forward, the lead runs as much of the demo as it can from a clean checkout, then writes the milestone report. The report says which demo steps are untested, and the human's own run tests them.
 5. **Milestone review.** The human uses the demo, reviews the decisions, and comments. Agents make any requested changes.
 6. **Sign-off.** The human merges the milestone report PR. Declining or commenting asks for changes, as with any other PR.
 
@@ -70,13 +71,17 @@ The report lives at `docs/milestones/phase-<n>.md`, following the pattern of `do
 - **Goal check:** the exit criterion and the evidence that it is met.
 - **Decisions to confirm:** every `Confirm later` item, with its reason and how to undo it.
 - **What was built:** a short summary, with links to the PRs that agents merged.
-- **Risks and parked work:** anything unresolved, and any PR the review process could not clear.
+- **Risks and parked work:** anything unresolved, any PR the review process could not clear, and anything carried forward to the next phase.
 - **Process measures:** the numbers in §10.
 - **Process review:** the §10 numbers against the previous milestone, the top three friction points from the Phase Log, each with evidence and a proposed change, how the last milestone's changes turned out, and the human's own friction notes.
 - **Next phase:** proposed goal, and anything found this phase that changes the plan.
 - **Cost of failure:** the lead's statement for the next phase, and what changed (§6). Merging the report confirms it.
 
 Sign-off is always a positive confirmation from the human. Nothing moves on automatically, and no time limit or waiting period applies to a milestone review. Where an exit criterion mentions elapsed time, such as "runs hourly for a week", the report gives the evidence so far, and the human judges when it's enough. Fixes during the review go through Gear 2 as normal.
+
+The report gets an independent review before it reaches the human, and its PR also updates the phase's status in `PROJECT_PLAN.md` §6. A rejected decision becomes an issue in the next phase, and it doesn't block sign-off unless the human says so. After sign-off, the lead closes the GitHub milestone and moves carried items to the next phase. Only process fixes that the next phase relies on go first, and the rest carry forward.
+
+**Feedback during a phase.** The human can try work in progress at any time and comment in the chat or the Phase Log. The lead turns each comment into an issue or a follow-up.
 
 ### The Phase Log
 
@@ -88,7 +93,7 @@ The issue body is the curated summary, and only the lead rewrites it. Comments h
 - **Decisions to confirm:** every `Confirm later` item, with its reason and how to undo it, plus "Revisit when" if a later event should reopen it.
 - **Friction:** merged and counted across batches, not listed batch by batch.
 - **Proposed process changes:** each with the friction behind it.
-- **Follow-ups:** anything found and not acted on, marked drop, an issue number, or undecided. Nothing stays undecided past the milestone.
+- **Follow-ups:** anything found and not acted on, marked drop, an issue number, carried forward, or undecided. Nothing stays undecided past the milestone.
 
 The rules:
 
@@ -101,7 +106,7 @@ The rules:
 
 | Role | Gear | Runs as | Model | Can change code? |
 |---|---|---|---|---|
-| Lead | 1 | Main session | Opus | Only generated evaluation results, the milestone report, §15 and the cost-of-failure statement in `CLAUDE.md` |
+| Lead | 1 | Main session | Opus | Only generated evaluation results, the milestone report, the phase's status line in `PROJECT_PLAN.md`, §15 and the cost-of-failure statement in `CLAUDE.md` |
 | Architect | 1 | Subagent, fresh per phase or epic | Opus | The phase design and issues only |
 | Delivery manager | 2 | Background subagent, fresh per batch | Sonnet, Opus if that falls short | No, except merging through `tier.py` |
 | Test author | 2 | Subagent, one per issue | Sonnet, Opus for high-risk issues | Tests only |
@@ -127,15 +132,15 @@ To protect its context, the lead reads batch reports, not diffs or per-agent res
 
 ### 5.2 Architect
 
-The architect is a fresh subagent, which keeps long planning work out of the lead's context. It reads the plan, the ADRs and the code, then produces:
+The architect is a fresh subagent, which keeps long planning work out of the lead's context. It reads the plan, the ADRs, the code and the last milestone report, or that phase's log if the report isn't merged yet, then produces:
 
-- **a phase design** at `docs/phases/phase-<n>.md`: the approach, the demo, any epics, the issue graph, expected contract changes and ADRs, and a check against later phases;
+- **a phase design** at `docs/phases/phase-<n>.md`: the approach, the demo, any epics, the issue graph, expected contract changes and ADRs, a check against later phases, what the human must do and what agents need first, and the first point the human can use something;
 - **issues** that follow `.github/ISSUE_TEMPLATE/`, with acceptance examples, scope, interfaces and dependencies;
 - **a risk flag** on any issue that needs Opus.
 
 An acceptance example is a concrete given/when/then case in plain language. For example: "Given a feed with one failed article, when the pipeline runs and `newsfeed report` is called, then that article appears under failed articles." Examples describe behaviour. Interfaces are named in the issue, so the test author and worker can work independently.
 
-The phase design goes in as the phase's first PR. The lead checks it, then it takes the normal route without a test author: an independent reviewer, then a delivery manager merges it. The architect updates the file through the same route when the design changes mid-phase, and the lead can call it back whenever a design problem emerges.
+The phase design goes in as the phase's first PR. The lead checks it, then it takes the normal route without a test author: an independent reviewer, then a delivery manager merges it. It can merge before the previous phase's sign-off, because only building waits for that. The architect updates the file through the same route when the design changes mid-phase, and the lead can call it back whenever a design problem emerges.
 
 ### 5.3 Delivery manager
 
@@ -502,6 +507,7 @@ Some things are deliberately kept out of the repo:
 | 2026-11-01 | The two-review limit is firm, and only the lead can allow a third review | It was passed twice in the pilot with no decision recorded |
 | 2026-11-01 | At 150k tokens the lead checkpoints at a batch close and carries on, and a hook recovers it after compaction | Stopping would end unattended work, and neither the lead nor a timer can run `/clear` or `/compact`, so durable state protects it instead |
 | 2026-11-01 | This document describes the method, and no agent needs it in context | The briefs and skills are the implementation, and reading it costs the lead 12k tokens a session |
+| 2026-11-01 | Process steps are defaults the human can waive, and work can carry forward at a milestone | The steps exist so nothing is lost and work stays efficient. An agent can use judgement, so rigid steps would only become barriers |
 
 ## 15. Learnings
 
