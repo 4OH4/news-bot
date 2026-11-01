@@ -165,6 +165,7 @@ Each phase has a clear exit criterion. Later phases may be re-planned based on w
 - Added by ADR-0003: paywall and teaser detection; publish non-clean items as headline, summary and link; measure live extraction from GCP against the Phase 1 baseline.
 - **Exit:** the pipeline runs hourly unattended for a week within budget, and the feed snapshot is accessible.
 - **Milestone demo:** open the published `feed.json` from the cloud bucket, or a preview built from it, and see ranked articles from the latest hourly run, with that run's stats and the week's cost so far.
+- **Status (2026-11-01): done.** Closed early by the owner, before the week of hourly runs finished. The live extraction check (issue #89) carries forward; see `docs/milestones/phase-2.md`.
 
 ### Phase 3: Reader client (PWA)
 - Feed list, article reader view (typography, dark mode), offline cache.
