@@ -297,6 +297,10 @@ class ArticleExtraction(_Model):
     (FR-6). ``error_type`` is the machine-readable category of ``error``. All
     three default to "never tried", so articles stored before they existed
     still load.
+
+    ``declared_canonical`` links this row to the row that holds the same story,
+    so publish can show the story once. It defaults to None, which also means
+    "nothing known" for articles stored before it existed.
     """
 
     status: ExtractionStatus = ExtractionStatus.PENDING
@@ -314,6 +318,13 @@ class ArticleExtraction(_Model):
         description=(
             "Category of the failure, e.g. 'http_403', 'robots', 'timeout', 'too_short', "
             "'no_content', 'paywall'; None when there is no error."
+        ),
+    )
+    declared_canonical: str | None = Field(
+        default=None,
+        description=(
+            "Normalised canonical URL the page declared, when the row was kept under its "
+            "own URL because that target had no readable text; otherwise None."
         ),
     )
 

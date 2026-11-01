@@ -124,7 +124,7 @@ Source       id, type (rss|google_news|hn|reddit), url/query, weight, enabled
 Article      id (hash of canonical_url), canonical_url, url, source_id, title,
              author, published_at, fetched_at, summary, lead_image,
              extraction: {status, method, error, error_type, word_count,
-                          attempts, last_attempt_at},
+                          attempts, last_attempt_at, declared_canonical},
              content_ref (blob path), score, score_breakdown, cluster_id
 Feedback     id, article_id, event (open|read|like|dismiss|mute_source),
              value (e.g. read seconds), created_at

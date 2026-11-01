@@ -10,7 +10,8 @@ from __future__ import annotations
 import json
 import math
 import re
-from collections.abc import Callable, Collection, Sequence
+from collections import defaultdict
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -57,6 +58,7 @@ class BuiltFeed:
     candidates: int
     dropped: int
     links_for_missing_content: int
+    duplicates: int = 0
 
 
 def _timestamp(value: datetime) -> str:
@@ -119,6 +121,53 @@ def _problem(article: Article) -> str | None:
     return None
 
 
+def _story_end(article: Article, by_address: Mapping[str, Article]) -> str:
+    """The id of the row that ``article``'s declared canonicals finally lead to.
+
+    Rows with the same end are one story. A loop has no end, so every row
+    leading into it agrees on the smallest id in the loop.
+    """
+    path = [article.id]
+    current = article
+    while (declared := current.extraction.declared_canonical) and declared in by_address:
+        current = by_address[declared]
+        if current.id in path:
+            return min(path[path.index(current.id) :])
+        path.append(current.id)
+    return path[-1]
+
+
+def _one_per_story(
+    ranked: Sequence[Article],
+    articles: Sequence[Article],
+    has_content: Callable[[Article], bool],
+) -> list[Article]:
+    """``ranked`` with one row per story, in the same order (#147).
+
+    The row kept is the one with readable text; among equals, the canonical
+    target, then the highest ranked. Links are followed through all ``articles``,
+    so a story stays whole when a row in the middle isn't a candidate, but only
+    ``ranked`` rows can be shown: a target the feed can't show never hides its copy.
+
+    A declared address also matches a row by its first-seen ``url``, because a
+    target may have been re-keyed since, after its own page declared another
+    canonical. That is an exact match, not a normalised one: a miss shows the
+    story twice, which loses nothing.
+    """
+    by_address = {a.url: a for a in articles} | {a.canonical_url: a for a in articles}
+    stories: defaultdict[str, list[Article]] = defaultdict(list)
+    for article in ranked:
+        stories[_story_end(article, by_address)].append(article)
+
+    def shown(end: str, rows: list[Article]) -> Article:
+        if len(rows) == 1:
+            return rows[0]
+        return max(rows, key=lambda a: (_is_article(a) and has_content(a), a.id == end))
+
+    kept = {shown(end, rows).id for end, rows in stories.items()}
+    return [a for a in ranked if a.id in kept]
+
+
 def build_feed(
     articles: Sequence[Article],
     sources: Collection[Source],
@@ -136,7 +185,8 @@ def build_feed(
     ``has_content`` says whether an article's cleaned HTML is still stored; it
     is only asked about articles that would otherwise be shown as articles.
     Articles that can't form a valid item are dropped and logged, so one bad
-    article never blocks the feed.
+    article never blocks the feed. Rows linked by the canonical their page
+    declared are one story and take one place (``_one_per_story``).
     """
     if not _RUN_ID.fullmatch(run_id):
         raise ValueError(f"invalid run id {run_id!r}")
@@ -169,9 +219,10 @@ def build_feed(
             },
         )
     valid.sort(key=lambda a: (-(a.score or 0.0), -effective_time(a).timestamp(), a.id))
+    stories = _one_per_story(valid, articles, has_content)
     items: list[dict[str, Any]] = []
     missing = 0
-    for article in valid[:limit]:
+    for article in stories[:limit]:
         as_article = _is_article(article)
         if as_article and not has_content(article):
             as_article = False
@@ -183,7 +234,7 @@ def build_feed(
         "run_id": run_id,
         "items": items,
     }
-    return BuiltFeed(feed, len(candidates), dropped, missing)
+    return BuiltFeed(feed, len(candidates), dropped, missing, len(valid) - len(stories))
 
 
 def _content_exists(services: Services, article: Article) -> bool:
@@ -239,6 +290,7 @@ def publish_feed(
             "run_id": run_id,
             "items": len(built.feed["items"]),
             "dropped": built.dropped,
+            "duplicates": built.duplicates,
             "bytes": len(data),
         },
     )
