@@ -1,6 +1,6 @@
 # ADR-0007: Agents apply infrastructure inside a limited development scope
 
-- **Status:** Accepted, except that the scope is a separate project: partly superseded by [ADR-0008](0008-development-scope-is-the-existing-project.md)
+- **Status:** Accepted, except that the scope is a separate project, and that the development account "has no access to secret values" (no longer true of the account, and its spending is not bounded by quotas): partly superseded by [ADR-0008](0008-development-scope-is-the-existing-project.md)
 - **Date:** 2026-10-31
 - **Related:** #132, `AUTOMATION.md` §6 ("Cloud resources"); supersedes the "who applies changes" parts of [ADR-0004](0004-infrastructure-as-code.md); `PROJECT_PLAN.md` NFR-2, NFR-6.
 

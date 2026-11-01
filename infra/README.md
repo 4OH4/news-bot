@@ -277,22 +277,25 @@ gcloud auth application-default login
 Set the impersonation property before `application-default login`: the local
 gcloud reads it at login and, with it set, writes an impersonated credential
 file. With the order reversed, the file is the owner's plain user credential.
-The local gcloud source has no explicit impersonation flag for this command, so
-the order is the way.
+The global `--impersonate-service-account` flag exists too, but the local
+source doesn't show it changing what this login writes, so the order is the way.
 
-The login in that directory is the owner's. Calls made by `gcloud` and Terraform
-(through the gcloud configuration) are made as the service account. Python
-clients (Firestore, Cloud Storage) use the Application Default Credentials file
-alone and ignore `GOOGLE_IMPERSONATE_SERVICE_ACCOUNT`, so they act as the
-service account only if that file is of the impersonated type. The git-ignored
-`.claude/settings.local.json` then sets three environment variables for agents:
+The login in that directory is the owner's. Calls made by `gcloud` use the
+impersonation property and are made as the service account. Python clients
+(Firestore, Cloud Storage) and Terraform read the Application Default
+Credentials file, so they act as the service account only if that file is of the
+impersonated type. Do not set `GOOGLE_IMPERSONATE_SERVICE_ACCOUNT`: Terraform
+reads it and would then impersonate the account from the account itself, which
+needs a Token Creator grant that nothing gives it, so every `plan` would fail
+with a 403. Terraform as this account is unproven until the owner has run
+`terraform plan` once. The git-ignored `.claude/settings.local.json` sets two
+environment variables for agents:
 
 ```json
 {
   "env": {
     "CLOUDSDK_CONFIG": "/home/<user>/.config/gcloud-agents",
-    "GOOGLE_APPLICATION_CREDENTIALS": "/home/<user>/.config/gcloud-agents/application_default_credentials.json",
-    "GOOGLE_IMPERSONATE_SERVICE_ACCOUNT": "newsfeed-dev@<project-id>.iam.gserviceaccount.com"
+    "GOOGLE_APPLICATION_CREDENTIALS": "/home/<user>/.config/gcloud-agents/application_default_credentials.json"
   }
 }
 ```
@@ -308,8 +311,12 @@ python3 -c "import json,os; print(json.load(open(os.path.expanduser('~/.config/g
 ```
 
 `impersonated_service_account` is right; `authorized_user` means the file is the
-owner's own login. Until the owner confirms the type, agents must not use the
-Python cloud clients (for example `NEWSFEED_STORAGE=gcp newsfeed report`).
+owner's own login. To fix an `authorized_user` file, with
+`CLOUDSDK_CONFIG` set as above, run `gcloud auth application-default revoke`,
+check that `auth/impersonate_service_account` is set, then run
+`gcloud auth application-default login` again and re-check the type. Until the
+owner confirms the type, agents must not use the Python cloud clients (for
+example `NEWSFEED_STORAGE=gcp newsfeed report`) or Terraform.
 
 ### The risk
 
@@ -325,6 +332,13 @@ the image, so it can run code as the runtime account. That account reaches
 Firestore (including the owner's feedback), the content bucket and any secret.
 So the account's practical reach includes writing and deleting that data and
 reading secret values. The owner accepts this by merging, or removes the grants.
+
+Two more points. The agents' configuration holds the owner's login, so
+unsetting the impersonation property, or using its refresh token directly,
+acts as the owner with the owner's full access. And `run.developer` can resize
+and run the job, so a bill is possible; nothing in `infra/` sets the quotas
+that ADR-0007 relies on, and budget alerts don't stop spending.
+
 The Cloud Run permissions here are from memory, not checked against a cloud
 call.
 

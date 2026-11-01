@@ -10,11 +10,17 @@ ADR-0007 let agents apply infrastructure inside a limited development scope and 
 
 ## Decision
 
-**The existing project is the development scope. No second project is created.** The rest of ADR-0007 stands.
+**The existing project is the development scope. No second project is created.** ADR-0007's statement that the development account "has no access to secret values" is no longer true of this account: it can reach them by running code as the runtime account (below). Its reliance on quotas to bound spending is also unmet, because nothing in `infra/` sets them and `run.developer` can resize and run the job, so a bill is possible. The rest of ADR-0007 stands.
 
 - **What limited damage before.** The separate project: nothing in it was worth losing, and the account had no route to anything else.
 - **What limits it now.** The development service account's roles (listed in `infra/README.md`), reached by impersonation with short-lived tokens and no key files; no IAM, billing, budget or secret changes; no direct write access to Firestore or the content bucket. These roles are not the whole limit: with `run.developer`, `iam.serviceAccountUser` on the runtime account and `artifactregistry.repoAdmin`, the account can run code as the runtime account, which reaches Firestore, the content bucket and secrets. `infra/README.md` ("The risk") says so, and the owner accepts it by merging or removes the grants.
 - **Variables and state.** ADR-0004's single root module and state stay as they are, so ADR-0007's remark that a development scope may need its own variables and state doesn't apply.
+
+## Alternatives considered
+
+- **A separate development project (ADR-0007's plan).** Restores the old limit, but costs a second project, state and variables, and the owner chose not to.
+- **The existing project without the Cloud Run and Artifact Registry grants.** Removes the route to the runtime account, but agents then can't deploy or run the job.
+- **The existing project with those grants, accepting the risk.** Chosen, with the risk on record.
 
 ## Consequences
 
