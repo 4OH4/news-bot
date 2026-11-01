@@ -102,7 +102,7 @@ Anything the human rejects at the milestone becomes a normal issue.
    - **Process review:** those numbers against the previous milestone, the top three friction points from the Phase Log (evidence and a proposed change each), how the last milestone's changes turned out, and the human's own friction notes. Update `AUTOMATION.md` §15, including what didn't work.
    - **Next phase:** proposed goal, and anything found this phase that changes the plan.
    - **Cost of failure:** your statement for the next phase, and what changed. Update `CLAUDE.md` in the same PR, so that merging the report confirms it.
-3. Update the phase's status in `PROJECT_PLAN.md` §6 in the same PR. Open it as a normal PR on `issue-<n>-phase-<n>-milestone`, closing the Phase Log. It is Tier C. The human is its reviewer, so it needs no independent one.
+3. Update the phase's status in `PROJECT_PLAN.md` §6 in the same PR. Open it as a draft PR on `issue-<n>-phase-<n>-milestone`, closing the Phase Log. It is Tier C. Start `subagent_type: reviewer` on it, to check the report's claims against the Phase Log and the evidence, clear what it finds, then mark the PR ready.
 4. Tell the human the milestone is ready, with the link and the "Try it" line.
 
 ## 7. Milestone review

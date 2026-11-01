@@ -79,7 +79,7 @@ The report lives at `docs/milestones/phase-<n>.md`, following the pattern of `do
 
 Sign-off is always a positive confirmation from the human. Nothing moves on automatically, and no time limit or waiting period applies to a milestone review. Where an exit criterion mentions elapsed time, such as "runs hourly for a week", the report gives the evidence so far, and the human judges when it's enough. Fixes during the review go through Gear 2 as normal.
 
-The human is the report's reviewer, so it needs no independent one, and its PR also updates the phase's status in `PROJECT_PLAN.md` §6. A rejected decision becomes an issue in the next phase, and it doesn't block sign-off unless the human says so. After sign-off, the lead closes the GitHub milestone and moves carried items to the next phase. Only process fixes that the next phase relies on go first, and the rest carry forward.
+The report gets an independent review before it reaches the human, and its PR also updates the phase's status in `PROJECT_PLAN.md` §6. A rejected decision becomes an issue in the next phase, and it doesn't block sign-off unless the human says so. After sign-off, the lead closes the GitHub milestone and moves carried items to the next phase. Only process fixes that the next phase relies on go first, and the rest carry forward.
 
 **Feedback during a phase.** The human can try work in progress at any time and comment in the chat or the Phase Log. The lead turns each comment into an issue or a follow-up.
 
