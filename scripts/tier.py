@@ -252,12 +252,11 @@ REQUIRED_CHECK_WORDS = {
     "test change report": re.compile(r"\btest change report\b", re.IGNORECASE),
     "REVIEW.md": re.compile(r"\bREVIEW\.md\b", re.IGNORECASE),
 }
-# "skipped" is also an article status, so a mutation described as "from skipped to failed" or
-# "`skipped` articles" is not a skipped check. Those uses are exempt; any other "skipped"
-# (including "skipped mutation") still counts as a check left undone.
+# "skipped" is also an article status, so the reviewer brief asks for status names in backticks.
+# Only a backticked `skipped`, or "from skipped" (a status change), is exempt; any bare
+# "skipped" counts as a check left undone.
 CHECK_NOT_DONE_RE = re.compile(
-    r"\bnot done\b"
-    r"|(?<![`\w])(?<!\bfrom )(?<!\bto )\bskipped\b(?![`\w])(?! (?:to|articles?|status|items?)\b)",
+    r"\bnot done\b|(?<!`)(?<!\bfrom )\bskipped\b(?!`)",
     re.IGNORECASE,
 )
 

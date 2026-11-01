@@ -899,6 +899,8 @@ def test_checks_must_be_on_the_latest_review() -> None:
     [
         "Checks done: red, mutation (flipped the status from skipped to failed), "
         "test change report, REVIEW.md",
+        "Checks done: red, mutation (also-replace ok, partial, paywalled, `skipped`, pending "
+        "all caught), test change report, REVIEW.md",
         "Checks done: red, mutation (made `skipped` articles count as failed), "
         "test change report, REVIEW.md",
     ],
@@ -915,6 +917,13 @@ def test_naming_the_skipped_article_status_is_not_a_skipped_check(line: str) -> 
         "Checks done: red, skipped mutation, test change report, REVIEW.md",
         "Checks done: red, mutation was skipped, test change report, REVIEW.md",
         "Checks done: red, test change report, REVIEW.md, mutation not done",
+        "Checks done: red, mutation (also-replace ok, partial, paywalled, skipped, pending "
+        "all caught), test change report, REVIEW.md",
+        "Checks done: red, mutation skipped to save time, test change report, REVIEW.md",
+        "Checks done: red, mutation Skipped to stay in budget, test change report, REVIEW.md",
+        "Checks done: red n/a due to skipped run, mutation, test change report, REVIEW.md",
+        "Checks done: red, mutation skipped items, test change report, REVIEW.md",
+        "Checks done: red, mutation skipped status mutation, test change report, REVIEW.md",
     ],
 )
 def test_a_check_that_was_skipped_or_not_done_is_still_refused(line: str) -> None:
