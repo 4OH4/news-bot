@@ -1553,3 +1553,12 @@ def test_patches_reach_the_classifier(monkeypatch: pytest.MonkeyPatch) -> None:
     assert result.reasons == [
         "infra/terraform/deploy.tf changes IAM, access, billing, budgets or service accounts"
     ]
+
+
+def test_pr_template_has_evidence_after_for_human_review() -> None:
+    """The real template keeps `## Evidence` below `## For human review`."""
+    text = (ROOT / ".github" / "pull_request_template.md").read_text(encoding="utf-8")
+    headings = [line.strip() for line in text.splitlines() if line.startswith("## ")]
+    assert "## Evidence" in headings
+    assert "## For human review" in headings
+    assert headings.index("## Evidence") > headings.index("## For human review")
