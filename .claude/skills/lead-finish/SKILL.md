@@ -42,7 +42,7 @@ Don't copy information the board, git history or the Phase Log already holds. Re
 ## 5. Report
 
 Tell the user, briefly:
-- where the phase stands, and the report sections from `/lead-start` that have anything in them (at a milestone, also the milestone report's "Process review", which is step 6 of `/lead-start`, not a report section);
+- where the phase stands, and the report sections from `/lead-start` that have anything in them (at a milestone, also the milestone report's "Process review", which is part 1 of `/lead-milestone` (`/lead-start` step 6), not a report section);
 - anything only they can do;
 - how to resume: start a new conversation in this folder with `/lead-start`.
 
