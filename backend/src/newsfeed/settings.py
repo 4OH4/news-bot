@@ -6,10 +6,12 @@ rank it is configuration in ``config/`` (CLAUDE.md, rule 5).
 
 from __future__ import annotations
 
+import math
+from datetime import timedelta
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from newsfeed.eval.snapshot import default_fixtures_dir
@@ -62,7 +64,11 @@ class Settings(BaseSettings):
         ),
     )
     retry_window_days: float = Field(
-        default=3, ge=0, description="Only retry articles fetched within this many days."
+        default=3,
+        ge=0,
+        le=36500,  # finite and small enough for timedelta; NaN and infinity are rejected
+        allow_inf_nan=False,
+        description="Only retry articles fetched within this many days.",
     )
     retry_partial: bool = Field(
         default=False, description="Also retry partial extractions (usually a short page)."
@@ -72,6 +78,22 @@ class Settings(BaseSettings):
         ge=0,
         description="Minimum seconds between requests to one host.",
     )
+
+    @field_validator("retry_backoff_hours")
+    @classmethod
+    def _backoff_positive(cls, value: tuple[float, ...]) -> tuple[float, ...]:
+        # A zero or negative wait would retry on every run: impolite to publishers (rule 6).
+        # NaN and infinity pass a bare ``<= 0`` check but break timedelta in should_retry.
+        for hours in value:
+            try:
+                valid = math.isfinite(hours) and hours > 0 and timedelta(hours=hours) > timedelta(0)
+            except OverflowError:
+                valid = False
+            if not valid:
+                raise ValueError(
+                    f"retry backoff hours must all be positive and finite, got {list(value)}"
+                )
+        return value
 
     @model_validator(mode="after")
     def _gcp_needs_bucket(self) -> Settings:

@@ -1516,3 +1516,561 @@ def test_skipped_attempts_are_counted(tmp_path: Path, repository: SqliteReposito
     stored = _by_url(repository)[pdf].extraction
     assert stored.status is ExtractionStatus.SKIPPED
     assert (stored.attempts, stored.last_attempt_at) == (1, RETRY_NOW)
+
+
+# --- Retrying partial articles keeps the better result -----------------------------
+
+PARTIAL_POLICY = RetryPolicy(retry_partial=True)
+OLD_TEXT = "<p>Earlier partial body, invented.</p>"
+
+
+def _stored_partial(
+    services: Services, url: str, *, words: int = 160, source_id: str = "s"
+) -> Article:
+    """A partial article, due a retry, whose earlier content sits in the blob store."""
+    base = _article_for(url, source_id)
+    ref = services.blobs.put(f"articles/{base.id}.html", OLD_TEXT.encode(), "text/html")
+    article = base.model_copy(
+        update={
+            "fetched_at": RETRY_NOW - timedelta(hours=10),
+            "content_ref": ref,
+            "extraction": ArticleExtraction(
+                status=ExtractionStatus.PARTIAL,
+                method="earlier",
+                word_count=words,
+                attempts=1,
+                last_attempt_at=RETRY_NOW - timedelta(minutes=90),
+            ),
+        }
+    )
+    services.repository.upsert_article(article)
+    return article
+
+
+def _retry_partial(services: Services, **kwargs: object) -> RunStats:
+    return run_pipeline(
+        services,
+        [],
+        ingest=False,
+        rank=False,
+        publish=False,
+        clock=lambda: RETRY_NOW,
+        **kwargs,  # type: ignore[arg-type]
+    )
+
+
+def _kept_unchanged(services: Services, url: str, *, words: int = 160) -> None:
+    stored = {a.url: a for a in services.repository.list_articles()}[url]
+    assert stored.extraction.status is ExtractionStatus.PARTIAL
+    assert stored.extraction.word_count == words
+    assert stored.extraction.method == "earlier"
+    assert stored.content_ref is not None
+    assert services.blobs.get(stored.content_ref).decode() == OLD_TEXT
+    assert (stored.extraction.attempts, stored.extraction.last_attempt_at) == (2, RETRY_NOW)
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        {"status": None, "error": "timeout"},
+        {"status": 503},
+        {"status": 200, "body": "<html><p>x</p></html>"},  # the extractor then gives a shorter page
+    ],
+    ids=["timeout", "server-error", "thinner-page"],
+)
+def test_a_worse_retry_keeps_the_partial_articles_text_and_status(
+    tmp_path: Path, repository: SqliteRepository, response: dict[str, object]
+) -> None:
+    url = "https://r.example.com/p/1"
+    fetcher = FakeFetcher()
+    fetcher.add(
+        url,
+        response.get("body", b""),  # type: ignore[arg-type]
+        status=response["status"],  # type: ignore[arg-type]
+        error=response.get("error"),  # type: ignore[arg-type]
+        headers=HTML,
+    )
+    thinner = _ok("Thin.", status=ExtractionStatus.PARTIAL, word_count=30)
+    services = _services(
+        tmp_path, repository, fetcher, FakeExtractor(default=thinner), retry=PARTIAL_POLICY
+    )
+    _stored_partial(services, url)
+
+    _retry_partial(services)
+
+    _kept_unchanged(services, url)
+
+
+def test_a_worse_retry_still_records_the_latest_error(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    url = "https://r.example.com/p/2"
+    fetcher = FakeFetcher()
+    fetcher.add(url, b"", status=503)
+    services = _services(tmp_path, repository, fetcher, retry=PARTIAL_POLICY)
+    _stored_partial(services, url)
+
+    _retry_partial(services)
+
+    stored = _by_url(repository)[url].extraction
+    assert stored.error is not None
+    assert "503" in stored.error
+
+
+def test_a_retry_that_fails_to_extract_keeps_the_partial_article(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    url = "https://r.example.com/p/3"
+    fetcher = FakeFetcher()
+    fetcher.add(url, "<html><p>x</p></html>", headers=HTML)
+    failing = ExtractionResult(status=ExtractionStatus.FAILED, error="no content found")
+    services = _services(
+        tmp_path, repository, fetcher, FakeExtractor(default=failing), retry=PARTIAL_POLICY
+    )
+    _stored_partial(services, url)
+
+    _retry_partial(services)
+
+    _kept_unchanged(services, url)
+
+
+@pytest.mark.parametrize(
+    ("result", "status", "words"),
+    [
+        (
+            _ok("Longer partial body.", status=ExtractionStatus.PARTIAL, word_count=240),
+            "partial",
+            240,
+        ),
+        (_ok("Full body.", word_count=500), "ok", 500),
+    ],
+    ids=["longer-partial", "ok"],
+)
+def test_a_better_retry_replaces_the_partial_article(
+    tmp_path: Path,
+    repository: SqliteRepository,
+    result: ExtractionResult,
+    status: str,
+    words: int,
+) -> None:
+    url = "https://r.example.com/p/4"
+    fetcher = FakeFetcher()
+    fetcher.add(url, "<html><p>x</p></html>", headers=HTML)
+    services = _services(
+        tmp_path, repository, fetcher, FakeExtractor(default=result), retry=PARTIAL_POLICY
+    )
+    _stored_partial(services, url)
+
+    _retry_partial(services)
+
+    stored = _by_url(repository)[url]
+    assert stored.extraction.status.value == status
+    assert stored.extraction.word_count == words
+    assert (stored.extraction.attempts, stored.extraction.last_attempt_at) == (2, RETRY_NOW)
+    assert stored.content_ref is not None
+    assert result.text in services.blobs.get(stored.content_ref).decode()
+
+
+def test_a_retry_with_the_same_length_partial_keeps_the_earlier_one(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    url = "https://r.example.com/p/5"
+    fetcher = FakeFetcher()
+    fetcher.add(url, "<html><p>x</p></html>", headers=HTML)
+    same = _ok("Same length.", status=ExtractionStatus.PARTIAL, word_count=160)
+    services = _services(
+        tmp_path, repository, fetcher, FakeExtractor(default=same), retry=PARTIAL_POLICY
+    )
+    _stored_partial(services, url)
+
+    _retry_partial(services)
+
+    _kept_unchanged(services, url)
+
+
+def test_a_failed_article_retried_into_a_failure_is_still_overwritten(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    """Failed articles behave as before: the new error replaces the old one."""
+    url = RETRY_URLS["due"]
+    repository.upsert_article(_failed(url, "timeout", attempts=1, minutes_ago=90))
+    fetcher = FakeFetcher()
+    fetcher.add(url, b"", status=503)
+    services = _services(tmp_path, repository, fetcher)
+
+    _retry_partial(services)
+
+    stored = _by_url(repository)[url].extraction
+    assert stored.error is not None
+    assert "503" in stored.error
+    assert stored.error_type == "http_5xx"
+    assert stored.attempts == 2
+
+
+def test_partial_retries_respect_the_limit_and_keep_the_better_result(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    fetcher = FakeFetcher()
+    urls = ["https://r.example.com/p/6", "https://r.example.com/p/7"]
+    for url in urls:
+        fetcher.add(url, b"", status=503)
+    services = _services(tmp_path, repository, fetcher, retry=PARTIAL_POLICY)
+    for url in urls:
+        _stored_partial(services, url)
+
+    stats = _retry_partial(services, limit=1)
+
+    counts = stats.stage_counts[PipelineStage.EXTRACT]
+    assert (counts["attempted"], counts["retried"]) == (1, 1)
+    stored = _by_url(repository)
+    tried = [u for u in urls if stored[u].extraction.attempts == 2]
+    assert len(tried) == 1
+    _kept_unchanged(services, tried[0])
+    untried = next(u for u in urls if u not in tried)
+    assert stored[untried].extraction.last_attempt_at != RETRY_NOW
+
+
+def test_partial_retries_respect_the_source_filter_and_keep_the_better_result(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    mine, other = "https://r.example.com/p/8", "https://r.example.com/p/9"
+    fetcher = FakeFetcher()
+    fetcher.add(mine, b"", status=503)
+    fetcher.add(other, b"", status=503)
+    services = _services(tmp_path, repository, fetcher, retry=PARTIAL_POLICY)
+    _stored_partial(services, mine, source_id="wanted")
+    _stored_partial(services, other, source_id="unwanted")
+
+    stats = _retry_partial(services, extract_source_ids=["wanted"])
+
+    assert stats.stage_counts[PipelineStage.EXTRACT]["retried"] == 1
+    _kept_unchanged(services, mine)
+    assert _by_url(repository)[other].extraction.attempts == 1
+    assert [c.url for c in fetcher.calls] == [mine]
+
+
+# --- Review follow-ups: every write path keeps the partial; mutation guards --------
+
+
+def _fetcher_with(url: str, body: object = b"", **kwargs: object) -> FakeFetcher:
+    fetcher = FakeFetcher()
+    fetcher.add(url, body, **kwargs)  # type: ignore[arg-type]
+    return fetcher
+
+
+def test_a_non_html_retry_keeps_the_partial_article(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    url = "https://r.example.com/p/10"
+    fetcher = _fetcher_with(url, b"{}", headers={"content-type": "application/json"})
+    services = _services(tmp_path, repository, fetcher, retry=PARTIAL_POLICY)
+    _stored_partial(services, url)
+
+    _retry_partial(services)
+
+    _kept_unchanged(services, url)
+    error = _by_url(repository)[url].extraction.error
+    assert error is not None
+    assert "not an HTML page" in error
+
+
+def test_a_paywalled_retry_keeps_the_partial_article(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    url = "https://r.example.com/p/11"
+    services = _services(tmp_path, repository, _fetcher_with(url, status=402), retry=PARTIAL_POLICY)
+    _stored_partial(services, url)
+
+    _retry_partial(services)
+
+    _kept_unchanged(services, url)
+    error = _by_url(repository)[url].extraction.error
+    assert error is not None
+    assert "402" in error
+
+
+def test_a_failed_article_retried_into_a_paywall_is_still_overwritten(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    url = RETRY_URLS["due"]
+    repository.upsert_article(_failed(url, "timeout", attempts=1, minutes_ago=90))
+    services = _services(tmp_path, repository, _fetcher_with(url, status=402))
+
+    _retry_partial(services)
+
+    stored = _by_url(repository)[url].extraction
+    assert stored.status is ExtractionStatus.PAYWALLED
+    assert stored.attempts == 2
+
+
+def test_a_failed_article_retried_into_ok_is_replaced(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    url = RETRY_URLS["due"]
+    repository.upsert_article(_failed(url, "timeout", attempts=1, minutes_ago=90))
+    fetcher = _fetcher_with(url, "<html><p>x</p></html>", headers=HTML)
+    services = _services(
+        tmp_path, repository, fetcher, FakeExtractor(default=_ok("Fresh.", word_count=300))
+    )
+
+    _retry_partial(services)
+
+    stored = _by_url(repository)[url].extraction
+    assert (stored.status, stored.word_count) == (ExtractionStatus.OK, 300)
+
+
+def test_a_kept_partial_records_the_error_category(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    url = "https://r.example.com/p/12"
+    services = _services(tmp_path, repository, _fetcher_with(url, status=503), retry=PARTIAL_POLICY)
+    _stored_partial(services, url)
+
+    _retry_partial(services)
+
+    assert _by_url(repository)[url].extraction.error_type == "http_5xx"
+
+
+def test_a_kept_partial_records_the_extractors_error(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    url = "https://r.example.com/p/13"
+    failing = ExtractionResult(status=ExtractionStatus.FAILED, error="no content found")
+    services = _services(
+        tmp_path,
+        repository,
+        _fetcher_with(url, "<html><p>x</p></html>", headers=HTML),
+        FakeExtractor(default=failing),
+        retry=PARTIAL_POLICY,
+    )
+    _stored_partial(services, url)
+
+    _retry_partial(services)
+
+    assert _by_url(repository)[url].extraction.error == "no content found"
+    assert _by_url(repository)[url].extraction.error_type == "other"
+
+
+# --- Second review: refinement waits for a better result; keep_earlier is reached --------
+
+CANONICAL_PAGE = (
+    '<html><head><link rel="canonical" href="https://r.example.com/story/elsewhere">'
+    "</head><body><p>x</p></body></html>"
+)
+THIN = ExtractionResult(status=ExtractionStatus.PARTIAL, text="thin", word_count=30)
+
+
+def test_a_worse_retry_does_not_merge_the_partial_into_a_stored_canonical(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    url = "https://r.example.com/story/1"
+    other = "https://r.example.com/story/elsewhere"
+    repository.upsert_article(_failed(other, "timeout", attempts=3, minutes_ago=5))
+    services = _services(
+        tmp_path,
+        repository,
+        _fetcher_with(url, CANONICAL_PAGE, headers=HTML),
+        FakeExtractor(default=THIN),
+        retry=PARTIAL_POLICY,
+    )
+    _stored_partial(services, url)
+
+    stats = _retry_partial(services)
+
+    _kept_unchanged(services, url)
+    assert len(repository.list_articles()) == 2
+    assert "merged" not in stats.stage_counts["extract"]
+
+
+def test_a_worse_retry_does_not_rekey_the_partial(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    url = "https://r.example.com/story/2"
+    services = _services(
+        tmp_path,
+        repository,
+        _fetcher_with(url, CANONICAL_PAGE, headers=HTML),
+        FakeExtractor(default=THIN),
+        retry=PARTIAL_POLICY,
+    )
+    before = _stored_partial(services, url)
+
+    _retry_partial(services)
+
+    _kept_unchanged(services, url)
+    (stored,) = repository.list_articles()
+    assert (stored.id, stored.canonical_url) == (before.id, before.canonical_url)
+
+
+def test_a_better_retry_still_refines_the_canonical_url(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    url = "https://r.example.com/story/3"
+    services = _services(
+        tmp_path,
+        repository,
+        _fetcher_with(url, CANONICAL_PAGE, headers=HTML),
+        FakeExtractor(default=_ok("Full text.", word_count=400)),
+        retry=PARTIAL_POLICY,
+    )
+    _stored_partial(services, url)
+
+    _retry_partial(services)
+
+    (stored,) = repository.list_articles()
+    assert stored.canonical_url == "https://r.example.com/story/elsewhere"
+    assert stored.extraction.status is ExtractionStatus.OK
+
+
+def test_a_longer_partial_retry_refines_the_canonical_url(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    url = "https://r.example.com/story/5"
+    longer = ExtractionResult(status=ExtractionStatus.PARTIAL, text="longer", word_count=240)
+    services = _services(
+        tmp_path,
+        repository,
+        _fetcher_with(url, CANONICAL_PAGE, headers=HTML),
+        FakeExtractor(default=longer),
+        retry=PARTIAL_POLICY,
+    )
+    _stored_partial(services, url)
+
+    _retry_partial(services)
+
+    (stored,) = repository.list_articles()
+    assert stored.canonical_url == "https://r.example.com/story/elsewhere"
+    assert stored.extraction.word_count == 240
+
+
+def test_a_better_retry_merges_into_a_stored_article_that_has_text(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    url = "https://r.example.com/story/6"
+    other = "https://r.example.com/story/elsewhere"
+    target = _article_for(other).model_copy(
+        update={
+            "extraction": ArticleExtraction(
+                status=ExtractionStatus.OK, method="earlier", word_count=300
+            )
+        }
+    )
+    repository.upsert_article(target)
+    services = _services(
+        tmp_path,
+        repository,
+        _fetcher_with(url, CANONICAL_PAGE, headers=HTML),
+        FakeExtractor(default=_ok("Full text.", word_count=400)),
+        retry=PARTIAL_POLICY,
+    )
+    _stored_partial(services, url)
+
+    stats = _retry_partial(services)
+
+    (stored,) = repository.list_articles()
+    assert stored.id == target.id
+    assert stats.stage_counts["extract"]["merged"] == 1
+
+
+class _FailingArticleBlobs(LocalBlobStore):
+    """Fails writes of article bodies once ``failing`` is set."""
+
+    failing = False
+
+    def put(self, key: str, data: bytes, content_type: str = "application/octet-stream") -> str:
+        if self.failing and key.startswith("articles/"):
+            raise OSError("disk full")
+        return super().put(key, data, content_type)
+
+
+def test_a_blob_failure_after_a_rekey_leaves_one_row_under_the_new_id(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    url = "https://r.example.com/story/7"
+    blobs = _FailingArticleBlobs(tmp_path / "blobs")
+    services = _services(
+        tmp_path,
+        repository,
+        _fetcher_with(url, CANONICAL_PAGE, headers=HTML),
+        FakeExtractor(default=_ok("Full text.", word_count=400)),
+        blobs=blobs,
+        retry=PARTIAL_POLICY,
+    )
+    _stored_partial(services, url)
+    blobs.failing = True
+
+    stats = _retry_partial(services)
+
+    (stored,) = repository.list_articles()
+    assert stored.canonical_url == "https://r.example.com/story/elsewhere"
+    assert stored.extraction.status is ExtractionStatus.PARTIAL
+    assert stored.extraction.word_count == 160
+    assert stats.error_count == 1
+
+
+def test_an_extractor_paywalled_retry_replaces_the_partial(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    url = "https://r.example.com/story/4"
+    paywalled = ExtractionResult(status=ExtractionStatus.PAYWALLED, error="subscriber notice found")
+    services = _services(
+        tmp_path,
+        repository,
+        _fetcher_with(url, "<html><p>x</p></html>", headers=HTML),
+        FakeExtractor(default=paywalled),
+        retry=PARTIAL_POLICY,
+    )
+    _stored_partial(services, url)
+
+    _retry_partial(services)
+
+    stored = _by_url(repository)[url].extraction
+    assert stored.status is ExtractionStatus.PAYWALLED
+    assert stored.error == "subscriber notice found"
+
+
+@pytest.mark.parametrize(
+    ("result", "status"),
+    [
+        (ExtractionResult(status=ExtractionStatus.FAILED, error="no content found"), "failed"),
+        (ExtractionResult(status=ExtractionStatus.PAYWALLED, error="notice"), "paywalled"),
+    ],
+    ids=["failed", "paywalled"],
+)
+def test_a_failed_article_retried_into_an_extractor_result_takes_its_status_and_error(
+    tmp_path: Path, repository: SqliteRepository, result: ExtractionResult, status: str
+) -> None:
+    """Reaches the keep_earlier line (the fetch succeeds); it must not keep the old failure."""
+    url = RETRY_URLS["due"]
+    repository.upsert_article(_failed(url, "timeout", attempts=1, minutes_ago=90))
+    services = _services(
+        tmp_path,
+        repository,
+        _fetcher_with(url, "<html><p>x</p></html>", headers=HTML),
+        FakeExtractor(default=result),
+    )
+
+    _retry_partial(services)
+
+    stored = _by_url(repository)[url].extraction
+    assert stored.status.value == status
+    assert stored.error == result.error
+    assert stored.attempts == 2
+
+
+def test_extract_saved_url_keeps_a_stored_partial_against_a_thinner_page(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    url = "https://r.example.com/story/5"
+    services = _services(
+        tmp_path,
+        repository,
+        _fetcher_with(url, "<html><p>x</p></html>", headers=HTML),
+        FakeExtractor(default=THIN),
+    )
+    _stored_partial(services, url)
+
+    article = extract_saved_url(services, url, clock=lambda: RETRY_NOW)
+
+    _kept_unchanged(services, url)
+    assert article.extraction.status is ExtractionStatus.PARTIAL
