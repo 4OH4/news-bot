@@ -135,3 +135,84 @@ def test_finish_also_carries_on_past_a_locked_worktree(
 
     assert calls == ["board", "summary"]
     assert "Session tidy-up complete" in capsys.readouterr().out
+
+
+def test_locked_worktree_with_uncommitted_changes_shows_both(repo: Path) -> None:
+    locked = repo / ".claude" / "worktrees" / "agent-locked"
+    (locked / "new.txt").write_text("work\n", encoding="utf-8")
+
+    kept = lead.tidy_worktrees(repo, set())
+
+    entry = next(k for k in kept if "agent-locked" in k)
+    assert "locked" in entry
+    assert "uncommitted changes" in entry
+
+
+def test_locked_worktree_with_unmerged_commits_says_so(repo: Path) -> None:
+    locked = repo / ".claude" / "worktrees" / "agent-locked"
+    (locked / "new.txt").write_text("work\n", encoding="utf-8")
+    git("add", "new.txt", cwd=locked)
+    git("commit", "-m", "wip", cwd=locked)
+
+    kept = lead.tidy_worktrees(repo, set())
+
+    entry = next(k for k in kept if "agent-locked" in k)
+    assert "locked" in entry
+    assert "not merged yet" in entry
+
+
+def fail_git(monkeypatch: pytest.MonkeyPatch, *prefix: str) -> None:
+    """Make `lead.run` fail for git commands that start with `prefix`."""
+    real = lead.run
+
+    def fake(
+        *args: str, cwd: Path | None = None, check: bool = True
+    ) -> subprocess.CompletedProcess[str]:
+        if args[1 : 1 + len(prefix)] == prefix:
+            if check:
+                sys.exit("failed: " + " ".join(args))
+            return subprocess.CompletedProcess(list(args), 1, "", "simulated failure")
+        return real(*args, cwd=cwd, check=check)
+
+    monkeypatch.setattr(lead, "run", fake)
+
+
+def run_start_and_collect(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> tuple[list[str], str]:
+    calls: list[str] = []
+    monkeypatch.setattr(lead, "main_checkout", lambda: repo)
+    monkeypatch.setattr(lead, "update_main", lambda root: [])
+    monkeypatch.setattr(lead, "ensure_env_and_hook", lambda root: None)
+    monkeypatch.setattr(lead, "merged_pr_heads", lambda: set())
+    monkeypatch.setattr(lead, "sync_board", lambda root: calls.append("board") or [])
+    monkeypatch.setattr(lead, "summary", lambda: calls.append("summary"))
+    lead.cmd("start")
+    return calls, capsys.readouterr().out.split("Kept back", 1)[1]
+
+
+@pytest.mark.parametrize(
+    ("failing", "expected"),
+    [
+        (("worktree", "remove"), "agent-free"),
+        (("status",), "git status failed"),
+        (("branch", "-D"), "branch worktree-agent-free"),
+    ],
+)
+def test_a_failing_git_command_is_kept_back_and_the_board_sync_still_runs(
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    failing: tuple[str, ...],
+    expected: str,
+) -> None:
+    fail_git(monkeypatch, *failing)
+    if failing == ("branch", "-D"):
+        # Free the branch from its worktree so the branch step has something to delete.
+        git("worktree", "remove", str(repo / ".claude" / "worktrees" / "agent-free"), cwd=repo)
+
+    calls, kept_section = run_start_and_collect(repo, monkeypatch, capsys)
+
+    assert calls == ["board", "summary"]
+    assert expected in kept_section
+    assert "simulated failure" in kept_section

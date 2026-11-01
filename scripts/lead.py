@@ -123,23 +123,29 @@ def tidy_worktrees(root: Path, merged_heads: set[str]) -> list[str]:
         branch = fields.get("branch", "").removeprefix("refs/heads/")
         if not path.exists():
             continue  # pruned below
+        label = f"{path.name} ({branch or 'detached'})"
+        status = run("git", "status", "--porcelain", cwd=path, check=False)
+        # A worktree that can't be inspected is never removed.
+        problems: list[str] = []
+        if status.returncode != 0:
+            problems.append(f"git status failed: {status.stderr.strip()}")
+        elif status.stdout.strip():
+            problems.append("uncommitted changes")
+        if branch and not is_merged(branch, root, merged_heads):
+            problems.append("not merged yet")
         if "locked" in fields or "locked" in block.split():
             reason = fields.get("locked", "").strip()
-            kept.append(
-                f"{path.name} ({branch or 'detached'}): locked"
-                + (f" ({reason})" if reason else "")
-            )
-        elif out("git", "status", "--porcelain", cwd=path):
-            kept.append(f"{path.name} ({branch or 'detached'}): uncommitted changes")
-        elif branch and not is_merged(branch, root, merged_heads):
-            kept.append(f"{path.name} ({branch}): not merged yet")
+            lock = "locked" + (f" ({reason})" if reason else "")
+            kept.append(f"{label}: {', '.join([lock, *problems])}")
+        elif problems:
+            kept.append(f"{label}: {', '.join(problems)}")
         else:
             # Never force: a refusal (e.g. a lock taken since listing) is reported.
             result = run("git", "worktree", "remove", str(path), cwd=root, check=False)
             if result.returncode == 0:
                 print(f"removed worktree {path.name}")
             else:
-                kept.append(f"{path.name} ({branch or 'detached'}): {result.stderr.strip()}")
+                kept.append(f"{label}: {result.stderr.strip()}")
     run("git", "worktree", "prune", cwd=root)
     return kept
 
@@ -155,8 +161,11 @@ def tidy_branches(root: Path, merged_heads: set[str]) -> list[str]:
         if branch == "main" or branch in in_use:
             continue
         if is_merged(branch, root, merged_heads):
-            run("git", "branch", "-D", branch, cwd=root)
-            print(f"deleted branch {branch}")
+            result = run("git", "branch", "-D", branch, cwd=root, check=False)
+            if result.returncode == 0:
+                print(f"deleted branch {branch}")
+            else:
+                kept.append(f"branch {branch}: {result.stderr.strip()}")
         else:
             kept.append(f"branch {branch}: not merged")
     return kept

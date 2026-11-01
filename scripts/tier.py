@@ -253,12 +253,11 @@ REQUIRED_CHECK_WORDS = {
     "REVIEW.md": re.compile(r"\bREVIEW\.md\b", re.IGNORECASE),
 }
 # "skipped" is also an article status, so the reviewer brief asks for status names in backticks.
-# Only a backticked `skipped`, or "from skipped" (a status change), is exempt; any bare
-# "skipped" counts as a check left undone.
-CHECK_NOT_DONE_RE = re.compile(
-    r"\bnot done\b|(?<!`)(?<!\bfrom )\bskipped\b(?!`)",
-    re.IGNORECASE,
-)
+# Only a fully backticked `skipped` is exempt. It is removed before the search, so a backtick
+# on one side only leaves a bare "skipped" that counts as a check left undone. (Two
+# lookarounds can't express "both sides", so the exemption is a removal, not a lookaround.)
+STATUS_SKIPPED_RE = re.compile(r"`skipped`", re.IGNORECASE)
+CHECK_NOT_DONE_RE = re.compile(r"\bnot done\b|\bskipped\b", re.IGNORECASE)
 
 EVAL_BEFORE_RE = re.compile(r"^[^\w\n]*before[^\w\n]+(\d+(?:\.\d+)?)", re.IGNORECASE | re.MULTILINE)
 EVAL_AFTER_RE = re.compile(r"^[^\w\n]*after[^\w\n]+(\d+(?:\.\d+)?)", re.IGNORECASE | re.MULTILINE)
@@ -476,7 +475,7 @@ def checks_statement_failure(review: str) -> str | None:
     missing = [name for name, word in REQUIRED_CHECK_WORDS.items() if not word.search(line)]
     if missing:
         return f"'Checks done:' doesn't mention {', '.join(missing)}"
-    if CHECK_NOT_DONE_RE.search(line):
+    if CHECK_NOT_DONE_RE.search(STATUS_SKIPPED_RE.sub("", line)):
         return "'Checks done:' says a check was not done"
     return None
 

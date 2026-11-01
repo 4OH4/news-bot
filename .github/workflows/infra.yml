@@ -23,6 +23,8 @@ permissions:
   contents: read
 
 jobs:
+  # scripts/tier.py reads this job name ("terraform") as the check that gates infra changes,
+  # so renaming it needs a matching change there.
   terraform:
     runs-on: ubuntu-latest
     timeout-minutes: 10

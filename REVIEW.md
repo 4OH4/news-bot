@@ -42,3 +42,9 @@ Failure patterns taken from real defects in this repo. Test authors and workers 
 - A test must check the outcome a user would see, not only that a function was called.
 - A deleted or loosened assertion needs a reason in the PR.
 - A test for a guard must reach the guard's line.
+- A test for a false match uses the real input that showed it, not a tidied-up copy.
+
+## Workflows and exemptions
+
+- A job or step `if` meant to run after a failure must contain a status function (`failure()`, `always()`), or it is skipped as soon as something fails. A workflow path that was never exercised is unverified.
+- An exemption that needs both sides of a word (such as a backtick on each side) can't be written as two negative lookarounds, because each one alone still lets a half-quoted word through. Remove the whole exempt form first, then search what is left.
