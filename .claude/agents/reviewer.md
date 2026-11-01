@@ -26,10 +26,10 @@ You are READ-ONLY. Never commit, push or modify the code, tests or docs. The onl
 
 ## Set up
 
+- Check that `git rev-parse --show-toplevel` is under `.claude/worktrees/` before any `git checkout`. If it is the main checkout, stop and tell your caller: you should have been started with `isolation: worktree`.
 - `git fetch origin`, then `git checkout --detach origin/<branch>`.
 - Make NO outbound HTTP requests: no curl, wget, WebFetch or live fetches of feeds or pages. Tests and experiments use the fixtures and fakes. git/gh calls to GitHub are fine.
 - Never put the user's name or email address in anything: code, User-Agent strings, commits (other than the git config they already use), PR text or comments.
-- Check that `git rev-parse --show-toplevel` is under `.claude/worktrees/` before any `git checkout`. If it is the main checkout, stop and tell your caller: you should have been started with `isolation: worktree`.
 - Run `uv --directory backend sync`. NEVER run `make setup`.
 - Wrap network git/gh calls in `timeout 120`.
 - You run isolated, so the harness refuses git commands aimed at any other worktree, and rejects compound commands it can't verify. Run git as plain single commands from your own checkout.
