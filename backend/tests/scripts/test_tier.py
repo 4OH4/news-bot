@@ -894,6 +894,71 @@ def test_checks_must_be_on_the_latest_review() -> None:
     ]
 
 
+@pytest.mark.parametrize(
+    "line",
+    [
+        "Checks done: red, mutation (flipped the status from skipped to failed), "
+        "test change report, REVIEW.md",
+        "Checks done: red, mutation (also-replace ok, partial, paywalled, `skipped`, pending "
+        "all caught), test change report, REVIEW.md",
+        "Checks done: red, mutation (made `skipped` articles count as failed), "
+        "test change report, REVIEW.md",
+    ],
+)
+def test_naming_the_skipped_article_status_is_not_a_skipped_check(line: str) -> None:
+    comments = owned(f"## Independent review\nFine.\n{line}", REVIEWED[1]["body"])
+    assert tier.gate_failures(pr(), TIER_A, GREEN, comments) == []
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "Checks done: red, mutation skipped, test change report, REVIEW.md",
+        "Checks done: red, skipped mutation, test change report, REVIEW.md",
+        "Checks done: red, mutation was skipped, test change report, REVIEW.md",
+        "Checks done: red, test change report, REVIEW.md, mutation not done",
+        "Checks done: red, mutation (also-replace ok, partial, paywalled, skipped, pending "
+        "all caught), test change report, REVIEW.md",
+        "Checks done: red, mutation skipped to save time, test change report, REVIEW.md",
+        "Checks done: red, mutation Skipped to stay in budget, test change report, REVIEW.md",
+        "Checks done: red n/a due to skipped run, mutation, test change report, REVIEW.md",
+        "Checks done: red, mutation skipped items, test change report, REVIEW.md",
+        "Checks done: red, mutation skipped status mutation, test change report, REVIEW.md",
+    ],
+)
+def test_a_check_that_was_skipped_or_not_done_is_still_refused(line: str) -> None:
+    comments = owned(f"## Independent review\nFine.\n{line}", REVIEWED[1]["body"])
+    assert tier.gate_failures(pr(), TIER_A, GREEN, comments) == [
+        "'Checks done:' says a check was not done"
+    ]
+
+
+# --- gate_failures: Terraform check ---------------------------------------------------
+# The infra workflow's only job is `terraform`, so its check run is named "terraform".
+
+
+@pytest.mark.parametrize("state", ["failure", "cancelled", "timed_out"])
+def test_a_failed_terraform_check_blocks_the_merge(state: str) -> None:
+    failures = tier.gate_failures(pr(), TIER_A, {**GREEN, "terraform": state}, REVIEWED)
+    assert failures == [f"check 'terraform' is {state}"]
+
+
+@pytest.mark.parametrize("state", ["in_progress", "queued"])
+def test_a_terraform_check_still_running_blocks_the_merge(state: str) -> None:
+    failures = tier.gate_failures(pr(), TIER_A, {**GREEN, "terraform": state}, REVIEWED)
+    assert failures == [f"check 'terraform' is {state}"]
+
+
+def test_a_pr_where_terraform_never_ran_is_not_blocked() -> None:
+    assert "terraform" not in GREEN
+    assert tier.gate_failures(pr(), TIER_A, GREEN, REVIEWED) == []
+
+
+def test_a_green_terraform_check_does_not_block() -> None:
+    checks = {**GREEN, "terraform": "success"}
+    assert tier.gate_failures(pr(), TIER_A, checks, REVIEWED) == []
+
+
 # --- gate_failures: Confirm later ---------------------------------------------------
 
 NO_CONFIRM = "Tier B, but the header has no **Confirm later:** entry"

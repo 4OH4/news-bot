@@ -71,7 +71,7 @@ For docs, config and other changes with no tests to judge, write "n/a" with the 
   Checks done: red <result>, mutation <what you broke and what caught it>, test change report <result>, REVIEW.md
   ```
 
-  Don't write the line if you didn't do the checks. If you couldn't do one, say so plainly with "not done" on that line, which stops the merge.
+  Don't write the line if you didn't do the checks. If you couldn't do one, say so plainly with "not done" on that line, which stops the merge. Put any article or item status name (`skipped`, `failed`, `paywalled` and so on) in backticks on that line: the gate treats a bare "skipped" as a check left undone.
 
 Don't merge, move board cards, or touch other PRs or issues.
 
