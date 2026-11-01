@@ -37,7 +37,7 @@ The three items the Phase 2 report left for this design are settled here. ADR wo
 
 **Framework: Preact, TypeScript, Vite and `vite-plugin-pwa`.** It's a small bundle for a phone, it builds to static files for Hosting, and Testing Library and Playwright both work with it. Next.js and SvelteKit add server features this client doesn't use. React costs about ten times the bundle for nothing used here. Plain TypeScript would leave state and rendering to hand-written code.
 
-**Offline.** The service worker precaches only the app shell. Data lives in IndexedDB and the app reads it first, because API calls carry a token and need app logic around them: the last good feed, the text of the top 50 article items, anything opened or liked, the feedback queue and per-story state. Images stay online-only, so an offline article shows its text. Sign-out clears everything.
+**Offline.** The service worker precaches only the app shell. Data lives in IndexedDB and the app reads it first, because API calls carry a token and need app logic around them: the last good feed, the text of the top 50 article items, anything opened or liked, the feedback queue and per-story state. Images stay online-only, so an offline article shows its text. Only a sign-out the user chooses clears all this. A forced one on a 401 or 403 ends the session and keeps the data, because a misconfigured owner email or a key-fetch failure mustn't wipe queued feedback or state that no route can restore (#180, #183, #184). The data stays readable to someone who signs in on the same phone until the API refuses them, which is accepted because it's the owner's phone.
 
 **Rendering third-party HTML.** The blob is sanitised at extraction, the client runs DOMPurify over it with the same tag list, and the CSP blocks inline script. A token sits in the same origin, so a sanitiser gap is a failure that matters. `no-referrer` applies to all images and links.
 
@@ -49,7 +49,7 @@ The three items the Phase 2 report left for this design are settled here. ADR wo
 
 **Merge gate.** #174 leaves `TEST_PATHS` out of source lines in `tier.py`, because `SRC_PATHS` includes `client/*`, so test-first client PRs would otherwise hit the 400-line limit. It also adds `client/firebase.json` to `TIER_C_PATHS`, because that file holds the CSP and the `/api/**` rewrite.
 
-**Deploy.** The region isn't in the repo, so `client/firebase.json` commits the placeholder `__GCP_REGION__` (#174), and #178 fills it in from `vars.GCP_REGION`. #178 installs `firebase-tools` from a lockfile in `tools/firebase/` with `--ignore-scripts`, not `npx`, and builds before the auth step, so third-party code doesn't run with the deploy identity.
+**Deploy.** The region isn't in the repo, so `client/firebase.json` commits the placeholder `__GCP_REGION__` (#174), and #178 fills it in from `vars.GCP_REGION`. #178 installs `firebase-tools` from a lockfile in `tools/firebase/` with `--ignore-scripts`, not `npx`, and builds before the auth step. The build mounts `client/` writable, so #178 then restores `client/firebase.json` from the checked-out commit and fails if it names `predeploy` or `postdeploy`, because Firebase runs those hooks as shell commands with the deploy credentials. Between them, these keep third-party code from running with the deploy identity.
 
 ## The demo
 
@@ -72,7 +72,8 @@ There are 15 issues in one line of work, with one demo, so epics would add nothi
 #173 story_id (B) ──► #181                                             │
 #174 scaffold (C) ─┬───► #180 sign-in ──► #181 feed list ──► #182 reader ──► #183 offline
                    └───► #178 deploy (C)
-#177 Terraform (C) ────► #178 ──► #179 human setup
+#177 Terraform (C) ────► #178
+#175, #178, #180, #181 ──► #179 human setup
 #176 ──► #185 report
 ```
 
@@ -82,15 +83,15 @@ There are 15 issues in one line of work, with one demo, so epics would add nothi
 | #172 `BlobStore.ref_for`, `TokenVerifier` | - | B | |
 | #173 `story_id` | - | B | |
 | #174 scaffold, `make client-*`, CI | - | C | |
-| #175 read API, `newsfeed serve` | #172 | A or B (dependencies) | High |
+| #175 read API, `newsfeed serve` | #172 | B | High |
 | #176 feedback API, saved copies | #175 | A | High |
 | #177 Terraform | - | C | High |
 | #178 deploy | #174, #177 | C | High |
-| #179 human setup | #175, #177, #178 | `needs-human` | |
-| #180 sign-in, API client | #174 | A or B | High |
+| #179 human setup | #175, #177, #178, #180, #181 | `needs-human` | |
+| #180 sign-in, API client | #174 | B | High |
 | #181 feed list | #173, #180 | A | |
-| #182 reader | #181 | A or B | High |
-| #183 offline | #182 | A or B | |
+| #182 reader | #181 | B | High |
+| #183 offline | #182 | B | |
 | #184 client feedback | #176, #183 | A | |
 | #185 report | #176 | A | |
 
@@ -114,20 +115,21 @@ Suggested first batch: #171, #172, #173 and #174, which touch no common files. #
 ## What the human must do, and what agents need first
 
 - **Merge the Tier C PRs:** #174, #177 and #178.
-- **#179**, after #177 and #178 merge: one `terraform apply`, a few clicks in the Firebase and Google Cloud consoles, and three repository variables. The issue gives exact steps. Agents can't do these, because the development service account doesn't exist yet (ADR-0007), and IAM and consent screens are the human's in any case.
+- **#179**, after #175, #177, #178, #180 and #181 merge: one `terraform apply`, a few clicks in the Firebase and Google Cloud consoles, and three repository variables. The issue gives exact steps. Agents can't do these, because the development service account doesn't exist yet (ADR-0007), and IAM and consent screens are the human's in any case.
 - **Carried from Phase 2, alongside the build:** #89, the live extraction check, which also covers run length, and steps 1 and 5 of the Phase 2 report, the feed and cost check. Both need the owner's account. A thin feed is the first thing daily use would show, so they shouldn't wait for the milestone.
 - **Agents need:** nothing new once #174 merges. The lead should confirm the agents can reach Docker from a worktree in the first batch.
 - **Brief gap, for the lead:** `test-author.md` and `worker.md` assume `backend/tests/`, `make lint` and `make test`. Client issues name their paths and `make client-*` commands, which should be enough. If it isn't, that's a small Tier C fix.
 
 ## First point the human can use something
 
-After #175, #177, #178, #179, #180 and #181: the feed list on the phone, signed in, installable, with live data. #182 follows directly, with articles readable. Feedback on the first use goes in the Phase Log, and the lead makes issues from it. #179 can be done as soon as its dependencies merge, without waiting for the rest of the client.
+After #175, #177, #178, #179, #180 and #181: the feed list on the phone, signed in, installable, with live data. #182 follows directly, with articles readable. Feedback on the first use goes in the Phase Log, and the lead makes issues from it. #179 waits for #180 and #181, because its last step and its definition of done are signing in on the phone and seeing the feed. It needs nothing after #181.
 
 ## Where this phase differs from "Cost of failure"
 
 The statement in `CLAUDE.md`, confirmed for Phase 3 by merging PR #163, covers this phase. These are the failures above the bar in it, and each carries `**Risk:** high`:
 
 - anyone but the owner reading content or writing feedback (#175, #176, #177, #180);
+- a bill from a flood of requests at the public service (#177), which the instance cap limits but doesn't stop, as the follow-up below explains;
 - losing a feedback event once it's accepted, or leaving article text in a CDN cache (#175, #176);
 - script running from article HTML in the same origin as the token (#182);
 - a privileged deploy that widens what it can change (#178).
@@ -152,13 +154,15 @@ Each is reversible. The owning issue repeats it in its PR header.
 | DOMPurify as a second sanitiser pass in the client | Remove it and rely on extraction and the CSP |
 | Client tooling runs in Docker through `make` | Install Node and allow-list `npm` |
 | `FirebaseTokenVerifier` lives in `adapters/` and delegates to `firebase_admin.auth.verify_id_token`, so the project writes no HTTP of its own (rules 1 and 6). The library's key fetch is a cloud SDK's internal traffic, not project HTTP | Delegate to `google-auth` inside the same adapter |
-| API limits: 0 to 2 instances, 512 MiB | Change the Terraform variables |
+| API limits: 0 to 1 instance, 512 MiB, 1 vCPU | Change the Terraform variables |
+| Only a sign-out the user chooses clears local data, and a forced one on 401 or 403 keeps it | Call the `onSignOut` hooks from `endSession` too |
 | `firebase-tools` locked in `tools/firebase/`, installed with `--ignore-scripts` | Use `npx` with an exact version |
 
 **Unverified, because this design made no outbound requests.** These come from memory of Google's documentation, and the first run of #179 tests them. If one fails, the lead calls the architect back.
 
 - Hosting rewrites reach Cloud Run in the project's region. Fallback: call the `run.app` URL directly with one allowed CORS origin.
 - The `google-beta` Terraform resources for Firebase are as named in #177.
+- Firebase resources under user credentials need `billing_project` and `user_project_override` on the `google-beta` provider, or the first `terraform apply` fails with a quota project error. #177 copies both from the existing `google` provider, so this should hold.
 - An installed Android PWA returns from Google's sign-in page. Fallback: sign in in Chrome first, since the installed app shares its storage.
 - Firestore rules are not open on a database that predates Firebase. #177 pins them to deny-all, so this holds either way.
 - `signInWithCredential` accepts the Google ID token with its `nonce`. It may instead answer `auth/missing-or-invalid-nonce`. Fallback: send Google the SHA-256 hex of the nonce and pass the raw nonce through `OAuthProvider('google.com').credential({ idToken, rawNonce })`. #180 checks this in the Firebase SDK source.
@@ -168,4 +172,4 @@ Each is reversible. The owning issue repeats it in its PR header.
 
 - **For the lead to decide:** `client` in `CONDITIONAL_CHECKS` passes the gate when absent, so a renamed job drops out silently. `REQUIRED_CHECKS` is stricter, but must match the `Protect main` ruleset, which the human changes. #174 uses `CONDITIONAL_CHECKS` until the lead chooses.
 - #175: `newsfeed serve` goes through `cli.py`, which still loads `trafilatura` and `newspaper` (0.4 s, 67 MiB). Lazy-import them if cold start matters.
-- #175: a sustained flood of 2 instances would cost roughly $130 a month (an estimate from memory). It's unlikely, and the budget alert covers it, so no change.
+- #177: the instance cap is 1, not 2, because the service is public and a bill matters. A flood lasting a whole month then costs about $65 in CPU and memory instead of $130, plus $0.40 per million requests that reach the app (estimates from memory). That is still above the $10 budget, in about five days. Nothing free stops it, because a budget only sends email, so the limit is a person acting on the alerts at 50, 90 and 100%: `gcloud run services remove-iam-policy-binding newsfeed-api --region=<region> --member=allUsers --role=roles/run.invoker` stops all traffic to the app, and `terraform apply` restores it. #177 puts this in `infra/README.md`. Rejected: under 1 vCPU, because Cloud Run then allows one request at a time and prefetch sends four (from memory); Cloud Armor, a paid service; a budget-triggered shutdown, which needs a function and Pub/Sub to guard against an unlikely flood. During a flood the phone may get 429s and keeps its cached feed, which is cheap.
