@@ -49,7 +49,7 @@ from newsfeed.models import (
     article_id,
 )
 from newsfeed.ports import Extractor, Fetcher
-from newsfeed.publish.feed import FEED_WINDOW_HOURS, publish_feed
+from newsfeed.publish.feed import FEED_WINDOW_HOURS, PARTIAL_MIN_WORDS, publish_feed
 from newsfeed.rank.interests import InterestsConfig
 from newsfeed.rank.stage import DEFAULT_WINDOW_HOURS, rank_recent
 from newsfeed.wiring import Services
@@ -541,11 +541,20 @@ def _with_changes(article: Article, **changes: object) -> Article:
 class _Attempt(TypedDict):
     attempts: int
     last_attempt_at: datetime
+    declared_canonical: str | None
 
 
 def _attempt(article: Article, now: datetime) -> _Attempt:
-    """The ``attempts`` and ``last_attempt_at`` to record for an attempt made at ``now``."""
-    return {"attempts": article.extraction.attempts + 1, "last_attempt_at": now}
+    """What an attempt made at ``now`` records, and what it carries over from earlier ones.
+
+    ``declared_canonical`` is carried here because a retry that never reads the
+    page can't declare it again, and the row must stay linked to its target.
+    """
+    return {
+        "attempts": article.extraction.attempts + 1,
+        "last_attempt_at": now,
+        "declared_canonical": article.extraction.declared_canonical,
+    }
 
 
 def _merge(
@@ -578,6 +587,9 @@ def _merge(
 
 
 _QUALITY = {ExtractionStatus.OK: 2, ExtractionStatus.PARTIAL: 1}
+_NO_READABLE_TEXT = frozenset(
+    {ExtractionStatus.PENDING, ExtractionStatus.FAILED, ExtractionStatus.SKIPPED}
+)
 
 
 def _is_better(new: ExtractionStatus, new_words: int, old: ArticleExtraction) -> bool:
@@ -850,55 +862,80 @@ def _extract_content(
     )
 
 
+def _can_absorb(target: Article) -> bool:
+    """Whether a stored row may replace a page that names it as canonical.
+
+    Not one without readable text, or the page's own text would be lost: that
+    is a failed, skipped or still pending row, or a partial too thin for the
+    feed to show as an article. A paywalled row does absorb the page, as it
+    always has.
+    """
+    extraction = target.extraction
+    if extraction.status is ExtractionStatus.PARTIAL:
+        return extraction.word_count >= PARTIAL_MIN_WORDS
+    return extraction.status not in _NO_READABLE_TEXT
+
+
+def _declaring(article: Article, canonical: str | None) -> Article:
+    """``article`` recording ``canonical`` as the address its page declared."""
+    if article.extraction.declared_canonical == canonical:
+        return article
+    extraction = article.extraction.model_copy(update={"declared_canonical": canonical})
+    return _with_changes(article, extraction=extraction)
+
+
 def _refine_canonical(run: _ExtractRun, article: Article, page: FetchedPage) -> Article | None:
     """Re-key the article if the page declares a different canonical URL.
 
     Returns the article to carry on with (a new object when its id changed), or
     None if the page's canonical already exists as another article, in which
     case the old one is deleted and there is nothing left to extract. If that
-    other article is a failed one, nothing is merged or re-keyed and the article
-    is returned as it is.
+    other article can't take this one's place (``_can_absorb``), nothing is
+    merged or re-keyed: the article is returned with the address it declared.
     """
     services = run.services
     refined = canonical_from_html(page.html, page.final_url, rules=services.url_rules)
+    # What the page says now replaces what an earlier attempt recorded.
+    undeclared = _declaring(article, None)
     if refined is None or refined == article.canonical_url:
-        return article
-    new = with_canonical_url(article, refined)
-    target = services.repository.get_article(new.id)
-    if target is not None and target.extraction.status is ExtractionStatus.FAILED:
-        # A failed article holds no text, so merging into it would lose this
-        # one's. Leave both rows alone: the failed one keeps its retries. Nothing
-        # merges them later (an ok article is never re-examined), so the story
-        # may show twice; accepted until #147 stores the declared canonical.
+        return undeclared
+    new = with_canonical_url(undeclared, refined)
+    # The check is under the lock too: a target another worker has only just
+    # re-keyed is still pending, and must not swallow this article.
+    with run.refine_lock:
+        target = services.repository.get_article(new.id)
+        if target is not None and not _can_absorb(target):
+            # Merging would lose this article's text, so both rows stay, and the
+            # target keeps its retries. Publish shows the story once.
+            log.info(
+                "canonical target has no readable text; not merging",
+                extra={
+                    "stage": "extract",
+                    "source_id": article.source_id,
+                    "url": article.url,
+                    "canonical": refined,
+                    "target_status": target.extraction.status.value,
+                },
+            )
+            return _declaring(article, refined)
         log.info(
-            "canonical target failed; not merging",
+            "canonical URL refined",
             extra={
                 "stage": "extract",
                 "source_id": article.source_id,
                 "url": article.url,
                 "canonical": refined,
+                "old_id": article.id,
+                "new_id": new.id,
             },
         )
-        return article
-    log.info(
-        "canonical URL refined",
-        extra={
-            "stage": "extract",
-            "source_id": article.source_id,
-            "url": article.url,
-            "canonical": refined,
-            "old_id": article.id,
-            "new_id": new.id,
-        },
-    )
-    with run.refine_lock:
         run.rekeyed[article.id] = new.id
-        if services.repository.get_article(new.id) is not None:
+        if target is not None:
             services.repository.delete_article(article.id)
             run.tally.count(PipelineStage.EXTRACT, "merged")
             return None
         # Store the new id before retiring the old one, so a crash in between
-        # leaves a duplicate that the next run merges, never a lost article.
+        # leaves a duplicate that publish shows once, never a lost article.
         services.repository.upsert_article(new)
         services.repository.delete_article(article.id)
     run.tally.count(PipelineStage.EXTRACT, "refined")
@@ -1018,7 +1055,7 @@ def extract_saved_url(
     an article stored under a refined canonical URL whose first-seen URL is
     ``url``. If the page's canonical URL belongs to another stored article, the
     ad hoc row merges into it and that article is returned, unless that article
-    failed: then the ad hoc row stays as its own article.
+    has no readable text: then the ad hoc row stays as its own article.
     """
     canonical = normalise_url(url, rules=services.url_rules)
     existing = services.repository.get_article(article_id(canonical)) or _find_by_first_url(
@@ -1085,6 +1122,8 @@ def publish_stage(
         tally.error()
         return
     tally.count(PipelineStage.PUBLISH, "items", len(built.feed["items"]))
+    if built.duplicates:
+        tally.count(PipelineStage.PUBLISH, "duplicates", built.duplicates)
     if built.dropped:
         tally.count(PipelineStage.PUBLISH, "dropped", built.dropped)
     if built.links_for_missing_content:

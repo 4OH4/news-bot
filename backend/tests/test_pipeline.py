@@ -782,6 +782,7 @@ def test_extract_saved_url_returns_the_article_it_merged_into(
         source_id="gazette",
         title="Feed title",
         fetched_at=datetime(2026, 10, 1, tzinfo=UTC),
+        extraction=ArticleExtraction(status=ExtractionStatus.OK, word_count=300),
     )
     repository.upsert_article(target)
 
@@ -2182,17 +2183,19 @@ def test_a_failing_result_pointing_at_a_failed_target_leaves_the_targets_retries
 
 
 @pytest.mark.parametrize(
-    "status",
-    [ExtractionStatus.PARTIAL, ExtractionStatus.PAYWALLED],
+    ("status", "word_count"),
+    [(ExtractionStatus.PARTIAL, 160), (ExtractionStatus.PAYWALLED, 80)],
 )
 def test_an_ok_result_still_merges_into_a_stored_target_that_has_not_failed(
-    tmp_path: Path, repository: SqliteRepository, status: ExtractionStatus
+    tmp_path: Path, repository: SqliteRepository, status: ExtractionStatus, word_count: int
 ) -> None:
     source = _article_for("https://m.example.com/feed-link/6")
     target = _article_for(MERGE_TARGET).model_copy(
         update={
             "extraction": ArticleExtraction(
-                status=status, word_count=80, last_attempt_at=RETRY_NOW - timedelta(minutes=5)
+                status=status,
+                word_count=word_count,
+                last_attempt_at=RETRY_NOW - timedelta(minutes=5),
             )
         }
     )

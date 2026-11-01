@@ -36,7 +36,7 @@ from newsfeed.models import (
 )
 from newsfeed.pipeline import run_pipeline
 from newsfeed.ports import Extractor
-from newsfeed.publish.feed import FEED_KEY, FEED_LIMIT
+from newsfeed.publish.feed import FEED_KEY, FEED_LIMIT, PARTIAL_MIN_WORDS
 from newsfeed.wiring import Services, build_ingesters
 from tests.fakes import FakeExtractor, FakeFetcher
 
@@ -48,6 +48,7 @@ SOURCE = Source(id="gazette", type=SourceType.RSS, url=FEED_URL)
 TARGET = "https://news.example.com/story"
 ALIAS = "https://news.example.com/feed-link/1"
 SECOND_ALIAS = "https://news.example.com/feed-link/2"
+FINAL = "https://news.example.com/final"
 VALIDATOR = Draft202012Validator(
     json.loads((Path(__file__).parents[2] / "docs" / "feed.schema.json").read_text()),
     format_checker=Draft202012Validator.FORMAT_CHECKER,
@@ -264,6 +265,26 @@ def test_a_pending_target_that_then_fails_does_not_swallow_an_ok_article(
     _assert_shows(services, ALIAS, "Copy body.")
 
 
+def test_a_thin_partial_target_does_not_swallow_an_ok_article(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    """The feed shows a partial this short as a link, so its text doesn't count as readable."""
+    extraction = ArticleExtraction(
+        status=ExtractionStatus.PARTIAL, word_count=PARTIAL_MIN_WORDS - 1
+    )
+    repository.upsert_article(_row(TARGET, extraction=extraction))
+    repository.upsert_article(_pending_alias())
+    fetcher = _fetcher({ALIAS: _page(TARGET)})
+    services = _services(
+        tmp_path, repository, fetcher, FakeExtractor(results={ALIAS: _ok("Copy body.")})
+    )
+
+    _run(services)
+
+    assert {a.url for a in repository.list_articles()} == {ALIAS, TARGET}
+    _assert_shows(services, ALIAS, "Copy body.")
+
+
 # --- Which row publish chooses ------------------------------------------------------
 
 
@@ -377,6 +398,38 @@ def test_a_dropped_duplicate_does_not_use_up_a_place_in_the_feed(
     assert ALIAS in urls
     assert TARGET not in urls
     assert len(urls) == FEED_LIMIT
+
+
+def test_a_target_rekeyed_by_its_own_page_still_counts_as_the_same_story(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    """The copy names an address that no longer has a row; the row kept it as its first url."""
+    repository.upsert_article(_failed_row(error_type="timeout"))
+    repository.upsert_article(_pending_alias())
+    fetcher = _fetcher({ALIAS: _page(TARGET)})
+    extractor = FakeExtractor(results={ALIAS: _ok("Copy body."), TARGET: _ok("Target body.")})
+    services = _services(tmp_path, repository, fetcher, extractor)
+    _run(services)
+
+    fetcher.add(TARGET, _page(FINAL), headers=HTML)
+    _run(services, LATER)
+
+    assert {a.canonical_url for a in repository.list_articles()} == {ALIAS, FINAL}
+    _assert_shows(services, FINAL, "Target body.")
+
+
+def test_a_copy_of_a_copy_publishes_as_one_item(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    repository.upsert_article(_failed_row())
+    repository.upsert_article(_row(SECOND_ALIAS, age_minutes=40))
+    repository.upsert_article(_pending_alias())
+    fetcher = _fetcher({ALIAS: _page(SECOND_ALIAS), SECOND_ALIAS: _page(TARGET)})
+    services = _services(tmp_path, repository, fetcher, FakeExtractor(default=_ok("Copy body.")))
+
+    _run(services)
+
+    assert _only_item(services)["display"] == "article"
 
 
 # --- What extract records -----------------------------------------------------------
