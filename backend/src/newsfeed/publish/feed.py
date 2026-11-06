@@ -85,10 +85,11 @@ def _is_article(article: Article) -> bool:
     return status is ExtractionStatus.PARTIAL and article.extraction.word_count >= PARTIAL_MIN_WORDS
 
 
-def _item(article: Article, *, as_article: bool) -> dict[str, Any]:
+def _item(article: Article, story_id: str, *, as_article: bool) -> dict[str, Any]:
     image = article.lead_image
     return {
         "id": article.id,
+        "story_id": story_id,
         "title": article.title,
         "url": article.canonical_url,
         "source_id": article.source_id,
@@ -141,8 +142,10 @@ def _one_per_story(
     ranked: Sequence[Article],
     articles: Sequence[Article],
     has_content: Callable[[Article], bool],
-) -> list[Article]:
+) -> list[tuple[Article, str]]:
     """``ranked`` with one row per story, in the same order (#147).
+
+    Each row comes with its story's end id, which is the same whichever row is shown.
 
     The row kept is the one with readable text; among equals, the canonical
     target, then the highest ranked. Links are followed through all ``articles``,
@@ -164,8 +167,8 @@ def _one_per_story(
             return rows[0]
         return max(rows, key=lambda a: (_is_article(a) and has_content(a), a.id == end))
 
-    kept = {shown(end, rows).id for end, rows in stories.items()}
-    return [a for a in ranked if a.id in kept]
+    kept = {shown(end, rows).id: end for end, rows in stories.items()}
+    return [(a, kept[a.id]) for a in ranked if a.id in kept]
 
 
 def build_feed(
@@ -222,12 +225,12 @@ def build_feed(
     stories = _one_per_story(valid, articles, has_content)
     items: list[dict[str, Any]] = []
     missing = 0
-    for article in stories[:limit]:
+    for article, story_id in stories[:limit]:
         as_article = _is_article(article)
         if as_article and not has_content(article):
             as_article = False
             missing += 1
-        items.append(_item(article, as_article=as_article))
+        items.append(_item(article, story_id, as_article=as_article))
     feed = {
         "schema_version": SCHEMA_VERSION,
         "generated_at": _timestamp(now),
