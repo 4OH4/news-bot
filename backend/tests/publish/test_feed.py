@@ -348,3 +348,71 @@ def test_duplicates_are_counted_and_unrelated_rows_are_left_alone() -> None:
 
     assert built.duplicates == 1
     assert [i["title"] for i in built.feed["items"]] == ["Story target", "Story other"]
+
+
+# --- A stable story id (#173) -------------------------------------------------------
+
+
+def story_ids(articles: list[Article]) -> dict[str, str]:
+    """Shown item name to its ``story_id``."""
+    feed = build(articles)
+    return {i["url"].rsplit("/", 1)[1]: i["story_id"] for i in feed["items"]}
+
+
+def test_an_article_with_no_declared_canonical_has_its_own_id_as_story_id() -> None:
+    feed = build([article("solo")])
+
+    (item,) = feed["items"]
+    assert item["story_id"] == item["id"]
+
+
+def test_a_shown_copy_carries_the_id_of_its_failed_target_as_story_id() -> None:
+    target = article("target", status=ExtractionStatus.FAILED)
+    feed = build([target, copy_of("copy", "target")])
+
+    (item,) = feed["items"]
+    assert item["url"].endswith("/copy")
+    assert item["story_id"] == target.id
+    assert item["id"] != item["story_id"]
+
+
+def test_a_chain_of_copies_has_the_last_rows_id_as_story_id() -> None:
+    end = article("c")
+    rows = [copy_of("a", "b"), copy_of("b", "c"), end]
+
+    assert set(story_ids(rows).values()) == {end.id}
+
+
+def test_a_chain_ending_in_a_failed_row_still_has_that_rows_id_as_story_id() -> None:
+    end = article("c", status=ExtractionStatus.FAILED)
+    rows = [copy_of("a", "b"), copy_of("b", "c"), end]
+
+    ids = story_ids(rows)
+
+    assert len(ids) == 1
+    assert set(ids.values()) == {end.id}
+
+
+def test_a_loop_has_the_same_story_id_whatever_order_the_rows_arrive_in() -> None:
+    rows = [copy_of("a", "b"), copy_of("b", "a")]
+
+    first = story_ids(rows)
+    second = story_ids(list(reversed(rows)))
+
+    assert len(first) == 1
+    assert set(first.values()) == set(second.values())
+
+
+def test_story_id_is_required_by_the_schema() -> None:
+    schema = json.loads(SCHEMA_PATH.read_text())
+    item = schema["$defs"]["item"]
+
+    assert "story_id" in item["required"]
+    assert item["properties"]["story_id"]["pattern"] == item["properties"]["id"]["pattern"]
+
+
+def test_every_item_in_the_example_has_a_story_id() -> None:
+    example = json.loads(EXAMPLE_PATH.read_text())
+
+    assert example["items"]
+    assert all("story_id" in i for i in example["items"])

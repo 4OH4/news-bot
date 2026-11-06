@@ -208,6 +208,29 @@ def test_a_failed_target_that_recovers_between_runs_leaves_one_article_in_the_fe
     assert {a.url for a in repository.list_articles()} == {ALIAS, TARGET}
 
 
+def test_the_story_id_stays_the_same_when_the_failed_target_recovers_between_runs(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    """The copy is shown in run 1 and the target in run 2; the reader sees one story."""
+    repository.upsert_article(_failed_row(error_type="timeout"))
+    repository.upsert_article(_pending_alias())
+    fetcher = _fetcher({ALIAS: _page(TARGET)})
+    extractor = FakeExtractor(results={ALIAS: _ok("Copy body."), TARGET: _ok("Target body.")})
+    services = _services(tmp_path, repository, fetcher, extractor)
+    _run(services)
+    before = _only_item(services)
+
+    fetcher.add(TARGET, _page(TARGET), headers=HTML)
+    _run(services, LATER)
+    after = _only_item(services)
+
+    assert before["url"] == ALIAS
+    assert after["url"] == TARGET
+    assert after["id"] != before["id"]
+    assert after["story_id"] == before["story_id"]
+    assert after["story_id"] == after["id"]
+
+
 def test_a_failed_target_and_a_kept_article_publish_as_one_item_with_the_text(
     tmp_path: Path, repository: SqliteRepository
 ) -> None:
