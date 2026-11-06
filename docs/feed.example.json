@@ -5,6 +5,7 @@
   "items": [
     {
       "id": "2dd50c8ba0dfa7df",
+      "story_id": "2dd50c8ba0dfa7df",
       "title": "City trials solar canopies over bus stops",
       "url": "https://news.example.com/2026/10/18/city-trials-solar-canopies-over-bus-stops",
       "source_id": "example-news",
@@ -27,6 +28,7 @@
     },
     {
       "id": "1c472b87a4a7f210",
+      "story_id": "1c472b87a4a7f210",
       "title": "Tiny moss survives a year in orbit",
       "url": "https://science.example.org/articles/tiny-moss-survives-a-year-in-orbit",
       "source_id": "example-science",
@@ -48,6 +50,7 @@
     },
     {
       "id": "4cb59e059e0a84b8",
+      "story_id": "4cb59e059e0a84b8",
       "title": "The chip shortage, explained",
       "url": "https://tech.example.com/2026/10/chip-shortage-explained",
       "source_id": "example-tech",
@@ -69,6 +72,7 @@
     },
     {
       "id": "045dd3914407e7c3",
+      "story_id": "045dd3914407e7c3",
       "title": "The weekly briefing: what happened this week",
       "url": "https://radio.example.net/audio/2026/oct/17/the-weekly-briefing-podcast",
       "source_id": "example-radio",
@@ -89,6 +93,7 @@
     },
     {
       "id": "a77f8433bedf5a3d",
+      "story_id": "a77f8433bedf5a3d",
       "title": "Notes on a rainy hackathon",
       "url": "https://blog.example.org/posts/notes-on-a-rainy-hackathon",
       "source_id": "example-blog",
