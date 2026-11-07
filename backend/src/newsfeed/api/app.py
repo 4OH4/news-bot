@@ -10,14 +10,17 @@ from __future__ import annotations
 import hashlib
 import mimetypes
 import re
+from collections.abc import Sequence
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.responses import FileResponse
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from newsfeed.api.auth import owner_check
 from newsfeed.api.feedback import feedback_router
 from newsfeed.api.headers import SecurityHeadersMiddleware
+from newsfeed.api.local_safety import check_client_dir
 from newsfeed.ports import BlobNotFoundError, BlobStore, Repository, TokenVerifier
 
 __all__ = ["create_app"]
@@ -39,15 +42,19 @@ def create_app(
     *,
     owner_email: str,
     client_dir: Path | None = None,
+    allowed_hosts: Sequence[str] | None = None,
 ) -> FastAPI:
     """Build the API.
 
     ``repository`` is used only by the feedback route. ``client_dir`` is the built client;
-    when None, every non-API path is 404.
+    when None, every non-API path is 404. It must pass ``check_client_dir``, or
+    ``UnsafeClientDirError`` is raised. ``allowed_hosts``, when given, are the only
+    ``Host`` names answered (any port); others get 400. Local mode passes
+    ``LOOPBACK_HOSTS``; behind IAP it is None.
     """
     if client_dir is not None and not client_dir.is_dir():
         raise ValueError(f"client_dir is not a directory: {client_dir}")
-    root = client_dir.resolve() if client_dir is not None else None
+    root = check_client_dir(client_dir) if client_dir is not None else None
 
     app = FastAPI(
         title="newsfeed",
@@ -56,6 +63,11 @@ def create_app(
         openapi_url=None,
         dependencies=[Depends(owner_check(verifier, owner_email))],
     )
+    if allowed_hosts is not None:
+        # Added first so it sits inside the security headers: a 400 carries them too.
+        app.add_middleware(
+            TrustedHostMiddleware, allowed_hosts=list(allowed_hosts), www_redirect=False
+        )
     app.add_middleware(SecurityHeadersMiddleware)
     app.state.repository = repository
 

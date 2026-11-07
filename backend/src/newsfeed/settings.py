@@ -106,6 +106,15 @@ class Settings(BaseSettings):
         description="Port the API listens on.",
     )
 
+    @field_validator("client_dir", mode="before")
+    @classmethod
+    def _blank_client_dir_is_unset(cls, value: object) -> object:
+        # An empty NEWSFEED_CLIENT_DIR= would otherwise become Path("."), serving the
+        # working directory and its .env (#230).
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
     @field_validator("retry_backoff_hours")
     @classmethod
     def _backoff_positive(cls, value: tuple[float, ...]) -> tuple[float, ...]:
