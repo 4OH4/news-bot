@@ -4,6 +4,8 @@
 
 Phase 2 is signed off (PR #163). This revision moves client access from Firebase to Identity-Aware Proxy (IAP), following the decision issue #196 and its two live spikes. All the spike's checks have passed, including the Reconnect after a real 401, and the decision is final once the owner records it there; this design merges only after that.
 
+A later revision (#215) cut the issue graph's unneeded links so more issues can run at once, split feedback (#184) into three issues, and added the mocked-API contract the client tests against ("Issue graph", "API contract for mocks").
+
 ## Approach
 
 ```
@@ -36,7 +38,7 @@ The three items the Phase 2 report left for this design are settled here. ADR wo
 **3. Feedback identity: keep `Feedback.article_id`, and add `story_id` to the feed.** Done in #173 (merged).
 
 - Feedback events store the id of the row the owner saw. They are never rewritten.
-- `story_id` is the id of the row at the end of the `declared_canonical` chain. It stays the same when a target recovers, so the client keys seen, liked and dismissed state on it (#184). A `failed` row re-keyed on retry gets a new `story_id`, so a dismissed story can come back. That's cheap, so the design accepts it.
+- `story_id` is the id of the row at the end of the `declared_canonical` chain. It stays the same when a target recovers, so the client keys seen, liked and dismissed state on it (#184, #216, #217). A `failed` row re-keyed on retry gets a new `story_id`, so a dismissed story can come back. That's cheap, so the design accepts it.
 - Phase 4 joins an event to its story by following `declared_canonical` for a stored row, and by `article_id(canonical(row.url))` for a re-keyed one, because `with_canonical_url` keeps `url`. Only a row merged into another on retry can't be joined, which loses one signal in a rare case. So `Feedback` doesn't change.
 
 **The API writes no article rows.** `upsert_article` replaces the whole row and the rank stage rewrites every row in its window from a snapshot, so repointing `content_ref` on a like (ADR-0005 decision 6) would be overwritten by the next run (`REVIEW.md`: a batch article is a snapshot). Instead the API copies the blob to `saved/<id>.html` and reads that key first. #171 records the amendment. The API's only `Repository` write is `save_feedback`, keyed by a client-made id, so a retry is harmless.
@@ -51,11 +53,11 @@ The three items the Phase 2 report left for this design are settled here. ADR wo
 
 **Security headers live in the API.** With no Hosting, the API sets the CSP, `Referrer-Policy: no-referrer` and `X-Content-Type-Options: nosniff` on every response (#175). `client/security-headers.json` (#174) holds the same values for the Vite preview server, so Playwright runs under the production CSP, and a pytest test in #175 keeps the two equal.
 
-**Dismiss and mute act in the client in this phase.** Events are stored for Phase 4, and the client hides the story or source. A lasting pipeline mute stays a rule in `config/interests.yaml` (architecture rule 5), and `newsfeed report` lists the sources muted from the phone.
+**Dismiss and mute act in the client in this phase.** Events are stored for Phase 4, and the client hides the story or source (#217). A lasting pipeline mute stays a rule in `config/interests.yaml` (architecture rule 5), and `newsfeed report` lists the sources muted from the phone.
 
-**A like, dismiss or mute can be taken back.** `like`, `dismiss` and `mute_source` carry `value` 1 or 0 and the latest event wins, with no contract change, so Phase 4 doesn't learn from a dismissal taken back (#184, #185). The saved copy of an unliked article stays.
+**A like, dismiss or mute can be taken back.** `like`, `dismiss` and `mute_source` carry `value` 1 or 0 and the latest event wins, with no contract change, so Phase 4 doesn't learn from a dismissal taken back (#216, #217, #185). The saved copy of an unliked article stays.
 
-**Client tooling runs in Docker through `make`.** This machine has no Node, and `.claude/settings.json` allows neither `npm` nor `npx`, so `make client-*` runs pinned Node and Playwright images. These targets mount only `client/` and `docs/`, so a check that needs backend code is a pytest test (#175's headers, #182's tag list, #184's payload).
+**Client tooling runs in Docker through `make`.** This machine has no Node, and `.claude/settings.json` allows neither `npm` nor `npx`, so `make client-*` runs pinned Node and Playwright images. These targets mount only `client/` and `docs/`, so a check that needs backend code is a pytest test (#175's headers, #182's tag list, #176's check of `docs/feedback.example.json`).
 
 **Build and deploy.** The client is built in a Node stage of `backend/Dockerfile` that copies only `client/`, runs `npm ci --ignore-scripts` and the Vite build, and hands `dist` to the runtime stage at `/app/client` (#178). That stage sees no credentials: it gets only the files copied into it. Deploy stays as the job's is: push the image, then `gcloud run services update --image`. Nothing uses `--source`, because Cloud Build's default account has no rights in this project (#196, spike B).
 
@@ -74,45 +76,78 @@ The milestone report will carry the exact URL. On the Android phone:
 
 ## Issue graph
 
-There are 15 issues in one line of work, with one demo, so epics would add nothing.
+There is one line of work, with one demo, so epics would add nothing. The revision in #215 removed every link that wasn't needed, so up to seven issues can run at once instead of two or three (#213 allows ten). The client builds and tests against a mocked API, using the contract written below, so no client issue waits for a backend issue. Feedback (#184) was too big for one PR and is now three independent issues.
 
 ```
-#171 ADRs (B)
-#172 contract (merged) ─► #175 read API ──► #176 feedback API ──► #184 ◄─┐
-#173 story_id (merged) ─► #181                                           │
-#174 scaffold (C) ─┬────► #175                                           │
-                   ├────► #180 API client, Reconnect ──► #181 feed list ──► #182 reader ──► #183 offline
-                   └────► #178 image and deploy (C)
-#175, #177 Terraform (C) ──► #178
-#175, #177, #178 ──► #179 human setup
-#176 ──► #185 report
+API     #211 (merged, PR #212) ──► #176 feedback API ◄── #215 (this PR)
+Infra   #175 (part 3, newsfeed serve) ──► #179 human setup ◄── #178 image, deploy (Ready)
+Report  #185 report (Ready)
+Client  #181 feed list (in progress) ─┬─► #182 reader ─────────┐
+                                      ├─► #183 offline feed ───┼─► #216 reading, likes, Liked
+                                      └─► #217 open, dismiss,  │
+                                          mute, Settings       │
+        #215 ─► #184 queue, guard ──────► #217                 │
+                         └─────────────────────────────────────┘
 ```
 
-| Issue | Depends on | Tier | Risk |
+| Issue | Depends on | Tier | Risk | Status at this revision |
+|---|---|---|---|---|
+| #171 ADRs | - | B | | merged |
+| #172 `BlobStore.ref_for`, `TokenVerifier` | - | | | merged (PR #198) |
+| #173 `story_id` | - | | | merged (PR #197) |
+| #174 scaffold, `make client-*`, CI | - | C | | merged |
+| #175 read API, static client, `IapJwtVerifier`, `newsfeed serve` | #172, #174 | B | High | in progress, three PRs: verifier merged (PR #208), routes #211 merged (PR #212), `newsfeed serve` next |
+| #176 feedback API, saved copies | #211, #215 | A | High | Ready once this PR merges (#211 merged, PR #212) |
+| #177 Terraform | - | C | High | merged |
+| #178 client in the image, deploy the service | #174, #177 | C | High | **Ready now** |
+| #179 human setup | #175, #177, #178 | `needs-human` | | waits |
+| #180 API client and Reconnect | #174 | B | High | merged |
+| #181 feed list | #173, #180 | A | | in progress |
+| #182 reader | #181 | B | High | waits for #181 |
+| #183 offline feed and article store | #181 | B | | waits for #181 |
+| #184 feedback queue and sign-out guard | #215 | B | High | Ready once this PR merges |
+| #185 report | - | A | | **Ready now** |
+| #216 reading time, likes, Liked list | #182, #183, #184 | A | | waits |
+| #217 open, dismiss, mute, Settings | #181, #184 | A | | waits |
+
+**Links removed, and why.**
+- #176 needed #211's app, auth dependency and router, not `newsfeed serve`, so it waited for #211 (merged, PR #212) rather than all of #175.
+- #178 builds the client into the image and adds a deploy step that stays skipped until #179 sets `GCP_API_SERVICE`. It runs no API code, and #179 still waits for #175, so the first time `newsfeed serve` meets `/app/client` is #179's first deploy. The in-container `GET /` check became a check that `/app/client` holds the build.
+- #185 reads stored `Feedback` rows through `Repository.list_feedback`, which is on `main`. Its end-to-end test now starts at the real SQLite repository; #176's test covers `POST /api/feedback` to the same repository.
+- #183 no longer edits the reader. Its prefetch takes the fetcher as an argument, and #216 wires it and adds the reader's store-first read.
+- #184 no longer waits for #176 or #183: it has its own IndexedDB database and tests against `docs/feedback.example.json`.
+
+**Links kept.**
+- #182 → #181: it needs `FeedItem`, the `/article/<id>` placeholder route and the style tokens that #181 is creating now, in the router and `styles/` files #181 is editing.
+- #183 and #217 → #181: `Feed`, `fetchFeed`, `FeedScreen` and `FeedItemCard` are #181's.
+- #216 → #182, #183, #184: it joins the reader, the article store and the queue, and edits `ReaderScreen.tsx` and `useFeed.ts`, so it comes after both.
+
+**Batches.** Now: #178 and #185 beside #181 and #175 part 3, then #176 and #184 once this PR merges (#211 is merged). After #181 (and #184, for #217): #182, #183 and #217 together. Last: #216. #179 follows #175 and #178.
+
+## API contract for mocks
+
+Client tests stub `/api/**` with Playwright's `page.route` or a fake `fetch`, so they never wait for the backend. The stubs follow this contract, and each side pins its half with a test that reads the same file.
+
+| Route | Answers | Pinned on the API side | Pinned on the client side |
 |---|---|---|---|
-| #171 ADRs | - | B | |
-| #172 `BlobStore.ref_for`, `TokenVerifier` | - | merged (PR #198) | |
-| #173 `story_id` | - | merged (PR #197) | |
-| #174 scaffold, `make client-*`, CI | - | C | |
-| #175 read API, static client, `IapJwtVerifier`, `newsfeed serve` | #172, #174 | B | High |
-| #176 feedback API, saved copies | #175 | A | High |
-| #177 Terraform | - | C | High |
-| #178 client in the image, deploy the service | #174, #175, #177 | C | High |
-| #179 human setup | #175, #177, #178 | `needs-human` | |
-| #180 API client and Reconnect | #174 | B | High |
-| #181 feed list | #173, #180 | A | |
-| #182 reader | #181 | B | High |
-| #183 offline | #182 | B | |
-| #184 client feedback | #176, #183 | A | High |
-| #185 report | #176 | A | |
+| `GET /api/feed` | 200 `application/json` (a feed per `docs/feed.schema.json`) with `ETag`; 304 on a matching `If-None-Match`; 503 when no feed exists yet | #175: a test serves a feed written by the real `publish_feed`; publish tests validate against the schema | #181: tests load the real `docs/feed.example.json` |
+| `GET /api/articles/{id}` | 200 `text/html; charset=utf-8`; 404 for an expired or unknown id, or an id not matching `^[0-9a-f]{16}$` | #175 | #182, #216: stubs answer 200 with invented HTML or 404 |
+| `POST /api/feedback` | 204; 403 without `X-Requested-With`; 415 without JSON; 422 for an invalid body; 503 on a storage failure | #176: every entry in `docs/feedback.example.json` gets 204 | #184: `buildEvent` output has the example's keys and formats |
+| Any route | 401 when IAP or our check refuses the session, 403 for another account, 503 when the check can't be made | #175 | #180 (merged) |
 
-#172 and #173 have merged. Suggested next batch: #171 and #174, which touch no common files, with #177 beside them. #175 follows #174, because its headers test reads `client/security-headers.json`. The two API issues and the client issues each form a line in one directory, so they run one at a time.
+A drift that these tests miss, such as a renamed route, shows on the phone as a failed refresh or an error screen, which is cheap. A feedback event the server rejects with 422 moves to the phone's `rejected` store. It is kept there and not re-sent, and #184's sign-out guard counts it with the queue, so only a discard the owner chose deletes it; a drift in the feedback body can't lose an event.
+
+**Shared files while client issues run together.** Each issue owns its directories, as listed in its scope. The overlaps that remain are additions only, resolved on rebase as `CLAUDE.md` describes for shared files:
+- `client/src/main.tsx` and `client/src/App.tsx`: #184 and #183 each add one start-up call, #182 replaces the `/article/<id>` route, and #217 and #216 each add one route and a link in an app-level header. `App.tsx` has no header today (the only one is in `FeedScreen.tsx`, which #183 rewrites), so whichever of #216 and #217 merges first adds the header in `App.tsx` and the other reuses it. Add lines; don't restructure the router.
+- `client/package.json` and `client/package-lock.json`: #182 (DOMPurify), #183 and #184 (`idb`, `fake-indexeddb`). On a conflict, take `main`'s files and re-run `make client-add` for your own packages, never hand-editing the lockfile.
+- Each issue's e2e tests go in their own new spec file.
 
 ## Contract changes and ADRs
 
 - `ports.py`: `BlobStore.ref_for(key)`, `TokenVerifier` and `TokenRejectedError` (#172, merged in PR #198, signatures unchanged by this revision). The IAP JWT is the token `TokenVerifier.verify` takes. #175 fixes the `TokenVerifier` docstring, which still names a Firebase adapter, and adds that any exception other than `TokenRejectedError` means the check couldn't be made.
 - `models.py`: new `VerifiedIdentity`. `Feedback` doesn't change.
 - `docs/feed.schema.json`: additive `story_id`, `schema_version` stays 1 (#173, merged).
+- `docs/feedback.example.json` (new, #215): three valid `POST /api/feedback` bodies, the shared fixture that #176's pytest test and #184's Vitest test both read. It documents #176's request spec and changes no model.
 - ADR-0009: reader client stack. ADR-0010: client access through IAP and feedback identity, which also amends ADR-0005 decision 6. (ADR-0008 was taken by the development-scope decision.)
 
 ## Check against later phases
@@ -133,7 +168,7 @@ There are 15 issues in one line of work, with one demo, so epics would add nothi
 
 ## First point the human can use something
 
-After #179, the scaffold's placeholder screen loads on the phone behind IAP and installs, and `/api/feed` returns the live feed in the browser. That tests the cloud setup early. Each later client merge then deploys by itself, so after #180 and #181 the phone shows the ranked feed, and #182 follows directly with articles readable. Feedback on first use goes in the Phase Log, and the lead makes issues from it.
+After #179, the scaffold's placeholder screen loads on the phone behind IAP and installs, and `/api/feed` returns the live feed in the browser. That tests the cloud setup early. Each later client merge then deploys by itself, so after #180 and #181 the phone shows the ranked feed, and #182 follows directly with articles readable, with #183's offline feed beside it. `newsfeed report`'s feedback section (#185) can merge first, and shows events as soon as #176, #184 and #217 are deployed. Feedback on first use goes in the Phase Log, and the lead makes issues from it.
 
 ## Where this phase differs from "Cost of failure"
 
@@ -175,6 +210,11 @@ Each is reversible. The owning issue repeats it in its PR header.
 | Client tooling runs in Docker through `make` | Install Node and allow-list `npm` |
 | API limits: 0 to 1 instance, 512 MiB, 1 vCPU, concurrency 8 | Change the Terraform variables |
 | Only a sign-out the user chooses clears local data; a 401 or 403 keeps it | Clear on 403 as well |
+| Client issues test against a mocked API; `docs/feedback.example.json` is the shared fixture for feedback bodies, read by tests on both sides (#215) | Delete the file and its two tests, and order client issues after the API issues again |
+| Feedback has its own IndexedDB database, `newsfeed-feedback`, apart from the feed and article store, with every store it needs defined in #184 (#215) | Merge it into `newsfeed` with a version upgrade |
+| Like is on the reader only, so `link` items can't be liked this phase; `open` is sent on the card tap (#216, #217) | Add the like control to the card, calling `setLiked` |
+| Undo after a dismiss or mute shows in place of the card, not as a toast (#217) | Change `FeedItemCard.tsx` |
+| #178 merges without the in-container `GET /` check when `newsfeed serve` isn't on `main` yet; #179's first deploy is that check (#215) | Put #178 back behind #175 |
 
 **Unverified, because this design made no outbound requests.** Each comes from #196's desk study or memory, and #179 or the build tests it. If one fails, the lead calls the architect back.
 
