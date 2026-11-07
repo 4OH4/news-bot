@@ -216,12 +216,25 @@ gcloud iam service-accounts create newsfeed-dev --project=<project-id> --display
 
 for role in viewer run.developer cloudscheduler.admin artifactregistry.repoAdmin \
   datastore.indexAdmin secretmanager.viewer iam.workloadIdentityPoolViewer \
-  storage.bucketViewer storage.objectViewer; do
+  storage.bucketViewer storage.objectViewer serviceusage.serviceUsageConsumer \
+  iam.securityReviewer; do
   gcloud projects add-iam-policy-binding <project-id> \
     --member="serviceAccount:newsfeed-dev@<project-id>.iam.gserviceaccount.com" \
     --role="roles/$role"
 done
 ```
+
+The last two roles are what `terraform plan` needs beyond the others:
+
+- `serviceusage.serviceUsageConsumer`: the provider sends every request with a
+  quota project (`billing_project` and `user_project_override` in
+  `providers.tf`), which needs `serviceusage.services.use`.
+- `iam.securityReviewer`: `plan` refreshes the IAM members on buckets and other
+  resources, which needs `storage.buckets.getIamPolicy` and similar read-only
+  permissions. It can read IAM policies but not change them.
+
+A new project-level grant can take a few minutes to reach Cloud Storage, so a
+403 straight after granting is worth retrying before looking further.
 
 The state bucket, which Terraform writes to, is the one place the account can
 write objects:
@@ -287,8 +300,8 @@ Credentials file, so they act as the service account only if that file is of the
 impersonated type. Do not set `GOOGLE_IMPERSONATE_SERVICE_ACCOUNT`: Terraform
 reads it and would then impersonate the account from the account itself, which
 needs a Token Creator grant that nothing gives it, so every `plan` would fail
-with a 403. Terraform as this account is unproven until the owner has run
-`terraform plan` once. The git-ignored `.claude/settings.local.json` sets two
+with a 403. `terraform plan` as this account was confirmed on 2026-11-07
+(no changes). The git-ignored `.claude/settings.local.json` sets two
 environment variables for agents:
 
 ```json
