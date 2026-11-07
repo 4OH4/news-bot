@@ -1,4 +1,4 @@
-"""Command-line entry point: ``newsfeed run|ingest|extract|rank|preview|eval``."""
+"""Command-line entry point: ``newsfeed run|ingest|extract|rank|preview|report|serve|eval``."""
 
 from __future__ import annotations
 
@@ -338,6 +338,50 @@ def report(
     except (ConfigError, UnknownRunError) as exc:
         _fail(str(exc))
     typer.echo(summary.model_dump_json(indent=2) if as_json else render_text(summary))
+
+
+@app.command()
+def serve() -> None:
+    """Serve the feed, articles and client to the owner only (behind IAP in the cloud)."""
+    settings = load_settings()
+    owner = (settings.owner_email or "").strip()
+    if not owner:
+        _fail("NEWSFEED_OWNER_EMAIL is required: the API serves only that account")
+    # Imported here so the pipeline commands don't load the web stack or google-auth.
+    import uvicorn
+
+    from newsfeed.api.app import create_app
+    from newsfeed.ports import TokenVerifier
+
+    verifier: TokenVerifier
+    if settings.api_auth == "iap":
+        audience = (settings.iap_audience or "").strip()
+        if not audience:
+            _fail("NEWSFEED_IAP_AUDIENCE is required with NEWSFEED_API_AUTH=iap")
+        from newsfeed.adapters.iap_auth import IapJwtVerifier
+
+        verifier = IapJwtVerifier(audience)
+        host = "0.0.0.0"  # Cloud Run's container port; IAP sits in front
+    else:
+        from newsfeed.adapters.dev_auth import DevTokenVerifier
+
+        verifier = DevTokenVerifier(owner)
+        host = "127.0.0.1"  # no auth: never reachable from another machine
+    client_dir = settings.client_dir
+    if client_dir is not None and not client_dir.is_dir():
+        _fail(f"NEWSFEED_CLIENT_DIR is not a directory: {client_dir}")
+    repository, blobs = open_storage(settings)
+    try:
+        api = create_app(blobs, repository, verifier, owner_email=owner, client_dir=client_dir)
+        log.info(
+            "api starting",
+            extra={"stage": "api", "auth": settings.api_auth, "port": settings.api_port},
+        )
+        uvicorn.run(api, host=host, port=settings.api_port)
+    finally:
+        close = getattr(repository, "close", None)  # Firestore's client needs none
+        if close is not None:
+            close()
 
 
 # --- eval ----------------------------------------------------------------------
