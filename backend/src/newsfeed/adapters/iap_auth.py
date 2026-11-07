@@ -24,6 +24,7 @@ __all__ = ["IAP_CERTS_URL", "IAP_ISSUER", "IapJwtVerifier"]
 
 IAP_ISSUER = "https://cloud.google.com/iap"
 IAP_CERTS_URL = "https://www.gstatic.com/iap/verify/public_key"
+CLOCK_SKEW_SECONDS = 10
 
 
 def _google_verifier(audience: str) -> Callable[[str], Mapping[str, Any]]:
@@ -37,6 +38,9 @@ def _google_verifier(audience: str) -> Callable[[str], Mapping[str, Any]]:
                 google.auth.transport.requests.Request(session=session),
                 audience=audience,
                 certs_url=IAP_CERTS_URL,
+                # The library allows no clock skew by default; an instance clock a
+                # second behind IAP's would turn the owner away with a 401.
+                clock_skew_in_seconds=CLOCK_SKEW_SECONDS,
             )
         return claims
 
