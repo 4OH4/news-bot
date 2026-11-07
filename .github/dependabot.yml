@@ -7,5 +7,13 @@ updates:
     schedule:
       interval: "monthly"
     open-pull-requests-limit: 2
+    # Majors for node and uv, and Python minors, are deliberate upgrades, not monthly bumps.
+    ignore:
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "ghcr.io/astral-sh/uv"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "python"
+        update-types: ["version-update:semver-minor"]
     commit-message:
       prefix: "chore(deps)"

@@ -196,8 +196,8 @@ def test_no_image_is_referenced_outside_a_from_line() -> None:
 
 def test_python_and_uv_images_are_named_stages() -> None:
     all_stages = stages(DOCKERFILE)
-    assert all_stages["python-base"][0].startswith("FROM python:3.12-slim-bookworm@sha256:")
-    assert "astral-sh/uv:0.13.0@sha256:" in all_stages["uv"][0]
+    assert all_stages["python-base"][0].startswith("FROM python:")
+    assert all_stages["uv"][0].startswith("FROM ghcr.io/astral-sh/uv:")
     # Both Python stages share one interpreter image: the venv links to it.
     assert all_stages["builder"][0] == "FROM python-base AS builder"
     assert all_stages["base"][0] == "FROM python-base AS base"

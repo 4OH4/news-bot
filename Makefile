@@ -15,6 +15,9 @@ export NEWSFEED_DATA_DIR := $(CURDIR)/data
 # The Node image is read from the Dockerfile's client-builder FROM line, so a Dependabot
 # bump of that line moves the image build and these targets together (#256).
 CLIENT_NODE_IMAGE := $(shell sed -n 's/^FROM \(node:[^ ]*\) AS client-builder$$/\1/p' $(BACKEND)/Dockerfile)
+ifeq ($(CLIENT_NODE_IMAGE),)
+$(error CLIENT_NODE_IMAGE is empty: no client-builder FROM line in $(BACKEND)/Dockerfile)
+endif
 # The tag must equal the @playwright/test version in client/package.json.
 CLIENT_PLAYWRIGHT_IMAGE := mcr.microsoft.com/playwright:v1.59.0-noble@sha256:11707c5282fec52f0705aad3a23f46b3409b3de4aed378b3dbe118d8b8c87b67
 # Runs as the caller, so node_modules is never root-owned. Only client/ (writable) and
