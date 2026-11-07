@@ -1,56 +1,28 @@
-import { useEffect, useRef, useState } from "preact/hooks";
-import { FeedNotReadyError, fetchFeed, UnsupportedFeedError } from "../api/feed";
+import "./feed-status.css";
 import { FeedItemCard } from "./FeedItemCard";
-import type { Feed } from "./types";
+import { relativeTime } from "./time";
+import { useFeed } from "./useFeed";
 
-function noticeFor(err: unknown, hasFeed: boolean): string {
-  if (err instanceof UnsupportedFeedError) {
-    return "An update is needed to read the newest feed. Reload the app to get it.";
-  }
-  if (err instanceof FeedNotReadyError) {
-    return "The first feed is not ready yet. Try again in a few minutes.";
-  }
-  return hasFeed ? "Could not refresh. Showing the last feed." : "Could not load the feed. Try again.";
-}
-
-/** The home screen: the ranked feed, kept in component state (storage is #183). */
+/** The home screen: the ranked feed, shown from the store first and refreshed behind it. */
 export function FeedScreen() {
-  const [feed, setFeed] = useState<Feed | null>(null);
-  const [notice, setNotice] = useState("");
-  const [busy, setBusy] = useState(false);
-  const etag = useRef<string | undefined>(undefined);
-  const feedRef = useRef<Feed | null>(null);
-
-  async function load() {
-    setBusy(true);
-    try {
-      const result = await fetchFeed(etag.current);
-      if (result !== "not-modified") {
-        feedRef.current = result.feed;
-        etag.current = result.etag || undefined;
-        setFeed(result.feed);
-      }
-      setNotice("");
-    } catch (err) {
-      // Auth failures are already shown by the session banner; keep the last feed either way.
-      setNotice(noticeFor(err, feedRef.current !== null));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  useEffect(() => {
-    void load();
-  }, []);
+  const { feed, fetchedAt, offline, notice, busy, refresh } = useFeed();
 
   return (
     <main>
       <header class="top">
         <h1>Newsfeed</h1>
-        <button type="button" onClick={() => void load()} disabled={busy}>
+        <button type="button" onClick={() => void refresh()} disabled={busy}>
           Refresh
         </button>
       </header>
+      {offline ? (
+        <p role="status" class="notice">
+          You are offline. Showing the last feed.
+        </p>
+      ) : null}
+      {fetchedAt ? (
+        <p class="updated">Updated {relativeTime(new Date(fetchedAt).toISOString())}</p>
+      ) : null}
       {notice ? (
         <p role="status" class="notice">
           {notice}
