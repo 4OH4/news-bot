@@ -322,8 +322,12 @@ def _failed_groups(articles: Iterable[Article], runs: list[RunStats]) -> list[Fa
     return sorted(groups, key=lambda g: (g.domain, -g.count, g.reason, g.status))
 
 
-def _feedback_summary(repo: Repository, now: datetime) -> FeedbackSummary:
-    feedback = repo.list_feedback()
+def _feedback_summary(
+    repo: Repository, now: datetime, since: datetime | None = None
+) -> FeedbackSummary:
+    # With ``since`` the whole section, muted sources included, covers only events
+    # from that time, so the report reads as one window.
+    feedback = [f for f in repo.list_feedback() if since is None or f.created_at >= since]
     articles = {}
     for article_id in feedback_article_ids(feedback):
         article = repo.get_article(article_id)
@@ -347,7 +351,7 @@ def build_report(
     count rather than a per-run figure.
     """
     runs = _select_runs(repo, run_id, since)
-    feedback = _feedback_summary(repo, now or datetime.now(UTC))
+    feedback = _feedback_summary(repo, now or datetime.now(UTC), since)
     feeds = []
     for source_id in source_ids:
         state = repo.get_source_state(source_id)

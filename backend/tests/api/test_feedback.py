@@ -506,3 +506,116 @@ def test_nothing_in_the_api_package_writes_article_rows() -> None:
     ]
     assert offenders == []
     assert (SRC_API / "feedback.py").is_file(), "the feedback route belongs in api/feedback.py"
+
+
+# --- #240: gaps found in review ------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        event(event="read", value="1"),
+        event(event="read", value="30.5"),
+        event(event="like", value=True),
+        event(created_at=1794040200),
+        event(created_at=1794040200.5),
+    ],
+    ids=["string-value", "decimal-string-value", "boolean-value", "epoch-int", "epoch-float"],
+)
+def test_a_value_or_time_of_the_wrong_json_type_is_422_and_stores_nothing(
+    blobs: RecordingBlobStore, body: dict[str, Any]
+) -> None:
+    repository = InMemoryRepository()
+    client = client_for(make_app(blobs, repository=repository))
+
+    response = post(client, body)
+
+    assert response.status_code == 422
+    assert repository.list_feedback() == []
+    assert not blobs.inner.exists(blobs.ref_for(f"saved/{ARTICLE_ID}.html"))
+
+
+def test_a_body_over_the_limit_with_a_declared_length_is_exactly_413(
+    blobs: RecordingBlobStore,
+) -> None:
+    repository = InMemoryRepository()
+    client = client_for(make_app(blobs, repository=repository))
+    padded = json.dumps({**like(), "padding": "x" * 5000})
+
+    response = post(client, padded)
+
+    assert response.status_code == 413
+    assert repository.list_feedback() == []
+    assert not blobs.inner.exists(blobs.ref_for(f"saved/{ARTICLE_ID}.html"))
+
+
+def test_a_chunked_body_over_the_limit_is_exactly_413_and_stores_nothing(
+    blobs: RecordingBlobStore,
+) -> None:
+    repository = InMemoryRepository()
+    client = client_for(make_app(blobs, repository=repository))
+    # An iterator body is sent without Content-Length, so only the running count can stop it.
+    pieces = [b'{"padding": "', b"x" * 3000, b"x" * 3000, b'"}']
+
+    response = client.post(
+        "/api/feedback", content=iter(pieces), headers={**auth(), **JSON_HEADERS}
+    )
+
+    assert response.status_code == 413
+    assert repository.list_feedback() == []
+
+
+def _on_event_loop() -> bool:
+    import asyncio
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return False
+    return True
+
+
+class LoopWatchingRepository(InMemoryRepository):
+    """Records whether save_feedback ran on the event loop's thread."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.on_loop: list[bool] = []
+
+    def save_feedback(self, feedback: Feedback) -> None:
+        self.on_loop.append(_on_event_loop())
+        super().save_feedback(feedback)
+
+
+class LoopWatchingBlobs(RecordingBlobStore):
+    """Records whether each blob call ran on the event loop's thread."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.on_loop: list[bool] = []
+
+    def put(self, key: str, data: bytes, content_type: str = "application/octet-stream") -> str:
+        self.on_loop.append(_on_event_loop())
+        return super().put(key, data, content_type)
+
+    def get(self, ref: str) -> bytes:
+        self.on_loop.append(_on_event_loop())
+        return super().get(ref)
+
+    def exists(self, ref: str) -> bool:
+        self.on_loop.append(_on_event_loop())
+        return super().exists(ref)
+
+
+def test_the_store_calls_do_not_block_the_event_loop() -> None:
+    blobs = LoopWatchingBlobs()
+    blobs.inner.put(f"articles/{ARTICLE_ID}.html", ARTICLE_HTML, "text/html")
+    blobs.on_loop.clear()
+    repository = LoopWatchingRepository()
+    client = client_for(make_app(blobs, repository=repository))
+
+    assert post(client, like()).status_code == 204
+
+    assert repository.on_loop == [False], "save_feedback ran on the event loop"
+    assert blobs.on_loop, "the like should have touched the blob store"
+    assert not any(blobs.on_loop), "a blob call ran on the event loop"
