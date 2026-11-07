@@ -351,9 +351,11 @@ def serve() -> None:
     import uvicorn
 
     from newsfeed.api.app import create_app
+    from newsfeed.api.local_safety import LOOPBACK_HOSTS, UnsafeClientDirError, check_client_dir
     from newsfeed.ports import TokenVerifier
 
     verifier: TokenVerifier
+    allowed_hosts: tuple[str, ...] | None = None  # IAP fronts the service under its own name
     if settings.api_auth == "iap":
         audience = (settings.iap_audience or "").strip()
         if not audience:
@@ -367,12 +369,25 @@ def serve() -> None:
 
         verifier = DevTokenVerifier(owner)
         host = "127.0.0.1"  # no auth: never reachable from another machine
+        allowed_hosts = LOOPBACK_HOSTS  # nor from a DNS-rebinding page in the owner's browser
     client_dir = settings.client_dir
-    if client_dir is not None and not client_dir.is_dir():
-        _fail(f"NEWSFEED_CLIENT_DIR is not a directory: {client_dir}")
+    if client_dir is not None:
+        if not client_dir.is_dir():
+            _fail(f"NEWSFEED_CLIENT_DIR is not a directory: {client_dir}")
+        try:
+            check_client_dir(client_dir)
+        except UnsafeClientDirError as exc:
+            _fail(f"NEWSFEED_CLIENT_DIR must be the built client only: {exc}")
     repository, blobs = open_storage(settings)
     try:
-        api = create_app(blobs, repository, verifier, owner_email=owner, client_dir=client_dir)
+        api = create_app(
+            blobs,
+            repository,
+            verifier,
+            owner_email=owner,
+            client_dir=client_dir,
+            allowed_hosts=allowed_hosts,
+        )
         log.info(
             "api starting",
             extra={"stage": "api", "auth": settings.api_auth, "port": settings.api_port},
