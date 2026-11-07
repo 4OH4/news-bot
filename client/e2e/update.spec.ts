@@ -63,13 +63,25 @@ test("a new version replaces the old precache and loads after a reload", async (
     const before = await v1Assets();
 
     current = "2";
-    // Reloading checks for a new service worker; autoUpdate activates it at once.
+    // Ask the browser to check for the new service worker once, then wait for the real event:
+    // the new worker activating and swapping the precache. Reloading in the poll loop raced
+    // with autoUpdate's own reload on activation and destroyed the evaluate's page context.
+    await page.evaluate(async () => {
+      const registration = await navigator.serviceWorker.getRegistration();
+      await registration?.update();
+    });
     await expect
-      .poll(async () => {
-        await page.reload();
-        const after = await v1Assets();
-        return after.length > 0 && before.every((u) => !after.includes(u));
-      }, { timeout: 30_000 })
+      .poll(
+        async () => {
+          try {
+            const after = await v1Assets();
+            return after.length > 0 && before.every((u) => !after.includes(u));
+          } catch {
+            return false; // page mid-navigation (autoUpdate reload); poll again
+          }
+        },
+        { timeout: 30_000 },
+      )
       .toBe(true);
 
     await page.reload();
