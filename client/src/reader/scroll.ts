@@ -1,9 +1,11 @@
 const KEY = "newsfeed-list-scroll";
+const FROM_LIST = "newsfeed-from-list";
 
 /** Remembers the list's scroll position when the page is left for an article. */
 export function saveListScroll(): void {
   try {
     sessionStorage.setItem(KEY, String(window.scrollY));
+    sessionStorage.setItem(FROM_LIST, "1");
   } catch {
     // Not essential.
   }
@@ -30,4 +32,14 @@ export function restoreListScroll(): void {
     }
   };
   requestAnimationFrame(step);
+}
+
+/** True when this tab opened the article from the list, so history.back() returns to it.
+ * The referrer cannot tell: the app sends Referrer-Policy: no-referrer. */
+export function openedFromList(): boolean {
+  try {
+    return sessionStorage.getItem(FROM_LIST) === "1" && history.length > 1;
+  } catch {
+    return false;
+  }
 }

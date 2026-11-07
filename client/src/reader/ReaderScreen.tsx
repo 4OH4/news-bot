@@ -3,6 +3,7 @@ import { fetchArticle } from "../api/articles";
 import { fetchFeed } from "../api/feed";
 import type { FeedItem } from "../feed/types";
 import { cleanArticleHtml } from "./sanitize";
+import { openedFromList } from "./scroll";
 import { currentTheme, toggleTheme, type Theme } from "./theme";
 
 const WORDS_PER_MINUTE = 200;
@@ -31,8 +32,7 @@ type Body =
 
 /** Goes back in history when the list is the previous page, so its scroll position returns. */
 function goBack(event: MouseEvent) {
-  const fromApp = document.referrer.startsWith(location.origin) && history.length > 1;
-  if (!fromApp) return;
+  if (!openedFromList()) return;
   event.preventDefault();
   history.back();
 }
