@@ -4,11 +4,19 @@ import { ReconnectBanner } from "./auth/ReconnectBanner";
 import { useSessionStatus } from "./auth/useSessionStatus";
 import { FeedScreen } from "./feed/FeedScreen";
 import { movePendingReads } from "./feedback/reading";
+import { LikedScreen } from "./liked/LikedScreen";
+import "./liked/liked.css";
 import { ReaderScreen } from "./reader/ReaderScreen";
 import { restoreListScroll, saveListScroll } from "./reader/scroll";
 import { applyStoredTheme } from "./reader/theme";
 
 applyStoredTheme();
+
+function Screen({ path }: { path: string }) {
+  if (path.startsWith("/article/")) return <ReaderScreen />;
+  if (path === "/liked" || path === "/liked/") return <LikedScreen />;
+  return <FeedScreen />;
+}
 
 export function App() {
   const status = useSessionStatus();
@@ -34,7 +42,15 @@ export function App() {
         <NotAllowed />
       ) : (
         <>
-          {isArticle ? <ReaderScreen /> : <FeedScreen />}
+          {isArticle ? null : (
+            <header class="app-header">
+              <nav aria-label="Sections">
+                <a href="/">Feed</a>
+                <a href="/liked">Liked</a>
+              </nav>
+            </header>
+          )}
+          <Screen path={location.pathname} />
           <footer class="footer">
             <p id="status">The app is running.</p>
             <p id="version" data-version={__APP_VERSION__}>
