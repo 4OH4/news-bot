@@ -95,15 +95,13 @@ export async function loadFeedback() {
   const event = await import("./event");
   const queue = await import("./queue");
   const seen = await import("./seen");
-  const guard = await import("./signout-guard");
-  const start = await import("./start");
   const signout = await import("../auth/signout");
   const store = await import("../auth/status");
   const status = (): unknown => {
     const v: unknown = store.sessionStatus;
     return typeof v === "function" ? (v as () => unknown)() : v;
   };
-  return { ...db, ...event, ...queue, ...seen, ...guard, ...start, ...signout, ...store, status };
+  return { ...db, ...event, ...queue, ...seen, ...signout, ...store, status };
 }
 
 interface StoreLike {
