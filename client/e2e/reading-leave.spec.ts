@@ -67,8 +67,8 @@ test("leaving the reader by the Back link sends its read event", async ({ page }
 test("leaving the reader by going to another address sends its read event", async ({ page }) => {
   const posted = await stubApi(page);
   await readTopArticle(page);
-  await page.goto("/");
-  await expect(page.locator("[data-testid='feed-item']").first()).toBeVisible();
+  await page.goto("/liked");
+  await expect(page.getByRole("heading", { name: "Liked" })).toBeVisible();
 
   await expect.poll(() => reads(posted).length).toBe(1);
   expect(reads(posted)[0]).toMatchObject({ article_id: top.id, event: "read" });
