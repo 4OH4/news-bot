@@ -51,6 +51,7 @@ describe("module boundaries", () => {
     const pkg = JSON.parse(
       readFileSync(new URL("../../package.json", import.meta.url), "utf8"),
     ) as { dependencies: Record<string, string> };
-    expect(Object.keys(pkg.dependencies)).toEqual(["preact"]);
+    // idb is the feedback queue's IndexedDB wrapper (#184), not a sign-in library.
+    expect(Object.keys(pkg.dependencies).sort()).toEqual(["idb", "preact"]);
   });
 });
