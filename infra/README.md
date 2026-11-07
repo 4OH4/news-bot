@@ -218,6 +218,22 @@ these steps once.
    gcloud beta services identity create --service=iap.googleapis.com --project=<project-id>
    ```
 
+   If the service fails to start on the placeholder `hello` image (it is
+   given the argument `serve`, which that image may not accept), push the
+   real image as in step 6 of the first-time setup and set `api_image` in
+   `terraform.tfvars` to its tag. Terraform ignores the image after the
+   first create, and delete protection stops it replacing the failed
+   service, so point the service at the image yourself, clear the failure
+   mark, and apply again:
+
+   ```bash
+   gcloud run services update newsfeed-api --region=<region> --image=<image tag>
+   terraform untaint google_cloud_run_v2_service.api
+   ```
+
+   With the real image already pushed, setting `api_image` before the first
+   apply avoids this.
+
 2. Until the next step is done, the URL answers with a 502 ("Empty Google
    Account OAuth client ID(s)/secret(s)"). A project with no organisation needs
    its own OAuth client for IAP, which only the console can make. In the

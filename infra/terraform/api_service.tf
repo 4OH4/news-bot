@@ -1,6 +1,6 @@
 # The reader app's service: a Cloud Run service running `newsfeed serve`
 # (the built client and its API, on one origin), as its own service account,
-# behind Identity-Aware Proxy (IAP) (docs/phases/phase-3.md, ADR-0009, #196).
+# behind Identity-Aware Proxy (IAP) (docs/phases/phase-3.md, ADR-0010, #196).
 #
 # IAP is turned on directly on the service (iap_enabled), with no load
 # balancer. Google refuses every request from an account without
@@ -34,14 +34,14 @@ locals {
   iap_service_agent = "service-${data.google_project.this.number}@gcp-sa-iap.iam.gserviceaccount.com"
 
   # Settings read by newsfeed.settings (NEWSFEED_*), as for the job, plus the
-  # API's own check (#175). NEWSFEED_OWNER_EMAIL is not a secret, but it comes
-  # from the git-ignored tfvars so the repo holds no real address.
+  # API's own check (#175). NEWSFEED_OWNER_EMAIL is set in its own env block
+  # below: var.owner_email is sensitive, and inside this map it would hide
+  # every value here in the plan.
   api_env = {
     NEWSFEED_STORAGE                = "gcp"
     NEWSFEED_GCP_PROJECT            = var.project_id
     NEWSFEED_GCS_BUCKET             = google_storage_bucket.content.name
     NEWSFEED_CONTENT_RETENTION_DAYS = tostring(var.content_retention_days)
-    NEWSFEED_OWNER_EMAIL            = var.owner_email
     NEWSFEED_API_AUTH               = "iap"
     NEWSFEED_IAP_AUDIENCE           = local.api_iap_audience
   }
@@ -120,6 +120,13 @@ resource "google_cloud_run_v2_service" "api" {
           name  = env.key
           value = env.value
         }
+      }
+
+      # Not a secret, but from the git-ignored tfvars, so the repo holds no
+      # real address. Sensitive, so the plan shows only this value as hidden.
+      env {
+        name  = "NEWSFEED_OWNER_EMAIL"
+        value = var.owner_email
       }
     }
   }
