@@ -1,0 +1,33 @@
+/* Seen cards, the card menu and the Undo row (#217). */
+.card-seen .card-title a {
+  color: var(--muted);
+}
+
+.card-menu summary {
+  display: inline-flex;
+  align-items: center;
+  min-width: 44px;
+  min-height: 44px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.card-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.card-menu-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.card-menu-items button {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.card-undo {
+  margin: var(--space) 0;
+  color: var(--muted);
+}
