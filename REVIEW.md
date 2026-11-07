@@ -66,6 +66,7 @@ Failure patterns taken from real defects in this repo. Test authors and workers 
 - A time-relative test must fix "now" on both sides, the code under test and the data it compares against.
 - When a rework changes which function a hook registers, the tests must register the new one too, or they keep exercising the old path.
 - A flaky-test fix must first show the failure it fixes (a reproduction or a captured failing run) before it claims a cause.
+- In the client every screen is a full page load, so a component's unmount cleanup never runs when the owner leaves. Work that must survive leaving (a reading-time event, a feedback write) must finish before navigating, be written synchronously on `pagehide` or hide, or be handed to the next page. Test it by navigating away in Playwright, not by unmounting. Instances: PR #248, PR #251.
 
 ## Workflows and exemptions
 
