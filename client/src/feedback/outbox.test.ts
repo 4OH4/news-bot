@@ -214,3 +214,77 @@ describe("moveOutbox", () => {
     expect(storage.getItem(PENDING_READS)).toBeNull();
   });
 });
+
+/** Binds a proxied object's methods to the real object, so idb's own wrappers keep working. */
+function bound(target: object, prop: string | symbol): unknown {
+  const value: unknown = Reflect.get(target, prop, target);
+  return typeof value === "function" ? (value as (...a: unknown[]) => unknown).bind(target) : value;
+}
+
+/**
+ * Makes every `add` into the queue fail with a non-constraint error, as a full disk would. Only
+ * ConstraintError (the id is already queued) may count as stored; this one must not.
+ */
+function failQueueAdds(): void {
+  vi.doMock("./db", async (importOriginal) => {
+    const real = await importOriginal<typeof import("./db")>();
+    const failing = (store: object) =>
+      new Proxy(store, {
+        get: (s, p) =>
+          p === "add"
+            ? () => Promise.reject(new DOMException("invented: disk full", "QuotaExceededError"))
+            : bound(s, p),
+      });
+    const wrap = (db: object) =>
+      new Proxy(db, {
+        get(target, prop) {
+          if (prop !== "transaction") return bound(target, prop);
+          return (...args: unknown[]) => {
+            const open = Reflect.get(target, prop, target) as (...a: unknown[]) => object;
+            const tx = open.apply(target, args);
+            if (args[0] !== "queue" || args[1] !== "readwrite") return tx;
+            const store = failing(Reflect.get(tx, "store", tx) as object);
+            return new Proxy(tx, { get: (t, p) => (p === "store" ? store : bound(t, p)) });
+          };
+        },
+      });
+    return { ...real, openFeedbackDb: () => real.openFeedbackDb().then(wrap) };
+  });
+}
+
+// Review of PR #262: only a repeated id may count as stored, so any other failure must leave the
+// outbox entry in place.
+describe("a queue write that fails for any reason but a repeated id", () => {
+  afterEach(() => {
+    vi.doUnmock("./db");
+  });
+
+  it("enqueueFeedback rejects and leaves the outbox entry for the next start", async () => {
+    failQueueAdds();
+    const f = await load();
+    installFakeApi("offline");
+
+    await expect(f.enqueueFeedback(A, "like", 1)).rejects.toMatchObject({
+      name: "QuotaExceededError",
+    });
+
+    expect(outboxEntries(storage)).toEqual([
+      expect.objectContaining({ article_id: A, event: "like", value: 1 }),
+    ]);
+    expect(await f.queuedCount()).toBe(0);
+  });
+
+  it("moveOutbox leaves the entry in place and logs", async () => {
+    failQueueAdds();
+    const f = await load();
+    installFakeApi("offline");
+    const left = payload(ID1, A, "2026-11-07T08:00:00.000Z");
+    f.writeOutbox(left);
+
+    await f.moveOutbox();
+
+    expect(outboxEntries(storage)).toEqual([left]);
+    expect(await f.queuedCount()).toBe(0);
+    expect(anyLogged()).toBe(true);
+  });
+});

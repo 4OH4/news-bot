@@ -107,9 +107,41 @@ describe("setLiked", () => {
   });
 });
 
+/** Holds the first `put` into the `liked` store until released (as in hidden.test.ts). */
+function holdFirstLikedPut(): { release: () => void } {
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  let held = false;
+  vi.doMock("./db", async (importOriginal) => {
+    const real = await importOriginal<typeof import("./db")>();
+    const wrap = (db: object): unknown =>
+      new Proxy(db, {
+        get(target, prop) {
+          const value: unknown = Reflect.get(target, prop, target);
+          if (typeof value !== "function") return value;
+          const fn = value as (...args: unknown[]) => unknown;
+          if (prop !== "put") return fn.bind(target);
+          return async (store: unknown, ...rest: unknown[]) => {
+            if (store === "liked" && !held) {
+              held = true;
+              await gate;
+            }
+            return fn.call(target, store, ...rest);
+          };
+        },
+      });
+    return { ...real, openFeedbackDb: () => real.openFeedbackDb().then(wrap) };
+  });
+  return { release };
+}
+
 // #254: the like event is written to the outbox inside the tap, and the phone's like state lands
 // in the order tapped without the caller chaining.
 describe("setLiked and a page that closes straight after the tap", () => {
+  afterEach(() => {
+    vi.doUnmock("./db");
+  });
+
   it("writes the like to the outbox synchronously, inside the call", async () => {
     installRouter({ online: false });
     const storage = installStorage();
@@ -125,10 +157,15 @@ describe("setLiked and a page that closes straight after the tap", () => {
   it("Like then Unlike tapped quickly ends not liked, with like 1 then like 0 queued in order", async () => {
     installRouter({ online: false });
     installStorage();
+    // The Like's `liked` write resolves late, so a wrong order would end liked (REVIEW.md).
+    const hold = holdFirstLikedPut();
     const { s, liked } = await load();
 
     const first = liked.setLiked(A, true);
     const second = liked.setLiked(A, false);
+    // Time for the Unlike's delete to land first, if nothing orders it after the Like's write.
+    await settle();
+    hold.release();
     await Promise.all([first, second]);
     await settle();
 
