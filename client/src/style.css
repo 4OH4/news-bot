@@ -1,11 +1,99 @@
+@import "./styles/tokens.css";
+
 :root {
-  color-scheme: light dark;
   font-family: system-ui, sans-serif;
 }
 
 body {
   margin: 0;
   padding: 16px;
+  background: var(--bg);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+a {
+  color: var(--link);
+}
+
+main {
+  max-width: 40rem;
+  margin: 0 auto;
+}
+
+.top {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  padding: 8px 0;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space);
+}
+
+.top h1 {
+  font-size: 1.4rem;
+  margin: 0;
+}
+
+button {
+  min-height: 44px;
+  padding: 0 16px;
+}
+
+.notice {
+  padding: 0.6rem 0.8rem;
+  border-radius: 6px;
+  background: var(--notice-bg);
+  color: var(--notice-text);
+}
+
+.card {
+  margin: var(--space) 0;
+  padding: var(--space);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.card-image {
+  display: block;
+  width: 100%;
+  max-height: 200px;
+  object-fit: cover;
+  border-radius: 6px;
+}
+
+.card-image[hidden] {
+  display: none;
+}
+
+.card-title {
+  font-size: 1.1rem;
+  margin: 0.5rem 0 0.25rem;
+}
+
+.card-meta,
+.card-flags,
+.footer {
+  margin: 0.25rem 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.card-flags span + span::before {
+  content: " · ";
+}
+
+.card-summary {
+  margin: 0.4rem 0;
+}
+
+.footer {
+  max-width: 40rem;
+  margin: 1rem auto 0;
 }
 
 .banner {
