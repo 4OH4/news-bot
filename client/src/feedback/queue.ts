@@ -1,7 +1,7 @@
 /**
- * The outgoing feedback queue (#184). An event is written to the outbox (#254) and then IndexedDB
- * before anything else happens, and stays queued until the server has accepted it, because owner
- * feedback can't be recreated. Sends go oldest first, one at a time, and stop at the first failure a retry could
+ * The outgoing feedback queue (#184). An event is written to IndexedDB before anything else
+ * happens and stays there until the server has accepted it, because owner feedback can't be
+ * recreated. Sends go oldest first, one at a time, and stop at the first failure a retry could
  * fix, so order is kept and nothing is lost.
  */
 import { apiFetch } from "../api/client";
@@ -33,11 +33,9 @@ function sendTimeout(): AbortSignal {
 }
 
 /**
- * Adds an event to the queue, resolving once it is stored, then starts a send. The event is
- * written to the outbox before anything is awaited, so call this synchronously inside the tap:
- * a page that closes straight after it still has the event, and the next start queues it. The
- * write happens at once, even while a sign-out is asking: the sign-out deletes only the events
- * it counted, and never an outbox entry.
+ * Adds an event to the queue, resolving once it is stored, then starts a send. The outbox copy
+ * (#254) is written before anything is awaited, so call this inside the tap. The write happens
+ * at once, even while a sign-out is asking: the sign-out deletes only the events it counted.
  */
 export async function enqueueFeedback(
   articleId: string,
@@ -52,32 +50,21 @@ export async function enqueueFeedback(
   return payload;
 }
 
-function isConstraintError(err: unknown): boolean {
-  return err instanceof DOMException && err.name === "ConstraintError";
-}
-
 /**
- * Stores `payload` at the end of the queue, keeping its id and `created_at`, and resolves once
- * the transaction has committed. An id already queued counts as stored, so an event moved from
- * the outbox after its first write landed is never queued twice.
+ * Stores `payload` at the end of the queue as given, resolving once committed. An id already
+ * queued counts as stored, so an event moved from the outbox is never queued twice.
  */
 export async function storeEvent(payload: FeedbackPayload): Promise<void> {
-  const db = await openFeedbackDb();
-  const tx = db.transaction("queue", "readwrite");
-  const done = tx.done.catch((err: unknown) => {
-    if (!isConstraintError(err) && !isConstraintError(tx.error)) throw err;
-  });
+  const tx = (await openFeedbackDb()).transaction("queue", "readwrite");
+  tx.done.catch(() => {}); // Awaited below; this keeps the abort after a failed add handled.
   try {
     const last = await tx.store.index("seq").openCursor(null, "prev");
     await tx.store.add({ ...payload, seq: (last?.value.seq ?? 0) + 1 });
+    await tx.done;
   } catch (err) {
-    // `add` fails with ConstraintError when the id is already queued; the transaction aborts.
-    if (!isConstraintError(err)) {
-      await done.catch(() => {});
-      throw err;
-    }
+    // `add` fails with ConstraintError when the id is already queued.
+    if (!(err instanceof DOMException && err.name === "ConstraintError")) throw err;
   }
-  await done;
 }
 
 let running: Promise<void> | null = null;

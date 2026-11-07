@@ -23,20 +23,20 @@ function stored(item: FeedItem): StoredFeedItem {
   return item as unknown as StoredFeedItem;
 }
 
-/**
- * The `dismissed` and `muted` writes, one at a time in the order tapped, so an Undo's delete
- * can't land before the write of the action it undoes, without the caller chaining.
- */
+/** The `dismissed` and `muted` writes, in the order tapped, so an Undo can't land first. */
 let stateWrites: Promise<void> = Promise.resolve();
 
 /**
- * Adds `write` to the state chain beside the event the caller has already queued, inside the
- * tap. The state write doesn't wait for the queue write: they are separate stores.
+ * Queues the event synchronously, so every change below must be called inside the tap, then
+ * chains `write`. The state write doesn't wait for the queue write: they are separate stores.
  */
 function record(
-  queued: Promise<unknown>,
+  item: FeedItem,
+  event: "dismiss" | "mute_source",
+  value: number,
   write: (db: FeedbackDb) => Promise<unknown>,
 ): Promise<void> {
+  const queued = enqueueFeedback(item.id, event, value);
   const state = stateWrites.then(async () => {
     await write(await openFeedbackDb());
     changed();
@@ -45,37 +45,27 @@ function record(
   return Promise.all([queued, state]).then(() => undefined);
 }
 
-/** Each change below queues its event synchronously, so call it inside the tap. */
 export function dismissStory(item: FeedItem): Promise<void> {
-  const queued = enqueueFeedback(item.id, "dismiss", 1);
-  const at = new Date().toISOString();
-  return record(queued, (db) =>
-    db.put("dismissed", { key: storyKey(item), item: stored(item), at }),
-  );
+  const row = { key: storyKey(item), item: stored(item), at: new Date().toISOString() };
+  return record(item, "dismiss", 1, (db) => db.put("dismissed", row));
 }
 
 /** Shows the story again; the server takes the later `dismiss` 0 (a new event id) as the undo. */
 export function undoDismiss(item: FeedItem): Promise<void> {
-  const queued = enqueueFeedback(item.id, "dismiss", 0);
-  return record(queued, (db) => db.delete("dismissed", storyKey(item)));
+  return record(item, "dismiss", 0, (db) => db.delete("dismissed", storyKey(item)));
 }
 
 export function muteSource(item: FeedItem): Promise<void> {
-  const queued = enqueueFeedback(item.id, "mute_source", 1);
-  const at = new Date().toISOString();
-  return record(queued, (db) =>
-    db.put("muted", { source_id: item.source_id, item: stored(item), at }),
-  );
+  const row = { source_id: item.source_id, item: stored(item), at: new Date().toISOString() };
+  return record(item, "mute_source", 1, (db) => db.put("muted", row));
 }
 
 /**
- * Unmutes the source of `item`, the item it was muted from (Settings lists those). The undo
- * event carries that item's id, because the event needs an `article_id` and the item may have
- * left the feed long ago.
+ * Unmutes the source of `item`, the item it was muted from. The undo event carries that item's
+ * id, because the event needs an `article_id` and the item may have left the feed long ago.
  */
 export function unmuteSource(item: FeedItem): Promise<void> {
-  const queued = enqueueFeedback(item.id, "mute_source", 0);
-  return record(queued, (db) => db.delete("muted", item.source_id));
+  return record(item, "mute_source", 0, (db) => db.delete("muted", item.source_id));
 }
 
 export async function isHidden(item: FeedItem): Promise<boolean> {

@@ -7,18 +7,13 @@ import { getArticleHtml, markKept, putArticleHtml } from "../store/db";
 import { openFeedbackDb, type StoredFeedItem } from "./db";
 import { enqueueFeedback } from "./queue";
 
-/**
- * The `liked` store and kept-text writes, one at a time in the order tapped, so a quick Like then
- * Unlike lands on the phone as not liked without the caller chaining.
- */
+/** Like state writes, in tap order. `setLiked` queues its event synchronously, inside the tap. */
 let stateWrites: Promise<void> = Promise.resolve();
 
 /**
- * Likes or unlikes `item`. Call it synchronously inside the tap: the event is queued (and so in
- * the outbox) before anything is awaited. Liking also keeps its stored text past pruning,
- * storing `html` (what the reader shows) when no text is stored yet. Unliking drops the keep
- * mark, on the text stored under the id it was liked as too, but leaves the text for normal
- * pruning. The latest event wins on the server.
+ * Likes or unlikes `item`. Liking also keeps its stored text past pruning, storing `html` (what
+ * the reader shows) when no text is stored yet. Unliking drops the keep mark but leaves the text
+ * for normal pruning. The latest event wins on the server.
  */
 export function setLiked(item: FeedItem, liked: boolean, html?: string): Promise<void> {
   const queued = enqueueFeedback(item.id, "like", liked ? 1 : 0);

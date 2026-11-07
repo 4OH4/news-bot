@@ -3,10 +3,9 @@
  * reader opening. Only time while the page is visible counts, so a phone left in a pocket with
  * the reader open doesn't look like a long read.
  *
- * Every screen is a full page load, so leaving the reader unloads the page and no cleanup runs.
- * The reading is ended by `pagehide` and queued through `enqueueFeedback`, whose outbox entry
- * (#254) is written synchronously, so it survives the page unloading before the queue write
- * finishes.
+ * Every screen is a full page load, so leaving the reader unloads the page: no cleanup runs and
+ * an IndexedDB write started then never finishes. So `pagehide` queues the reading through
+ * `enqueueFeedback`, whose synchronous outbox copy (#254) the next start moves into the queue.
  */
 import type { FeedItem } from "../feed/types";
 import { enqueueFeedback } from "./queue";
