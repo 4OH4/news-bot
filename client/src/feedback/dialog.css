@@ -1,0 +1,30 @@
+/* The sign-out dialog (#184), shown over the whole screen. */
+.signout-dialog {
+  position: fixed;
+  inset: auto var(--space) var(--space) var(--space);
+  z-index: 20;
+  max-width: 32rem;
+  margin: 0 auto;
+  padding: var(--space);
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 24px rgb(0 0 0 / 25%);
+}
+
+.signout-dialog h2 {
+  margin: 0 0 8px;
+  font-size: 1.1rem;
+}
+
+.signout-dialog p {
+  margin: 0 0 8px;
+}
+
+.signout-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}

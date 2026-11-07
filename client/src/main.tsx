@@ -2,6 +2,9 @@ import { render } from "preact";
 import { App } from "./App";
 import { RECONNECT_PATH } from "./auth/reconnect";
 import "./style.css";
+import { startFeedback } from "./feedback/start";
+
+startFeedback();
 
 // Reconnect lands here after Google's sign-in; show the normal address without navigating.
 if (location.pathname === RECONNECT_PATH) history.replaceState(null, "", "/");
