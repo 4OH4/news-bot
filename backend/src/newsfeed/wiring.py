@@ -10,8 +10,6 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 
-from newsfeed.adapters.localfs_blobstore import LocalBlobStore
-from newsfeed.adapters.sqlite_repository import SqliteRepository
 from newsfeed.config import UrlParamsConfig, load_url_params
 from newsfeed.extract.chain import ExtractorChain
 from newsfeed.extract.newspaper_extractor import Newspaper4kExtractor
@@ -26,6 +24,7 @@ from newsfeed.ingest.rss import RssIngester
 from newsfeed.models import SourceType
 from newsfeed.ports import BlobStore, Extractor, Fetcher, Repository, SourceIngester
 from newsfeed.settings import Settings
+from newsfeed.storage import open_storage
 
 __all__ = [
     "Services",
@@ -76,29 +75,6 @@ def open_fetcher(settings: Settings) -> Iterator[HttpFetcher]:
     """Yield the polite HTTP fetcher configured from ``settings``, closing it after."""
     with HttpFetcher(settings.user_agent, min_interval=settings.host_interval) as fetcher:
         yield fetcher
-
-
-def open_storage(settings: Settings) -> tuple[Repository, BlobStore]:
-    """The repository and blob store for ``settings.storage``.
-
-    The Google adapters are imported only for ``gcp``, so local runs and CI need
-    neither the Google libraries' import cost nor any credentials.
-    """
-    if settings.storage == "gcp":
-        from newsfeed.adapters.gcp import open_firestore_repository, open_gcs_blobstore
-
-        assert settings.gcs_bucket  # Settings rejects gcp without a bucket
-        return (
-            open_firestore_repository(
-                project=settings.gcp_project, database=settings.firestore_database
-            ),
-            open_gcs_blobstore(
-                project=settings.gcp_project,
-                bucket=settings.gcs_bucket,
-                prefix=settings.gcs_prefix,
-            ),
-        )
-    return SqliteRepository(settings.database_path), LocalBlobStore(settings.blob_dir)
 
 
 @contextmanager

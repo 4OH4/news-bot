@@ -633,6 +633,23 @@ wheels = [
 ]
 
 [[package]]
+name = "fastapi"
+version = "0.162.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "annotated-doc" },
+    { name = "opentelemetry-api" },
+    { name = "pydantic" },
+    { name = "starlette" },
+    { name = "typing-extensions" },
+    { name = "typing-inspection" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/eb/fb/3e954cd19540d69f9547e2577afe73b2eadad2ee47b691376a5b9345c50a/fastapi-0.162.1.tar.gz", hash = "sha256:b18411785f55d05baa296fcfa2901f26728483190e7d8eb8f8e6aa47ed94b030", size = 529173, upload-time = "2026-11-07T11:56:03.769Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5c/06/83c13e92ae48a2cb0e8adfa939a93f5c7165e64f5bff916a3fbf5c59f7fb/fastapi-0.162.1-py3-none-any.whl", hash = "sha256:8107bbfbde522cbd3edcfb32e4923f1786fc52d901ff60a9f724f142df24a648", size = 150728, upload-time = "2026-11-07T11:56:02.09Z" },
+]
+
+[[package]]
 name = "feedparser"
 version = "6.0.14"
 source = { registry = "https://pypi.org/simple" }
@@ -1490,6 +1507,7 @@ name = "newsfeed"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "fastapi" },
     { name = "feedparser" },
     { name = "google-auth" },
     { name = "google-cloud-firestore" },
@@ -1527,6 +1545,7 @@ playwright = [
 
 [package.metadata]
 requires-dist = [
+    { name = "fastapi", specifier = ">=0.162.1" },
     { name = "feedparser", specifier = ">=6.0.14" },
     { name = "google-auth", specifier = ">=2.62.0" },
     { name = "google-cloud-firestore", specifier = ">=2.34.1" },
@@ -2462,6 +2481,19 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/5e/77/2dcfa996b01702ab8fd0763d84098f6a640d6162a328f1c04c2697579a1a/soupsieve-3.0.3.tar.gz", hash = "sha256:7dcf6022eed0399eb9934a75e020148f7a2024c37b7dfcd3cf2c5505d69c364e", size = 115923, upload-time = "2026-10-12T13:21:17.696Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/49/ca/f639c80449997b88aba7bc9705d25dd76cc0844f45f187862fd8f8bb18fa/soupsieve-3.0.3-py3-none-any.whl", hash = "sha256:fa30e3ba4809cb81ce1f3209f2fbe3e779fc445f0439bc147a0d7c4601743f21", size = 41705, upload-time = "2026-10-12T13:21:16.474Z" },
+]
+
+[[package]]
+name = "starlette"
+version = "1.10.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "anyio" },
+    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/48/bb/3d8757f21e9a53d9035c9eb039a777047139a16bfdbedfc7a58241c3d914/starlette-1.10.0.tar.gz", hash = "sha256:b8399098d4c1e3522734f7235dc79b1fc967f96cf139c81e0fa30479e0685f9b", size = 2734356, upload-time = "2026-10-24T15:04:12.342Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/88/2e/947cfe02def9371c07cd5bf5b6b61c829e9aecb9904db02a66cfafbc1eec/starlette-1.10.0-py3-none-any.whl", hash = "sha256:478c0ab3b4ced6e82719849c118fa406f0278a3499c1a898cd15cd31bdc38ce4", size = 80571, upload-time = "2026-10-24T15:04:10.371Z" },
 ]
 
 [[package]]

@@ -169,6 +169,28 @@ def test_a_requests_error_from_the_library_is_a_connection_error() -> None:
     assert not isinstance(raised.value, TokenRejectedError)
 
 
+@pytest.mark.parametrize("email", ["", 42, ["reader@example.com"]], ids=repr)
+def test_an_empty_or_non_string_email_claim_is_rejected(email: object) -> None:
+    verifier = IapJwtVerifier(AUDIENCE, verify_token=Library(claims(email=email)))
+
+    with pytest.raises(TokenRejectedError):
+        verifier.verify(TOKEN)
+
+
+def test_the_default_allows_a_little_clock_skew(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, Any] = {}
+
+    def recorder(*args: Any, **kwargs: Any) -> Mapping[str, Any]:
+        seen.update(kwargs)
+        return claims()
+
+    monkeypatch.setattr(google.oauth2.id_token, "verify_token", recorder)
+
+    IapJwtVerifier(AUDIENCE).verify(TOKEN)
+
+    assert seen["clock_skew_in_seconds"] == 10
+
+
 def test_a_result_that_is_not_a_mapping_is_rejected() -> None:
     def odd(token: str) -> Any:
         return ["not", "claims"]
