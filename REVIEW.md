@@ -15,6 +15,8 @@ Failure patterns taken from real defects in this repo. Test authors and workers 
 - One bad article or feed must not fail a run: failures are caught at the stage boundary and recorded on the item.
 - A numeric range check must reject NaN and infinity.
 - A regex that reads one line must not use `\W` or `\s`, which match a newline: an empty field would take its text from the next line. In #133 an empty `Reason:` passed the merge gate this way. Use `[^\w\n]` and `[^\S\n]`.
+- A retry loop or single-flight lock (one holder at a time) must limit how long one attempt can wait.
+- An empty environment variable that holds a path becomes `Path('.')`, the current directory. Treat empty as unset.
 
 ## Polite fetching and safety
 
@@ -25,6 +27,7 @@ Failure patterns taken from real defects in this repo. Test authors and workers 
 - Don't replace stored state on a result not yet known.
 - Nothing may bypass a paywall or an access control, and third-party article text must not reach the public repo.
 - A privileged deploy must not consume a cache, or any other file, that a less-trusted step could write. The instance: build code wrote the file the deploy then read (PR #186, defect 2 of its second review).
+- A stage that runs third-party build code must be checked for `RUN --mount` and `ADD` as well as `COPY`, since each can bring in files from outside the build context.
 
 ## Cross-issue checks
 
@@ -41,6 +44,8 @@ Failure patterns taken from real defects in this repo. Test authors and workers 
 - A new CI check counts only if the merge gate reads it.
 - A command in an agent brief must be checked under the isolation that agent runs with. In #133, briefs ran git against a sibling worktree, by `git -C` and by `cd`, which the harness refuses for an isolated agent, so the hand-off between agents could not work.
 - A step that reads something later must name where it is stored, because agent reports and lead sessions don't persist. In #138, the milestone review read friction notes that existed in no file, issue or comment.
+- A split PR's body must not carry a closing keyword (such as `Closes`) for an issue that a later part closes.
+- A trailer that a gate reads must sit in the last paragraph of the commit message.
 
 ## Tests that can fail
 
@@ -49,6 +54,9 @@ Failure patterns taken from real defects in this repo. Test authors and workers 
 - A deleted or loosened assertion needs a reason in the PR.
 - A test for a guard must reach the guard's line.
 - A test for a false match uses the real input that showed it, not a tidied-up copy.
+- A test that one async step finishes before the next must use a step that resolves later, or dropping an `await` goes unnoticed.
+- A behaviour that depends on a browser value set by a header must be tested through the control the user actually uses, under the production headers.
+- A time-relative test must fix "now" on both sides, the code under test and the data it compares against.
 
 ## Workflows and exemptions
 
