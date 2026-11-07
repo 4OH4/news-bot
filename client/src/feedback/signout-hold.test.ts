@@ -28,8 +28,9 @@ async function click(name: RegExp): Promise<void> {
   find()[0]!.click();
 }
 
+/** Queued ids in queue order (`seq`), not key order: the ids are random. */
 async function queuedIds(f: Awaited<ReturnType<typeof loadApp>>): Promise<string[]> {
-  return (await (await f.openFeedbackDb()).getAll("queue")).map((row) => row.id);
+  return (await (await f.openFeedbackDb()).getAllFromIndex("queue", "seq")).map((row) => row.id);
 }
 
 describe("an event enqueued while the sign-out dialog is open", () => {
