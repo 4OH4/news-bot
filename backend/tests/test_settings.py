@@ -106,3 +106,91 @@ def test_retry_window_days_accepts_a_normal_value(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setenv("NEWSFEED_RETRY_WINDOW_DAYS", "7.5")
 
     assert load_settings().retry_window_days == 7.5
+
+
+# --- API settings (#175) -----------------------------------------------------
+
+_API_ENV = (
+    "NEWSFEED_API_AUTH",
+    "NEWSFEED_OWNER_EMAIL",
+    "NEWSFEED_IAP_AUDIENCE",
+    "NEWSFEED_CLIENT_DIR",
+    "NEWSFEED_STORAGE",
+    "NEWSFEED_GCS_BUCKET",
+    "PORT",
+)
+_AUDIENCE = "/projects/123456789/locations/europe-west2/services/reader-api"
+
+
+@pytest.fixture
+def api_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> pytest.MonkeyPatch:
+    """No API variables from the shell, and no ``.env`` from the working directory."""
+    for name in _API_ENV:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.chdir(tmp_path)
+    return monkeypatch
+
+
+def test_api_settings_are_read_from_the_environment(
+    api_env: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    api_env.setenv("NEWSFEED_API_AUTH", "iap")
+    api_env.setenv("NEWSFEED_OWNER_EMAIL", "someone@example.com")
+    api_env.setenv("NEWSFEED_IAP_AUDIENCE", _AUDIENCE)
+    api_env.setenv("NEWSFEED_CLIENT_DIR", str(tmp_path / "dist"))
+    api_env.setenv("PORT", "9123")
+
+    settings = load_settings()
+
+    assert settings.api_auth == "iap"
+    assert settings.owner_email == "someone@example.com"
+    assert settings.iap_audience == _AUDIENCE
+    assert settings.client_dir == tmp_path / "dist"
+    assert settings.api_port == 9123
+
+
+def test_api_settings_defaults(api_env: pytest.MonkeyPatch) -> None:
+    # The pipeline commands load these settings too, so the defaults must load
+    # without any API variable set.
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+
+    assert settings.api_auth == "iap"
+    assert settings.owner_email is None
+    assert settings.iap_audience is None
+    assert settings.client_dir is None
+    assert settings.api_port == 8080
+
+
+def test_no_api_auth_is_allowed_with_local_storage(api_env: pytest.MonkeyPatch) -> None:
+    api_env.setenv("NEWSFEED_API_AUTH", "none")
+
+    assert load_settings().api_auth == "none"
+
+
+def test_no_api_auth_with_gcp_storage_is_rejected(api_env: pytest.MonkeyPatch) -> None:
+    api_env.setenv("NEWSFEED_API_AUTH", "none")
+    api_env.setenv("NEWSFEED_STORAGE", "gcp")
+    api_env.setenv("NEWSFEED_GCS_BUCKET", "invented-bucket")
+    api_env.setenv("NEWSFEED_IAP_AUDIENCE", _AUDIENCE)
+
+    with pytest.raises(ValidationError):
+        load_settings()
+
+
+@pytest.mark.parametrize("audience", [None, "", "   "])
+def test_iap_auth_without_an_audience_is_rejected(
+    api_env: pytest.MonkeyPatch, audience: str | None
+) -> None:
+    api_env.setenv("NEWSFEED_API_AUTH", "iap")
+    if audience is not None:
+        api_env.setenv("NEWSFEED_IAP_AUDIENCE", audience)
+
+    with pytest.raises(ValidationError):
+        load_settings()
+
+
+def test_an_unknown_api_auth_mode_is_rejected(api_env: pytest.MonkeyPatch) -> None:
+    api_env.setenv("NEWSFEED_API_AUTH", "firebase")
+
+    with pytest.raises(ValidationError):
+        load_settings()
