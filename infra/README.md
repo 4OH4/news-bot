@@ -21,17 +21,18 @@ read-only roles let it refresh them, but never read secret values.
 |------|-----------------|
 | `setup.sh` | Runs the first-time setup below from `terraform.tfvars`. Re-runnable. |
 | `bootstrap.sh` | The project, its billing link, the first three APIs and the Terraform state bucket. Run once. |
-| `terraform/versions.tf`, `providers.tf` | Terraform and Google provider versions, the `gcs` state backend, and the quota project for user credentials. |
+| `terraform/versions.tf`, `providers.tf` | Terraform and Google provider versions (`google`, and `google-beta` for the reader app's service only), the `gcs` state backend, and the quota project for user credentials. |
 | `terraform/variables.tf` | The values you choose. Project, billing account, region, budget and alert email have no defaults. |
 | `terraform/apis.tf` | The remaining APIs. |
 | `terraform/budget.tf` | A monthly budget on the project, emailing at 50%, 90% and 100% of actual spend. |
 | `terraform/registry.tf` | The Artifact Registry Docker repository, with a cleanup policy (keep the 10 newest images; delete others after 30 days). |
 | `terraform/run_job.tf` | The Cloud Run Job (1 vCPU, 1 GiB, 50-minute timeout, no retries) and its runtime service account, which may use Firestore. |
+| `terraform/api_service.tf` | The reader app's Cloud Run service `newsfeed-api` (`newsfeed serve`; 0 to 1 instance, 512 MiB, 8 requests at once) behind IAP, and its service account, which may use Firestore and the content bucket's objects. Its only invoker is IAP's service agent. IAP's OAuth settings and the owner's access grant are console steps, below. |
 | `terraform/scheduler.tf` | The hourly Cloud Scheduler job and its service account, which may only start the job (`roles/run.invoker`). |
 | `terraform/firestore.tf` | The `(default)` Firestore database (Native mode, delete-protected) and the four composite indexes the repository adapter needs. |
 | `terraform/storage.tf` | The private content bucket: `articles/` expires after 30 days and `feeds/` after 7 (ADR-0005); the runtime account may read and write its objects. |
 | `terraform/secrets.tf` | Secret Manager secrets, none yet. Terraform never holds secret values. |
-| `terraform/deploy.tf` | The deploy service account for GitHub Actions (#75): push to the registry, update the job, act as the runtime account. |
+| `terraform/deploy.tf` | The deploy service account for GitHub Actions (#75): push to the registry, update the job and the reader app's service, act as their two runtime accounts. |
 | `terraform/wif.tf` | Workload Identity Federation: GCP accepts GitHub's short-lived tokens only from `deploy.yml` on `main`, so no key exists. |
 | `terraform/outputs.tf` | Names the deploy workflow and the steps below need. |
 | `terraform/.terraform.lock.hcl` | The provider versions, so CI and you use the same ones. Update it with `terraform init -upgrade`. |
@@ -196,6 +197,63 @@ development identity" below for the account itself):
 ```bash
 gcloud projects add-iam-policy-binding <project-id> --member="serviceAccount:<dev-account-email>" --role=roles/iam.workloadIdentityPoolViewer
 ```
+
+## The reader app behind IAP
+
+`api_service.tf` creates the reader app's Cloud Run service, `newsfeed-api`,
+with Identity-Aware Proxy (IAP, Google's sign-in gate) turned on and no public
+access. Google refuses every account except yours before the container runs, so
+strangers' requests start no instance and aren't billed. #179 walks through
+these steps once.
+
+1. Add your Google account's email to `terraform.tfvars` as `owner_email`, then
+   apply as in [Later changes](#later-changes). The apply creates IAM, so you
+   run it (ADR-0007). `terraform output -raw api_url` prints the app's URL.
+
+   If the apply fails on `google_cloud_run_v2_service_iam_member.iap_invoker`
+   because the service account `service-<project-number>@gcp-sa-iap.iam.gserviceaccount.com`
+   doesn't exist, create IAP's service agent and apply again:
+
+   ```bash
+   gcloud beta services identity create --service=iap.googleapis.com --project=<project-id>
+   ```
+
+   If the service fails to start on the placeholder `hello` image (it is
+   given the argument `serve`, which that image may not accept), push the
+   real image as in step 6 of the first-time setup and set `api_image` in
+   `terraform.tfvars` to its tag. Terraform ignores the image after the
+   first create, and delete protection stops it replacing the failed
+   service, so point the service at the image yourself, clear the failure
+   mark, and apply again:
+
+   ```bash
+   gcloud run services update newsfeed-api --region=<region> --image=<image tag>
+   terraform untaint google_cloud_run_v2_service.api
+   ```
+
+   With the real image already pushed, setting `api_image` before the first
+   apply avoids this.
+
+2. Until the next step is done, the URL answers with a 502 ("Empty Google
+   Account OAuth client ID(s)/secret(s)"). A project with no organisation needs
+   its own OAuth client for IAP, which only the console can make. In the
+   console, go to **Cloud Run**, open `newsfeed-api`, then **Security**, and
+   under Identity-Aware Proxy choose **Edit policy > Configure in IAP >
+   Custom OAuth > Auto generate credentials**. The OAuth consent screen from
+   the spike (#196: External, left in Testing) is reused.
+
+3. In the same dialog, add your Google account as a principal with the role
+   **IAP-secured Web App User** (`roles/iap.httpsResourceAccessor`). Nobody
+   else needs it, and nobody else should have it.
+
+4. Wait a few minutes for the grant to apply, then open the URL in Chrome. It
+   goes through Google's sign-in and back to the app. A 403 straight after the
+   grant usually means it hasn't applied yet.
+
+**Never move IAP's OAuth settings into Terraform** (`google_iap_settings`, or an
+OAuth client resource). Terraform would store the client secret in its state as
+plain text. IAP keeps the secret, and nothing in the repo, the state or Secret
+Manager holds it. If a new secret is ever needed, make one in the console.
 
 ## The development identity
 

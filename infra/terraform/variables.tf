@@ -35,6 +35,12 @@ variable "alert_email" {
   sensitive   = true
 }
 
+variable "owner_email" {
+  description = "The owner's Google account email. The API serves only this account (NEWSFEED_OWNER_EMAIL, #175); IAP's access grant to it is made in the console (#179)."
+  type        = string
+  sensitive   = true
+}
+
 # --- Optional: safe defaults -------------------------------------------------
 
 variable "budget_thresholds" {
@@ -112,4 +118,41 @@ variable "secret_ids" {
   description = "Secret Manager secrets to create (containers only; values are added with gcloud). Empty for now."
   type        = set(string)
   default     = []
+}
+
+# --- The reader app's service (api_service.tf) --------------------------------
+
+variable "api_service_name" {
+  description = "Name of the Cloud Run service running `newsfeed serve`. Also part of the IAP JWT audience the API checks."
+  type        = string
+  default     = "newsfeed-api"
+}
+
+variable "api_image" {
+  description = <<-EOT
+    Container image for the service's first apply only. Terraform ignores later
+    changes, which the deploy workflow (#178) sets. The default is Google's
+    public sample service image, so the first apply works before any image has
+    been pushed.
+  EOT
+  type        = string
+  default     = "us-docker.pkg.dev/cloudrun/container/hello"
+}
+
+variable "api_max_instances" {
+  description = "Maximum instances of the service. One user never needs two, and one keeps cost and behaviour simple."
+  type        = number
+  default     = 1
+}
+
+variable "api_memory" {
+  description = "Memory for one instance of the service."
+  type        = string
+  default     = "512Mi"
+}
+
+variable "api_concurrency" {
+  description = "Requests one instance handles at once: four for prefetch, a feed refresh, an opened article, a feedback event and one spare."
+  type        = number
+  default     = 8
 }

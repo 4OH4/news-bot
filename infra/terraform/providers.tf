@@ -1,4 +1,6 @@
-# One provider for the whole root module.
+# The google provider for the whole root module, and google-beta, configured
+# the same way, for the one resource that needs it (the Cloud Run service in
+# api_service.tf, for iap_enabled).
 #
 # With user credentials (Application Default Credentials), the Cloud Billing
 # Budgets API and Service Usage need a quota project. billing_project plus
@@ -8,6 +10,13 @@
 # the few calls made before this provider block is in effect.
 
 provider "google" {
+  project               = var.project_id
+  region                = var.region
+  billing_project       = var.project_id
+  user_project_override = true
+}
+
+provider "google-beta" {
   project               = var.project_id
   region                = var.region
   billing_project       = var.project_id

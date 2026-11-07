@@ -12,6 +12,13 @@ terraform {
       source  = "hashicorp/google"
       version = "~> 6.0"
     }
+    # Only for the reader app's service: the GA provider has no iap_enabled on
+    # google_cloud_run_v2_service (api_service.tf). Kept on the same version
+    # as google; drop it once the GA provider has the field.
+    google-beta = {
+      source  = "hashicorp/google-beta"
+      version = "~> 6.0"
+    }
   }
 
   backend "gcs" {
