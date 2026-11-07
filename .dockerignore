@@ -8,6 +8,8 @@
 !backend/src/
 !config/
 !client/
+# Local env files hold developer settings; never send them.
+client/.env*
 # The client stage installs and builds its own; never send local copies.
 client/node_modules/
 client/dist/

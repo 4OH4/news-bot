@@ -138,7 +138,7 @@ def image_references(dockerfile: str) -> list[str]:
     for raw in dockerfile.splitlines():
         line = raw.strip()
         from_match = re.match(r"FROM\s+(?:--\S+\s+)*(\S+)", line, re.IGNORECASE)
-        if from_match:
+        if from_match and from_match.group(1).lower() not in stage_names:
             references.append(from_match.group(1))
         copy_match = re.match(r"(?:COPY|RUN)\s+.*?--(?:from|mount=\S*from)=(\S+?)[\s,]", line + " ")
         if copy_match and copy_match.group(1).lower() not in stage_names:
