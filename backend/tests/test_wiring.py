@@ -91,3 +91,19 @@ def test_importing_wiring_does_not_import_google_cloud() -> None:
         "sys.exit(any(m.startswith('google.cloud') for m in sys.modules))"
     )
     assert subprocess.run([sys.executable, "-c", code], check=False).returncode == 0
+
+
+def test_open_storage_lives_in_its_own_module_and_is_re_exported_by_wiring() -> None:
+    # The API opens storage without importing wiring, which pulls in the extractors (#175).
+    from newsfeed import storage
+
+    assert storage.open_storage is open_storage
+
+
+def test_importing_storage_loads_no_extractor_library() -> None:
+    code = (
+        "import sys, newsfeed.storage; "
+        "sys.exit(any(m.split('.')[0] in {'trafilatura', 'newspaper', 'playwright'} "
+        "for m in sys.modules))"
+    )
+    assert subprocess.run([sys.executable, "-c", code], check=False).returncode == 0
