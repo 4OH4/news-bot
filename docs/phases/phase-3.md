@@ -2,65 +2,71 @@
 
 **Goal:** an installable PWA on my Android phone with an offline cache, and feedback capture through a thin API that only I can use. **Exit:** I use it daily in place of the Google feed for two weeks (`PROJECT_PLAN.md` §6).
 
-Phase 2 is signed off (PR #163), so building starts once this design merges.
+Phase 2 is signed off (PR #163). This revision moves client access from Firebase to Identity-Aware Proxy (IAP), following the decision issue #196 and its two live spikes. The decision there is final once the last spike check, the Reconnect after a real 401, has passed, and this design merges only after that.
 
 ## Approach
 
 ```
-Phone (PWA: Preact, service worker, IndexedDB)
-   │ same origin, https://<project>.web.app
+Phone (installed PWA: Preact, service worker, IndexedDB)
+   │ one origin: https://newsfeed-api-<hash>.<region>.run.app
    ▼
-Firebase Hosting ── static client files
-   │ /api/** rewrite, with Authorization: Bearer <Firebase ID token>
+IAP (Google's sign-in gate, turned on directly on the Cloud Run service)
+   │ lets only the owner's Google account through; refuses everyone else
+   │ before the container, and adds a signed x-goog-iap-jwt-assertion header
    ▼
 Cloud Run Service newsfeed-api (FastAPI, scale to zero, same image as the job)
-   │ checks the token and the owner's email on every route
-   ├── BlobStore: reads feed.json, articles/<id>.html, saved/<id>.html; writes saved/
+   │ checks the IAP JWT and the owner's email on every route
+   ├── / and static files: the built client, baked into the image
+   ├── /api/**: BlobStore reads feed.json, articles/<id>.html, saved/<id>.html; writes saved/
    └── Repository: writes feedback only, never articles
 ```
 
 The three items the Phase 2 report left for this design are settled here. ADR work is in #171.
 
-**1. Route to the private bucket: through the API.** The bucket stays private. The API reads `feed.json` and article HTML through the `BlobStore` port and returns them only to the signed-in owner, with an `ETag` and `Cache-Control: private`, so Firebase Hosting's CDN never holds article text. `GET /api/feed` needs no Firestore read. The client shows its IndexedDB copy first and refreshes behind it, so a Cloud Run cold start never delays opening the app (NFR-4). Rejected: a public bucket, which publishes third-party text; signed URLs, which need a key or signing permission and a Firestore-free way to hand out 200 links; serving the client from the API, which makes the first load wait for a cold start.
+**1. Route to the private bucket: through the API, on one origin with the client.** The bucket stays private. The API reads `feed.json` and article HTML through the `BlobStore` port and returns them only to the owner, with an `ETag` and `Cache-Control: private`. There is no CDN, so no copy of article text sits anywhere else. The same service serves the built client from `/`, so the IAP session cookie covers both and every API call is same-origin. The client shows its IndexedDB copy first and refreshes behind it, so a Cloud Run cold start never delays opening the installed app (NFR-4). Only the first load in Chrome, and the first after a new version, wait for one cold start. Rejected: a public bucket, which publishes third-party text; signed URLs; the client on Firebase Hosting with the API on `run.app`, which makes the IAP cookie third-party to the page (#196 §2b); a load balancer, which has a monthly charge.
 
-**2. Identity: Firebase Auth, with the owner check in our API.** Cloud Run allows `allUsers` to reach the service, as Hosting rewrites require, and every route needs a valid token whose verified email equals `NEWSFEED_OWNER_EMAIL`. Anyone can get a Firebase token for their own Google account, so the email check is the real gate, and it fails closed. An adapter delegates token checks to Google's `firebase_admin` library, which uses Google's public keys, so this design has no secret to store and writes no HTTP of its own. Rejected: IAP, because its login redirects and short sessions break background refresh in a service worker, and without a Workspace organisation it needs a hand-made OAuth client.
+**2. Identity: IAP, with the owner check repeated in our API.** IAP sits in front of the service, the owner's account alone holds `roles/iap.httpsResourceAccessor`, and the service has no `allUsers` grant. Google refuses anyone else before the container runs. Spike A in #196 sent 4,500 unauthenticated requests: none started an instance, none was counted or billed as a Cloud Run request, and none wrote a request log. As defence in depth, every route also requires a valid `x-goog-iap-jwt-assertion` (ES256, Google's IAP public keys, issuer `https://cloud.google.com/iap`, audience naming this service) whose `email` equals `NEWSFEED_OWNER_EMAIL`, failing closed. Google recommends this check, because it still holds if IAP is turned off by mistake or the grant is wrong. A new adapter, `IapJwtVerifier`, delegates the check to the `google-auth` library and implements the `TokenVerifier` port from #172, which doesn't change. The project writes no HTTP of its own, and has no secret: the OAuth client secret goes to IAP once, in the console, and is never in the repo, Terraform state or Secret Manager. Rejected: Firebase Auth on a public service (the earlier design), because a flood of strangers' requests would be billed with nothing free to stop it, and it needed Hosting, a hand-made sign-in and a privileged `firebase-tools` deploy.
 
-**The client loads no third-party script.** Firebase's popup and redirect helpers load a script from `apis.google.com`, which `CLAUDE.md` forbids. So the client sends the browser to Google's sign-in page itself, receives an ID token on `/signin`, and passes it to `signInWithCredential`. That is plain HTTP calls from bundled code, and it avoids the third-party storage problems of Firebase's redirect flow. The CSP stays at `script-src 'self'`.
+**The client has no sign-in code.** The first visit in Chrome goes through Google's sign-in and back, handled by IAP. The client loads no third-party script, and the CSP stays at `script-src 'self'`.
 
-**3. Feedback identity: keep `Feedback.article_id`, and add `story_id` to the feed.**
+**Reconnect, when the IAP session lapses.** A `fetch` can't follow IAP's redirect through Google, so the client sends `X-Requested-With: XMLHttpRequest` on every API call, which makes IAP answer 401 instead of a 302 (spike A confirmed both). A 401 while online shows a "Reconnect" banner over the stored feed. Tapping it does a plain navigation to `/reconnect`, an in-app path the service worker always sends to the network: with a valid session the app just reloads, and with a lapsed one IAP takes it through Google and back. A network error never offers Reconnect, so the app never navigates to a page that can't load. It never uses IAP's `DO_SESSION_REFRESH` mode, which in spike B only reached IAP's keep-alive page and needed Back. The reconnect after a real 401 is the last spike check still running, so the method lives in one module, `client/src/auth/reconnect.ts`, plus one service-worker denylist entry (#174, #180), and a different method changes only those. If it fails, the lead calls the architect back before #180 merges.
+
+**3. Feedback identity: keep `Feedback.article_id`, and add `story_id` to the feed.** Done in #173 (merged).
 
 - Feedback events store the id of the row the owner saw. They are never rewritten.
-- `story_id` is a new additive feed field: the id of the row at the end of the `declared_canonical` chain, which publish already works out in `_story_end`. It stays the same when a target recovers, so the client keys seen, liked and dismissed state on it (#184). A seen story doesn't return as new when its target recovers. That doesn't cover a re-key on retry: a `failed` row shown as a link, whose page later declares a canonical with no stored row, gets a new `id` and so a new `story_id`, and a dismissed story comes back. That's cheap, so the design accepts it.
-- Nothing is lost when an id changes. Phase 4 joins an event to its story like this: a row that still exists follows `declared_canonical`, and that covers the recovery case in PR #148, where both rows stay stored. A row re-keyed on retry is found through its first-seen URL, because `with_canonical_url` keeps `url`, so `article_id(canonical(row.url))` is the old id. Only a row merged into another on retry can't be joined, which loses one signal in a rare case. That is cheap, so `Feedback` doesn't change.
+- `story_id` is the id of the row at the end of the `declared_canonical` chain. It stays the same when a target recovers, so the client keys seen, liked and dismissed state on it (#184). A `failed` row re-keyed on retry gets a new `story_id`, so a dismissed story can come back. That's cheap, so the design accepts it.
+- Phase 4 joins an event to its story by following `declared_canonical` for a stored row, and by `article_id(canonical(row.url))` for a re-keyed one, because `with_canonical_url` keeps `url`. Only a row merged into another on retry can't be joined, which loses one signal in a rare case. So `Feedback` doesn't change.
 
-**The API writes no article rows.** ADR-0005 decision 6 says a like points `content_ref` at the saved copy. But `upsert_article` replaces the whole row and the rank stage rewrites every row in its window from a snapshot, so a like during a run would be overwritten silently (`REVIEW.md`: a batch article is a snapshot). Instead the API copies the blob to `saved/<id>.html` and reads that key first. `content_ref` stays as it is, and #171 records the amendment. The API's only `Repository` write is `save_feedback`, which is keyed by a client-made id, so a retry is harmless.
+**The API writes no article rows.** `upsert_article` replaces the whole row and the rank stage rewrites every row in its window from a snapshot, so repointing `content_ref` on a like (ADR-0005 decision 6) would be overwritten by the next run (`REVIEW.md`: a batch article is a snapshot). Instead the API copies the blob to `saved/<id>.html` and reads that key first. #171 records the amendment. The API's only `Repository` write is `save_feedback`, keyed by a client-made id, so a retry is harmless.
 
-**Framework: Preact, TypeScript, Vite and `vite-plugin-pwa`.** It's a small bundle for a phone, it builds to static files for Hosting, and Testing Library and Playwright both work with it. Next.js and SvelteKit add server features this client doesn't use. React costs about ten times the bundle for nothing used here. Plain TypeScript would leave state and rendering to hand-written code.
+**Framework: Preact, TypeScript, Vite and `vite-plugin-pwa`.** A small bundle for a phone, static output to bake into the image, and Testing Library and Playwright both work with it. Next.js and SvelteKit add server features this client doesn't use, React costs about ten times the bundle, and plain TypeScript leaves state and rendering to hand-written code.
 
-**Offline.** The service worker precaches only the app shell. Data lives in IndexedDB and the app reads it first, because API calls carry a token and need app logic around them: the last good feed, the text of the top 50 article items, anything opened or liked, the feedback queue and per-story state. Images stay online-only, so an offline article shows its text. The app shows the stored feed without waiting for `authReady`, which can stall on a slow signal; only the refresh waits for it (#183). Only a sign-out the user chooses clears all this, and if the user chose to send, it goes ahead only once the queue is empty (#184). A forced one on a 401 or 403 ends the session and keeps the data, because a misconfigured owner email or a key-fetch failure mustn't wipe queued feedback or state that no route can restore (#180, #183, #184). The data stays readable to someone who signs in on the same phone until the API refuses them, which is accepted because it's the owner's phone.
+**Offline.** The service worker precaches only the app shell, and deletes old caches when a new version activates, or an update would keep serving the previous one (spike B). The manifest link has `crossorigin="use-credentials"`, because the manifest sits behind IAP. Data lives in IndexedDB and the app reads it first: the last good feed, the text of the top 50 article items, anything opened or liked, the feedback queue and per-story state. Images stay online-only. Spike B showed the installed app starting from its cache in aeroplane mode and flushing a queued item through IAP once back online. Only a sign-out the user chooses clears local data, and only once the queue is empty if the user chose to send it (#184). A 401 or 403 never clears anything, because a lapsed session or a misconfigured owner email mustn't wipe queued feedback.
 
-**Rendering third-party HTML.** The blob is sanitised at extraction, the client runs DOMPurify over it with the same tag list, and the CSP blocks inline script. A token sits in the same origin, so a sanitiser gap is a failure that matters. `no-referrer` applies to all images and links.
+**Rendering third-party HTML.** The blob is sanitised at extraction, the client runs DOMPurify over it with the same tag list, and the CSP blocks inline script. Script in this origin could make same-origin calls with the owner's IAP cookie, so a sanitiser gap is a failure that matters. `no-referrer` applies to all images and links.
 
-**Dismiss and mute act in the client in this phase.** Events are stored for Phase 4, and the client hides the story or source. A lasting pipeline mute stays a rule in `config/interests.yaml` (architecture rule 5), and `newsfeed report` lists the sources muted from the phone so they can be moved there. Pipeline use of feedback is Phase 4.
+**Security headers live in the API.** With no Hosting, the API sets the CSP, `Referrer-Policy: no-referrer` and `X-Content-Type-Options: nosniff` on every response (#175). `client/security-headers.json` (#174) holds the same values for the Vite preview server, so Playwright runs under the production CSP, and a pytest test in #175 keeps the two equal.
 
-**A like, dismiss or mute can be taken back.** `FeedbackEvent` has no `unlike`, so `like`, `dismiss` and `mute_source` carry `value` 1 or 0 and the latest event wins, with no contract change. Without this, Phase 4 would learn from dismissals taken back, and feedback is the one store that can't be recreated (#184, #185). The saved copy of an unliked article stays.
+**Dismiss and mute act in the client in this phase.** Events are stored for Phase 4, and the client hides the story or source. A lasting pipeline mute stays a rule in `config/interests.yaml` (architecture rule 5), and `newsfeed report` lists the sources muted from the phone.
 
-**Client tooling runs in Docker through `make`.** This machine has no Node, and `.claude/settings.json` allows neither `npm` nor `npx`. `make` and Docker are allowed and available, so `make client-*` runs pinned Node and Playwright images. Nothing has to be installed or allow-listed, and CI runs the same targets. These targets mount only `client/` and `docs/`, so a check that needs backend code is a pytest test instead (#182's tag list, #184's payload).
+**A like, dismiss or mute can be taken back.** `like`, `dismiss` and `mute_source` carry `value` 1 or 0 and the latest event wins, with no contract change, so Phase 4 doesn't learn from a dismissal taken back (#184, #185). The saved copy of an unliked article stays.
 
-**Merge gate.** #174 leaves `TEST_PATHS` out of source lines in `tier.py`, because `SRC_PATHS` includes `client/*`, so test-first client PRs would otherwise hit the 400-line limit. It also adds `client/firebase.json` to `TIER_C_PATHS`, because that file holds the CSP and the `/api/**` rewrite.
+**Client tooling runs in Docker through `make`.** This machine has no Node, and `.claude/settings.json` allows neither `npm` nor `npx`, so `make client-*` runs pinned Node and Playwright images. These targets mount only `client/` and `docs/`, so a check that needs backend code is a pytest test (#175's headers, #182's tag list, #184's payload).
 
-**Deploy.** The region isn't in the repo, so `client/firebase.json` commits the placeholder `__GCP_REGION__` (#174), and #178 fills it in from `vars.GCP_REGION`. #178 installs `firebase-tools` from a lockfile in `tools/firebase/` with `--ignore-scripts`, not `npx`, and builds before the auth step. The build mounts `client/` writable, so #178 then restores `client/firebase.json` from the checked-out commit and fails if it names `predeploy` or `postdeploy`, because Firebase runs those hooks as shell commands with the deploy credentials. It also fails if `client/dist` holds anything but regular files and directories, because a symlink there could publish the deploy step's token on the public site. Between them, these keep third-party build code from running with the deploy identity, and from reading it. `firebase-tools` is the exception: it's locked and installed without install scripts, but it does run with that identity.
+**Build and deploy.** The client is built in a Node stage of `backend/Dockerfile` that copies only `client/`, runs `npm ci --ignore-scripts` and the Vite build, and hands `dist` to the runtime stage at `/app/client` (#178). That stage sees no credentials: it gets only the files copied into it. Deploy stays as the job's is: push the image, then `gcloud run services update --image`. Nothing uses `--source`, because Cloud Build's default account has no rights in this project (#196, spike B).
+
+**Merge gate.** #174 leaves `TEST_PATHS` out of source lines in `tier.py`, because `SRC_PATHS` includes `client/*`, so test-first client PRs would otherwise hit the 400-line limit.
 
 ## The demo
 
-The milestone report will carry exact URLs. On the Android phone:
+The milestone report will carry the exact URL. On the Android phone:
 
-1. Open `https://<project>.web.app` in Chrome, sign in with Google, and choose "Install app".
+1. Open the service URL in Chrome, sign in with Google, and choose "Install app".
 2. Open the app from the home screen and read today's ranked feed.
 3. Open an article and check the reader in light and dark mode. Like it, and dismiss another story.
 4. Turn on aeroplane mode, close and reopen the app. The feed shows, and the liked article opens with its text.
-5. Turn aeroplane mode off and pull to refresh. On the laptop, with the `NEWSFEED_STORAGE=gcp` exports from step 3 of the Phase 2 report, because with no settings it reads local SQLite, `uv run --project backend newsfeed report` shows the like and the dismiss.
-6. Try `https://<project>.web.app` signed in with any other Google account: no feed, and the API answers 403.
+5. Turn aeroplane mode off and pull to refresh. On the laptop, with the `NEWSFEED_STORAGE=gcp` exports from step 3 of the Phase 2 report, `uv run --project backend newsfeed report` shows the like and the dismiss.
+6. Open the URL signed in with any other Google account: Google's "You don't have access" page, and the app never loads.
 
 ## Issue graph
 
@@ -69,11 +75,11 @@ There are 15 issues in one line of work, with one demo, so epics would add nothi
 ```
 #171 ADRs (B)
 #172 contract (B) ─────► #175 read API ──► #176 feedback API ──► #184 ◄─┐
-#173 story_id (B) ──► #181                                             │
-#174 scaffold (C) ─┬───► #180 sign-in ──► #181 feed list ──► #182 reader ──► #183 offline
-                   └───► #178 deploy (C)
+#173 story_id (done) ──► #181                                          │
+#174 scaffold (C) ─┬───► #180 API client, Reconnect ──► #181 feed list ──► #182 reader ──► #183 offline
+                   └───► #178 image and deploy (C)
 #177 Terraform (C) ────► #178
-#175, #178, #180, #181 ──► #179 human setup
+#175, #177, #178 ──► #179 human setup
 #176 ──► #185 report
 ```
 
@@ -81,33 +87,33 @@ There are 15 issues in one line of work, with one demo, so epics would add nothi
 |---|---|---|---|
 | #171 ADRs | - | B | |
 | #172 `BlobStore.ref_for`, `TokenVerifier` | - | B | |
-| #173 `story_id` | - | B | |
+| #173 `story_id` | - | merged | |
 | #174 scaffold, `make client-*`, CI | - | C | |
-| #175 read API, `newsfeed serve` | #172 | B | High |
+| #175 read API, static client, `IapJwtVerifier`, `newsfeed serve` | #172 | B | High |
 | #176 feedback API, saved copies | #175 | A | High |
 | #177 Terraform | - | C | High |
-| #178 deploy | #174, #177 | C | High |
-| #179 human setup | #175, #177, #178, #180, #181 | `needs-human` | |
-| #180 sign-in, API client | #174 | B | High |
+| #178 client in the image, deploy the service | #174, #177 | C | High |
+| #179 human setup | #175, #177, #178 | `needs-human` | |
+| #180 API client and Reconnect | #174 | B | High |
 | #181 feed list | #173, #180 | A | |
 | #182 reader | #181 | B | High |
 | #183 offline | #182 | B | |
 | #184 client feedback | #176, #183 | A | |
 | #185 report | #176 | A | |
 
-Suggested first batch: #171, #172, #173 and #174, which touch no common files. #177 can run beside them. The two API issues and the client issues each form a line that touches the same directory, so they run one at a time.
+#172 is under way. Suggested next batch: #171 and #174, which touch no common files, with #177 beside them. The two API issues and the client issues each form a line in one directory, so they run one at a time.
 
 ## Contract changes and ADRs
 
-- `ports.py`: `BlobStore.ref_for(key)`, because the API has to read keys it didn't write and the fake's refs differ from its keys on purpose. New `TokenVerifier` port and `TokenRejectedError`, so core API code stays free of Google imports (rule 1).
+- `ports.py`: `BlobStore.ref_for(key)`, `TokenVerifier` and `TokenRejectedError` (#172, unchanged by this revision). The IAP JWT is the token `TokenVerifier.verify` takes.
 - `models.py`: new `VerifiedIdentity`. `Feedback` doesn't change.
-- `docs/feed.schema.json`: additive `story_id`, `schema_version` stays 1 (ADR-0006).
-- ADR-0008: reader client stack. ADR-0009: client access and feedback identity, which also amends ADR-0005 decision 6.
+- `docs/feed.schema.json`: additive `story_id`, `schema_version` stays 1 (#173, merged).
+- ADR-0008: reader client stack. ADR-0009: client access through IAP and feedback identity, which also amends ADR-0005 decision 6.
 
 ## Check against later phases
 
-- **Phase 4:** `list_feedback` gives raw events to build centroids from, and the join above resolves ids. Its open-rate comparison needs a denominator: the per-day counts in #185, plus additive feed fields if a slot test is chosen. The client doesn't compute scores, so hybrid scores need no client change, and `score_breakdown` is already in the feed.
-- **Phase 5:** a Trusted Web Activity wraps this PWA as it stands. A Compose app or widget uses the same API and Firebase token. Neither needs a change here.
+- **Phase 4:** `list_feedback` gives raw events to build centroids from, and the join above resolves ids. Its open-rate comparison needs a denominator: the per-day counts in #185. The client doesn't compute scores, so hybrid scores need no client change.
+- **Phase 5, a risk:** a Trusted Web Activity (a thin Android app that shows the PWA in Chrome) needs Digital Asset Links: the site must serve `/.well-known/assetlinks.json` to a check made without the owner's cookie, and IAP covers every path, so the check may fail and the app would show a URL bar (unverified, #196 §6). The fallbacks are living with the URL bar, which is cosmetic, or a Compose app, which reaches the API through IAP's programmatic access with the custom OAuth client this phase creates. Neither needs a change here.
 - **Phase 6:** a "why am I seeing this" view reads `score_breakdown`. Summaries and tags are additive feed fields.
 - **Retention:** `saved/` sits outside both lifecycle rules, as ADR-0005 intended. No retention rule changes and nothing is deleted.
 - **A production decision** is not needed: the only user is the developer.
@@ -115,26 +121,27 @@ Suggested first batch: #171, #172, #173 and #174, which touch no common files. #
 ## What the human must do, and what agents need first
 
 - **Merge the Tier C PRs:** #174, #177 and #178.
-- **#179**, after #175, #177, #178, #180 and #181 merge: one `terraform apply`, a few clicks in the Firebase and Google Cloud consoles, and three repository variables. The issue gives exact steps. Agents can't do these, because the development service account doesn't exist yet (ADR-0007), and IAM and consent screens are the human's in any case.
-- **Carried from Phase 2, alongside the build:** #89, the live extraction check, which also covers run length, and steps 1 and 5 of the Phase 2 report, the feed and cost check. Both need the owner's account. A thin feed is the first thing daily use would show, so they shouldn't wait for the milestone.
+- **#179**, after #175, #177 and #178 merge, about 15 minutes, once: `owner_email` in `terraform.tfvars` and one `terraform apply`; then, in the console, the IAP settings for `newsfeed-api` (**Edit policy > Configure in IAP > Custom OAuth > Auto generate credentials**) and the owner's access grant in the same dialog, then a few minutes' wait while the grant applies; one repository variable; then opening the app on the phone. The OAuth consent screen from the spike (External, left in Testing) is reused: it asks only for name and email, so Testing is enough indefinitely. The OAuth settings never go through Terraform's `google_iap_settings`, which would store the client secret in state. In a project with no organisation, `iap_enabled` from Terraform or `--iap` from `gcloud` gives a 502 ("Empty Google Account OAuth client ID(s)/secret(s)") until that console step is done (#196). Agents can't do any of this: IAM, IAP settings and consent screens are the owner's (ADR-0007).
+- **Carried from Phase 2, alongside the build:** #89, the live extraction check, and steps 1 and 5 of the Phase 2 report, the feed and cost check. A thin feed is the first thing daily use would show, so they shouldn't wait for the milestone.
 - **Agents need:** nothing new once #174 merges. The lead should confirm the agents can reach Docker from a worktree in the first batch.
 - **Brief gap, for the lead:** `test-author.md` and `worker.md` assume `backend/tests/`, `make lint` and `make test`. Client issues name their paths and `make client-*` commands, which should be enough. If it isn't, that's a small Tier C fix.
 
 ## First point the human can use something
 
-After #175, #177, #178, #179, #180 and #181: the feed list on the phone, signed in, installable, with live data. #182 follows directly, with articles readable. Feedback on the first use goes in the Phase Log, and the lead makes issues from it. #179 waits for #180 and #181, because its last step and its definition of done are signing in on the phone and seeing the feed. It needs nothing after #181.
+After #179, the scaffold's placeholder screen loads on the phone behind IAP and installs, and `/api/feed` returns the live feed in the browser. That tests the cloud setup early. Each later client merge then deploys by itself, so after #180 and #181 the phone shows the ranked feed, and #182 follows directly with articles readable. Feedback on first use goes in the Phase Log, and the lead makes issues from it.
 
 ## Where this phase differs from "Cost of failure"
 
 The statement in `CLAUDE.md`, confirmed for Phase 3 by merging PR #163, covers this phase. These are the failures above the bar in it, and each carries `**Risk:** high`:
 
 - anyone but the owner reading content or writing feedback (#175, #176, #177, #180);
-- a bill from a flood of requests at the public service or at Hosting (#177), which nothing free stops: the instance cap limits only CPU and memory, as the follow-up below explains;
-- losing a feedback event once it's accepted, or leaving article text in a CDN cache (#175, #176);
-- script running from article HTML in the same origin as the token (#182);
-- a privileged deploy that widens what it can change (#178).
+- losing a feedback event once it's accepted (#176);
+- script running from article HTML in the same origin as the owner's IAP session (#182);
+- a privileged deploy that widens what it can change, or builds third-party code where credentials can reach it (#178).
 
-Poor ranking, a duplicate item, a stale feed and a failed refresh are still cheap. So is a queued feedback event lost by clearing the phone's storage.
+**A bill from a flood** no longer needs a stop. Under IAP, refused requests start no instance, aren't counted or billed as Cloud Run requests and write no request log, so a flood from strangers costs nothing measurable. On the spike's billing day, the Requests SKU showed 188 requests against 4,500 refused, matching only the owner's own use, and the day cost £0.00 inside the free tier (#196, spike A). IAP's own quota of 360,000 browser requests a minute throttles a very large flood, which could lock the owner out while it lasts, which is cheap. The only billed traffic is the owner's own. `api_max_instances` stays at 1 for cost and simplicity, since one user never needs two.
+
+Poor ranking, a duplicate item, a stale feed, a failed refresh and an extra Reconnect tap are cheap. So is a queued feedback event lost by clearing the phone's storage.
 
 ## Decisions to confirm later
 
@@ -142,9 +149,14 @@ Each is reversible. The owning issue repeats it in its PR header.
 
 | Decision | To undo |
 |---|---|
-| The API sits in front of the private bucket, same origin through a Hosting rewrite | Serve through signed URLs |
-| Firebase Auth, with the owner check in the API, and `allUsers` on the Cloud Run service | Move to IAP or a proxy; only `TokenVerifier` and the client's session module change |
-| Hand-made Google redirect with `signInWithCredential`, so no third-party script | Use Firebase's redirect helper and relax the rule and the CSP |
+| IAP on the Cloud Run service, with no `allUsers` grant, as the gate (#196) | Firebase Auth on a public service, the earlier design; `TokenVerifier` and the client's `api/` and `auth/` modules change |
+| One service serves the client and the API on one origin, the client baked into the image | Host the client separately; needs CORS and a third-party cookie |
+| `IapJwtVerifier` in `adapters/` delegates to `google.oauth2.id_token.verify_token` and checks the issuer itself; it sets `email_verified` true, because IAP admits only signed-in Google accounts | Verify with `PyJWT` and a key cache inside the same adapter |
+| IAP's OAuth client and settings made in the console, outside Terraform; the owner's access grant made there too | Manage the grant with `google_iap_web_cloud_run_service_iam_member` |
+| Reconnect by a plain navigation to `/reconnect`, only on a 401 while online | Change `client/src/auth/reconnect.ts` and the service-worker denylist |
+| A user's sign-out clears local data and then opens `/?gcp-iap-mode=CLEAR_LOGIN_COOKIE` | Clear local data only |
+| The API serves the client without its own login page, and applies the JWT check to static files as well as `/api/` | Exempt static files, which hold only public repo code |
+| The CSP lives in `api/headers.py`, pinned by tests, not by a Tier C path | Add the file to `TIER_C_PATHS` |
 | Preact, TypeScript, Vite and `vite-plugin-pwa` | Replace `client/`; the API and feed format are unaffected |
 | `story_id` in the feed, `Feedback` unchanged, merged rows accepted as unjoinable | Add `url` to `Feedback`, which helps only events recorded after that |
 | Saved copies at `saved/<id>.html` with `content_ref` left alone, amending ADR-0005 decision 6 | Add a repository method that updates one field |
@@ -153,39 +165,22 @@ Each is reversible. The owning issue repeats it in its PR header.
 | Top 50 article items prefetched, images online-only | Change the constant, or cache images |
 | DOMPurify as a second sanitiser pass in the client | Remove it and rely on extraction and the CSP |
 | Client tooling runs in Docker through `make` | Install Node and allow-list `npm` |
-| `FirebaseTokenVerifier` lives in `adapters/` and delegates to `firebase_admin.auth.verify_id_token`, so the project writes no HTTP of its own (rules 1 and 6). The library's key fetch is a cloud SDK's internal traffic, not project HTTP | Delegate to `google-auth` inside the same adapter |
 | API limits: 0 to 1 instance, 512 MiB, 1 vCPU, concurrency 8 | Change the Terraform variables |
-| Only a sign-out the user chooses clears local data, and a forced one on 401 or 403 keeps it | Call the `onSignOut` hooks from `endSession` too |
-| `firebase-tools` locked in `tools/firebase/`, installed with `--ignore-scripts` | Use `npx` with an exact version |
+| Only a sign-out the user chooses clears local data; a 401 or 403 keeps it | Clear on 403 as well |
 
-**Unverified, because this design made no outbound requests.** These come from memory of Google's documentation, and the first run of #179 tests them. If one fails, the lead calls the architect back.
+**Unverified, because this design made no outbound requests.** Each comes from #196's desk study or memory, and #179 or the build tests it. If one fails, the lead calls the architect back.
 
-- Hosting rewrites reach Cloud Run in the project's region. Fallback: call the `run.app` URL directly with one allowed CORS origin.
-- The `google-beta` Terraform resources for Firebase are as named in #177.
-- Firebase resources under user credentials need `billing_project` and `user_project_override` on the `google-beta` provider, or the first `terraform apply` fails with a quota project error. #177 copies both from the existing `google` provider, so this should hold.
-- An installed Android PWA returns from Google's sign-in page. Fallback: sign in in Chrome first, since the installed app shares its storage.
-- Firestore rules are not open on a database that predates Firebase. #177 pins them to deny-all, so this holds either way.
-- `signInWithCredential` accepts the Google ID token with its `nonce`. It may instead answer `auth/missing-or-invalid-nonce`. Fallback: send Google the SHA-256 hex of the nonce and pass the raw nonce through `OAuthProvider('google.com').credential({ idToken, rawNonce })`. #180 checks this in the Firebase SDK source.
-- `firebase deploy --only hosting` works with install scripts off. Fallback: `npm rebuild <package>` for the one package that needs it.
-- `firebase deploy` follows symlinks in `dist`. #178's check fails on any symlink, so this holds either way.
-- `auth.authStateReady()` may reload the stored user during start-up, so on a stalled signal it could take up to about 30 seconds, against #183's "shows at once". #183 shows the stored feed without waiting for it, so this holds either way, and only a first open with nothing stored waits.
-- A request Cloud Run refuses with a 429, because the one instance is at its concurrency, isn't billed. If it is billed, the request charge follows the flood's rate with no limit. No design choice depends on this, only the size of the bill below.
-- `firebase hosting:disable` stops Hosting until the next deploy. Fallback: disable the site on the console's Hosting page.
+- The Reconnect navigation returns into the installed app without typing after a real 401. Spike B is testing this now. Fallback: open `/reconnect` in Chrome, which shares the session, or a Custom Tab.
+- IAP error code 9, "Failed OAuth redirect", happened once on desktop in spike B and Google calls it transient. If it recurs on the phone, the owner taps Reconnect again; nothing in the client can retry a page that IAP serves.
+- `google_cloud_run_v2_service` takes `iap_enabled` in the GA provider without `launch_stage = "BETA"` or `google-beta`. `terraform validate` and the first plan show it, and #177 adds whichever is needed.
+- The IAP service agent `service-<project number>@gcp-sa-iap.iam.gserviceaccount.com` exists, because the spike enabled the IAP API. If it doesn't, `gcloud beta services identity create --service=iap.googleapis.com` makes it, and #179 says so.
+- `gcloud run services update --image` keeps IAP on, and needs no IAP permission beyond `roles/run.developer`. The first deploy after #179 tests it.
+- `/?gcp-iap-mode=CLEAR_LOGIN_COOKIE` clears the IAP cookie. Fallback: sign-out clears local data only, which is what matters.
+- `google.oauth2.id_token.verify_token` fetches IAP's keys on each call through `requests`. One user makes few calls, so that is a few small GETs to `gstatic.com` a day, a library's internal traffic, not project HTTP. If it is slow, #175 can pass a caching session.
+- A WebAPK installed behind IAP fetches its icons with the owner's cookie. Spike B showed a real installed app, so this holds.
 
 ## Follow-ups and a decision for the lead
 
 - **For the lead to decide:** `client` in `CONDITIONAL_CHECKS` passes the gate when absent, so a renamed job drops out silently. `REQUIRED_CHECKS` is stricter, but must match the `Protect main` ruleset, which the human changes. #174 uses `CONDITIONAL_CHECKS` until the lead chooses.
 - #175: `newsfeed serve` goes through `cli.py`, which still loads `trafilatura` and `newspaper` (0.4 s, 67 MiB). Lazy-import them if cold start matters.
-- #177: **what a flood can cost.** The instance cap is 1, not 2, because the service is public and a bill matters. Prices below are from memory, for a Tier 1 region, ignoring about $5 of free tier; a Tier 2 region costs about 40% more.
-  - **$65 a month is a floor, not an estimate.** It is one instance busy all month, in CPU and memory only, and it passes the $10 budget in 4.6 days. Requests cost $0.40 per million on top, and they overtake the instance at about 63 req/s. A flood of cheap 401s can run far above that: one vCPU answers a few hundred a second (an estimate, as there's no API to measure yet).
-
-    | Requests per second | Requests per month | Total per month | Days to $10 |
-    |---|---|---|---|
-    | 0 | $0 | $65 | 4.6 |
-    | 100 | $104 | $169 | 1.8 |
-    | 300 | $311 | $376 | 0.8 |
-
-  - **Concurrency doesn't reduce this much.** #177 sets it to 8: four for prefetch, then a feed refresh, an opened article, a feedback event and one spare. A 401 takes a few milliseconds, so eight at a time is still about what the CPU can do, and a lower value would slow prefetch and save nothing. If requests refused with a 429 aren't billed (from memory, under "Unverified"), the limit is what the instance can answer, which is about the 300 req/s row. If they are billed, the request charge has no limit: 1,000 req/s is about $1,100 a month.
-  - **Hosting egress is separate, and uncapped.** Hosting serves the app shell to anyone with no token, at about $0.15/GB after a small daily allowance. The instance cap doesn't apply. $10 buys about 67 GB, which is four visits a second for a day if a visit is 200 KB (an assumed size; #174 sets the real one). At 300 visits a second, that's about $780 a day, so this can be the larger part of the bill.
-  - **Nothing free stops it.** A budget only sends email, at 50, 90 and 100%, and billing data can lag by hours (from memory). So the limit is a person acting on an alert, with two commands. `gcloud run services remove-iam-policy-binding newsfeed-api --region=<region> --member=allUsers --role=roles/run.invoker` stops traffic to the app, and `terraform apply` restores it. `firebase hosting:disable --project <project>` stops Hosting and its egress, which the first command doesn't, and the next deploy restores it, so hold merges until then. This machine has no Node, so #177's README gives the console route too. The phone keeps its stored feed either way, which is cheap.
-  - **Rejected:** under 1 vCPU, because it saves too little. Cloud Run would queue prefetch's four requests, not fail them (from memory), but 0.25 vCPU still costs about $19 a month, passes $10 in 16 days, and starts more slowly. Cloud Armor, a paid service. A budget-triggered shutdown, which needs a function and Pub/Sub to guard against an unlikely flood.
+- #196's teardown, once the spike ends, keeps the OAuth consent screen and the IAP API, which #179 reuses.
