@@ -197,7 +197,12 @@ test("returning to the list restores the scroll position", async ({ page }) => {
   await page.evaluate(() => window.scrollTo(0, 150));
   const before = await page.evaluate(() => window.scrollY);
   expect(before).toBeGreaterThan(0);
-  await page.getByRole("link", { name: item.title }).first().click();
+  // A DOM click: Playwright's click would scroll the link into view first (it sits under the
+  // sticky header at this offset), changing the very position the test is checking.
+  await page
+    .getByRole("link", { name: item.title })
+    .first()
+    .evaluate((el) => (el as HTMLElement).click());
   await expect(page.getByText("First invented paragraph")).toBeVisible();
   await page.goBack();
   await expect(page.locator("[data-testid='feed-item']")).toHaveCount(5);
