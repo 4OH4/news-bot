@@ -37,6 +37,8 @@ Storage cost doesn't decide this. Cloud Storage Standard costs a few US cents pe
 
 **6. Liked articles keep their content (Phase 3).** When feedback arrives, a liked article's content is copied to `saved/<id>.html`, a prefix the lifecycle rule doesn't cover, and its `content_ref` is pointed at the copy. That needs only `BlobStore.put` and `get`, so no contract change. Opening an article doesn't extend its retention, because opening is too weak a signal. The details belong to the Phase 3 feedback issue.
 
+*Amended by [ADR-0010](0010-client-access-and-feedback-identity.md): the API never writes `Article` rows, so `content_ref` is left alone and the API reads `saved/<id>.html` first.*
+
 **7. Local development doesn't enforce retention.** The local filesystem has no lifecycle rules, and at the volumes above `data/blobs/` grows by under 1 GB a year. `data/` is git-ignored and can be removed at any time. A local prune command would need a `BlobStore.delete` method, which is a contract change, so we'll add one only if local disk use becomes a problem.
 
 ### Alternatives considered

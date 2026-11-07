@@ -113,7 +113,7 @@ There are 15 issues in one line of work, with one demo, so epics would add nothi
 - `ports.py`: `BlobStore.ref_for(key)`, `TokenVerifier` and `TokenRejectedError` (#172, merged in PR #198, signatures unchanged by this revision). The IAP JWT is the token `TokenVerifier.verify` takes. #175 fixes the `TokenVerifier` docstring, which still names a Firebase adapter, and adds that any exception other than `TokenRejectedError` means the check couldn't be made.
 - `models.py`: new `VerifiedIdentity`. `Feedback` doesn't change.
 - `docs/feed.schema.json`: additive `story_id`, `schema_version` stays 1 (#173, merged).
-- ADR-0008: reader client stack. ADR-0009: client access through IAP and feedback identity, which also amends ADR-0005 decision 6.
+- ADR-0009: reader client stack. ADR-0010: client access through IAP and feedback identity, which also amends ADR-0005 decision 6. (ADR-0008 was taken by the development-scope decision.)
 
 ## Check against later phases
 

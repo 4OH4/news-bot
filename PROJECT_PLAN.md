@@ -85,7 +85,7 @@ Firestore (articles, sources, profile, feedback, run stats)    │
 Cloud Storage (clean article HTML, images, feed.json snapshot) ◄┘
       │
       ▼
-Cloud Run Service (thin API)  and/or  Firebase Hosting (PWA)
+Cloud Run Service (thin API + PWA, behind IAP)
       │
       ▼
 Phone: PWA → later native Android app + widget
@@ -103,9 +103,9 @@ Phone: PWA → later native Android app + widget
 | **Store** | Persist articles, profile, feedback, run stats | `Repository` interface with Firestore and SQLite/local-file adapters | Firestore |
 | **Blob store** | Clean HTML, images, feed snapshot | `BlobStore` interface with GCS and local-filesystem adapters | Cloud Storage |
 | **API** | Serve feed and articles; accept feedback | FastAPI | Cloud Run Service |
-| **Client** | Reader UI, feed list, feedback capture, offline cache | PWA first (framework TBD), Kotlin/Compose later | Firebase Hosting |
+| **Client** | Reader UI, feed list, feedback capture, offline cache | PWA first (Preact, TypeScript, Vite; [ADR-0009](docs/adr/0009-reader-client-stack.md)), Kotlin/Compose later | Served by the Cloud Run service, built into its image |
 | **Scheduler** | Trigger pipeline runs | cron | Cloud Scheduler |
-| **Secrets / auth** | API keys, client auth | env vars locally | Secret Manager, Firebase Auth or IAP |
+| **Secrets / auth** | API keys, client auth | env vars locally | Secret Manager; IAP on the Cloud Run service ([ADR-0010](docs/adr/0010-client-access-and-feedback-identity.md)) |
 | **CI/CD** | Test, build, deploy | GitHub Actions | Artifact Registry + Workload Identity Federation (no long-lived keys) |
 | **Infra** | Reproducible environments | Terraform (preferred) or scripted `gcloud` | — |
 
@@ -127,7 +127,8 @@ Article      id (hash of canonical_url), canonical_url, url, source_id, title,
                           attempts, last_attempt_at, declared_canonical},
              content_ref (blob path), score, score_breakdown, cluster_id
 Feedback     id, article_id, event (open|read|like|dismiss|mute_source),
-             value (e.g. read seconds), created_at
+             value (e.g. read seconds; 1 or 0 for like, dismiss and
+             mute_source, where 0 retracts), created_at
 Profile      empty placeholder; learned fields such as embedding centroids
              are designed in Phase 4 (interest rules are config, in
              config/interests.yaml, not part of the profile)
@@ -223,7 +224,7 @@ Extraction quality is the riskiest assumption, so it gets a dedicated, repeatabl
 │   ├── Dockerfile
 │   ├── src/newsfeed/
 │   │   ├── models.py         # shared data model (the contract between stages)
-│   │   ├── ports.py          # Repository, BlobStore, Fetcher, Extractor, SourceIngester (+ Embedder later)
+│   │   ├── ports.py          # Repository, BlobStore, Fetcher, Extractor, SourceIngester, TokenVerifier (+ Embedder later)
 │   │   ├── fetching/         # shared polite HTTP fetcher
 │   │   ├── ingest/
 │   │   ├── extract/
@@ -339,7 +340,7 @@ Once 6 and 7 are merged, issues 8–10, 12 and 13 can run in parallel. 11, 14, 1
 | Copyrighted content leaking into the public repo | Snapshots outside the repo; `eval/fixtures/` and `data/` git-ignored; synthetic test fixtures; rule in `CLAUDE.md` |
 | Occasional commits from Windows introducing CRLF line endings | `.gitattributes` enforces LF; development itself happens on Ubuntu |
 | Agents colliding on shared files | Contracts first; area-scoped issues; serialised contract changes |
-| **Open:** PWA framework choice | Decide at the start of Phase 3 (ADR) |
+| **Decided:** PWA framework | Preact, TypeScript, Vite and `vite-plugin-pwa`, served by the Cloud Run service ([ADR-0009](docs/adr/0009-reader-client-stack.md)); client access through IAP ([ADR-0010](docs/adr/0010-client-access-and-feedback-identity.md)) |
 | **Decided:** Terraform vs scripted gcloud | Terraform, after a one-off `gcloud` bootstrap of the project and state bucket ([ADR-0004](docs/adr/0004-infrastructure-as-code.md)); agents apply changes inside a limited development scope, and production is out of scope for now ([ADR-0007](docs/adr/0007-agent-infrastructure-scope.md)) |
 | **Decided:** content retention period | Metadata and run stats kept indefinitely; article content deleted after 30 days by a Cloud Storage lifecycle rule, then shown as headline and link ([ADR-0005](docs/adr/0005-content-retention.md)) |
 | **Open:** embedding provider (Vertex AI vs local) | Decide in Phase 4 based on cost and quality |
