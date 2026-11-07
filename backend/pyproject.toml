@@ -5,7 +5,9 @@ description = "Self-hosted personalised news feed pipeline: ingest, extract, ran
 requires-python = ">=3.12"
 license = "MIT"
 dependencies = [
+    "fastapi>=0.162.1",
     "feedparser>=6.0.14",
+    "google-auth>=2.62.0",
     "google-cloud-firestore>=2.34.1",
     "google-cloud-storage>=3.17.1",
     "httpx>=0.28.1",
@@ -18,8 +20,10 @@ dependencies = [
     "pydantic-settings>=2.15.0",
     "pyyaml>=6.0.3",
     "readability-lxml>=0.9",
+    "requests>=2.34.2",
     "trafilatura>=2.3.1,<2.4",
     "typer>=0.27.3",
+    "uvicorn>=0.54.0",
 ]
 
 [project.scripts]
