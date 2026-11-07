@@ -4,23 +4,10 @@
  * never runs the sign-out hooks (#180), so the queue simply waits and flushes after reconnecting.
  */
 import { onSignOut } from "../auth/signout";
-import { clearFeedbackData } from "./db";
-import { flushQueue, releaseEnqueues } from "./queue";
-import { installSignOutGuard } from "./signout-guard";
+import { flushQueue } from "./queue";
+import { clearOnSignOut, installSignOutGuard } from "./signout-guard";
 
 let started = false;
-
-/**
- * The sign-out hook: clears what the guard counted, then lets through any event enqueued while
- * signing out, so it is kept for the next start rather than deleted unsent.
- */
-async function clearOnSignOut(): Promise<void> {
-  try {
-    await clearFeedbackData();
-  } finally {
-    releaseEnqueues();
-  }
-}
 
 function flush(): void {
   void flushQueue().catch((err: unknown) => console.error("feedback flush failed", err));

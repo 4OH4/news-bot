@@ -58,11 +58,36 @@ export function openFeedbackDb(): Promise<FeedbackDb> {
 }
 
 /**
- * Empties every store, rejected events and per-story state included. Only the sign-out hook
- * calls this, after the guard has let the sign-out go ahead.
+ * Empties every store, rejected events and per-story state included. The app's sign-out hook
+ * uses `clearCountedFeedback` instead, so an event written after the guard's count survives.
  */
 export async function clearFeedbackData(): Promise<void> {
   const db = await openFeedbackDb();
   const tx = db.transaction([...FEEDBACK_STORES], "readwrite");
   await Promise.all([...FEEDBACK_STORES.map((name) => tx.objectStore(name).clear()), tx.done]);
+}
+
+/** The per-story stores: everything but the outgoing and rejected events. */
+const STORY_STORES = ["seen", "dismissed", "muted", "liked"] as const;
+
+/** Queued and rejected event ids, as the sign-out guard counted them. */
+export interface CountedIds {
+  queued: string[];
+  rejected: string[];
+}
+
+/**
+ * The sign-out clearing: deletes only the queued and rejected events the guard counted (by id,
+ * since `seq` restarts when the queue empties) and every per-story store, in one transaction.
+ * An event written after the count is kept, and sent on the next start.
+ */
+export async function clearCountedFeedback(counted: CountedIds): Promise<void> {
+  const db = await openFeedbackDb();
+  const tx = db.transaction([...FEEDBACK_STORES], "readwrite");
+  await Promise.all([
+    ...counted.queued.map((id) => tx.objectStore("queue").delete(id)),
+    ...counted.rejected.map((id) => tx.objectStore("rejected").delete(id)),
+    ...STORY_STORES.map((name) => tx.objectStore(name).clear()),
+    tx.done,
+  ]);
 }

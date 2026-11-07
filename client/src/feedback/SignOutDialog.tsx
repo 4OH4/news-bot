@@ -57,8 +57,10 @@ export function SignOutDialog({ initial, send, done, close }: SignOutDialogProps
       <div class="signout-dialog" role="alertdialog" aria-labelledby="signout-dialog-title">
         <h2 id="signout-dialog-title">Still signed in</h2>
         <p>
-          Your feedback hasn't been sent, so you are still signed in. It will be sent when the
-          connection works.
+          Your feedback hasn't been sent, so you are still signed in.{" "}
+          {canDiscard
+            ? "It will be sent when the connection works."
+            : "This account can't send it now; it is kept on this phone until it can."}
         </p>
         <div class="signout-dialog-actions">
           <button type="button" onClick={close}>

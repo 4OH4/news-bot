@@ -17,51 +17,23 @@ const RETRYABLE = new Set([401, 403, 408, 429]);
  */
 export const SEND_TIMEOUT_MS = 30_000;
 
-/** Enqueue writes under way, so a sign-out can wait for them before it counts the queue. */
-const writing = new Set<Promise<void>>();
-/** Set while a sign-out is deciding or going ahead; enqueues wait on it. */
-let hold: { released: Promise<void>; release: () => void } | null = null;
-
 /**
- * Holds every later `enqueueFeedback` and waits for writes already under way, so the queue a
- * sign-out counts is the queue it clears. Resolves to the function that lets the held enqueues
- * write. Without this an event stored between the sign-out guard's check and the clearing would
- * be deleted unsent.
+ * The time limit for one POST. `AbortSignal.timeout` is missing on older browsers (Safari before
+ * 16); there a timer does the same job, rather than the call throwing and the queue never sending.
  */
-export async function holdEnqueues(): Promise<() => void> {
-  let open!: () => void;
-  const released = new Promise<void>((resolve) => {
-    open = resolve;
-  });
-  const mine = {
-    released,
-    release: () => {
-      if (hold === mine) hold = null;
-      open();
-    },
-  };
-  hold = mine;
-  await Promise.allSettled([...writing]);
-  return mine.release;
-}
-
-/** Lets held enqueues write; used once the sign-out hooks have cleared the stores. */
-export function releaseEnqueues(): void {
-  hold?.release();
-}
-
-async function store(payload: FeedbackPayload): Promise<void> {
-  const db = await openFeedbackDb();
-  const tx = db.transaction("queue", "readwrite");
-  const last = await tx.store.index("seq").openCursor(null, "prev");
-  await tx.store.add({ ...payload, seq: (last?.value.seq ?? 0) + 1 });
-  await tx.done;
+function sendTimeout(): AbortSignal {
+  if (typeof AbortSignal.timeout === "function") return AbortSignal.timeout(SEND_TIMEOUT_MS);
+  const controller = new AbortController();
+  setTimeout(
+    () => controller.abort(new DOMException("The operation timed out.", "TimeoutError")),
+    SEND_TIMEOUT_MS,
+  );
+  return controller.signal;
 }
 
 /**
- * Adds an event to the queue, resolving once it is stored, then starts a send. While a sign-out
- * is deciding or going ahead the write waits, so it lands after the clearing or, if the sign-out
- * is cancelled, as normal.
+ * Adds an event to the queue, resolving once it is stored, then starts a send. The write happens
+ * at once, even while a sign-out is asking: the sign-out deletes only the events it counted.
  */
 export async function enqueueFeedback(
   articleId: string,
@@ -69,15 +41,11 @@ export async function enqueueFeedback(
   value?: number,
 ): Promise<FeedbackPayload> {
   const payload = buildEvent(articleId, event, value);
-  // Checked before the first await, so a sign-out that has started always sees this write.
-  while (hold) await hold.released;
-  const write = store(payload);
-  writing.add(write);
-  try {
-    await write;
-  } finally {
-    writing.delete(write);
-  }
+  const db = await openFeedbackDb();
+  const tx = db.transaction("queue", "readwrite");
+  const last = await tx.store.index("seq").openCursor(null, "prev");
+  await tx.store.add({ ...payload, seq: (last?.value.seq ?? 0) + 1 });
+  await tx.done;
   void flushQueue().catch((err: unknown) => console.error("feedback flush failed", err));
   return payload;
 }
@@ -119,13 +87,14 @@ async function drain(): Promise<"empty" | "stopped"> {
     const row = await oldest(db);
     if (!row) return "empty";
     const payload = toPayload(row);
+    const signal = sendTimeout();
     let response: Response;
     try {
       response = await apiFetch("/api/feedback", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
+        signal,
       });
     } catch {
       // Offline, a lost answer, the time limit, 401 or 403 (apiFetch reports the last two):
@@ -156,6 +125,17 @@ export async function queuedCount(): Promise<number> {
 
 export async function rejectedCount(): Promise<number> {
   return (await openFeedbackDb()).count("rejected");
+}
+
+/** The ids of every queued and rejected event, read in one transaction. */
+export async function unsentIds(): Promise<{ queued: string[]; rejected: string[] }> {
+  const tx = (await openFeedbackDb()).transaction(["queue", "rejected"]);
+  const [queued, rejected] = await Promise.all([
+    tx.objectStore("queue").getAllKeys(),
+    tx.objectStore("rejected").getAllKeys(),
+    tx.done,
+  ]);
+  return { queued, rejected };
 }
 
 export async function listRejected(): Promise<FeedbackPayload[]> {
