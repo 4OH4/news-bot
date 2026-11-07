@@ -45,3 +45,18 @@ output "workload_identity_provider" {
   description = "Full name of the WIF provider the deploy workflow authenticates through (#75)."
   value       = google_iam_workload_identity_pool_provider.github.name
 }
+
+output "api_service_name" {
+  description = "Cloud Run service that serves the reader app and its API, behind IAP."
+  value       = google_cloud_run_v2_service.api.name
+}
+
+output "api_url" {
+  description = "The reader app's URL (run.app). Only the owner's Google account gets past IAP."
+  value       = google_cloud_run_v2_service.api.uri
+}
+
+output "api_service_account" {
+  description = "Service account the reader app's service runs as."
+  value       = google_service_account.api.email
+}

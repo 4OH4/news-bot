@@ -10,6 +10,7 @@ locals {
     "firestore.googleapis.com",
     "iam.googleapis.com",
     "iamcredentials.googleapis.com", # the deploy workflow impersonates its account
+    "iap.googleapis.com",            # IAP in front of the reader app's service (api_service.tf)
     "monitoring.googleapis.com",
     "run.googleapis.com",
     "secretmanager.googleapis.com",
