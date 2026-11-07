@@ -408,3 +408,19 @@ def test_serve_with_iap_binds_to_all_interfaces_and_refuses_a_missing_jwt(
     response = _served_client(uvicorn_calls).get("/api/feed")
     assert response.status_code == 401
     assert b"served-feed-marker" not in response.content
+
+
+def test_serve_refuses_a_client_dir_that_is_not_a_directory(
+    serve_env: Path,
+    uvicorn_calls: list[dict[str, object]],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("NEWSFEED_API_AUTH", "none")
+    monkeypatch.setenv("NEWSFEED_OWNER_EMAIL", _INVENTED_OWNER)
+    monkeypatch.setenv("NEWSFEED_CLIENT_DIR", str(tmp_path / "missing"))
+
+    result = runner.invoke(cli.app, ["serve"])
+
+    assert result.exit_code != 0
+    assert uvicorn_calls == []
