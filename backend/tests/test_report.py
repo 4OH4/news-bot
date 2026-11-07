@@ -424,3 +424,60 @@ def test_summarise_feedback_is_pure_and_counts_per_day() -> None:
     assert first == second
     assert events == before
     assert summarise_feedback([], {}, now=now) != first
+
+
+# --- #240: --since also limits the feedback section ---------------------------
+
+
+def test_since_limits_the_feedback_section_to_events_from_that_date(data_dir: Path) -> None:
+    old, new = fb_article("lastweek"), fb_article("today")
+    seed(
+        data_dir,
+        [old, new],
+        [
+            event(old, FeedbackEvent.LIKE, timedelta(days=7), 1),
+            event(new, FeedbackEvent.LIKE, timedelta(minutes=1), 1),
+        ],
+    )
+    since = (datetime.now(UTC) - timedelta(days=2)).strftime("%Y-%m-%d")
+
+    result = runner.invoke(cli.app, ["report", "--since", since])
+
+    assert result.exit_code == 0, result.output
+    out = result.output
+    assert new.title in out
+    assert old.title not in out
+    week_ago = day_lines(out, datetime.now(UTC) - timedelta(days=7))
+    assert all(set(numbers_besides_date(ln)) <= {"0"} for ln in week_ago)
+    today = day_lines(out, datetime.now(UTC) - timedelta(minutes=1))
+    assert "1" in numbers_besides_date(today[0])
+
+
+def test_since_with_only_older_feedback_reports_no_feedback(data_dir: Path) -> None:
+    old = fb_article("ancient")
+    seed(data_dir, [old], [event(old, FeedbackEvent.LIKE, timedelta(days=7), 1)])
+    since = (datetime.now(UTC) - timedelta(days=2)).strftime("%Y-%m-%d")
+
+    result = runner.invoke(cli.app, ["report", "--since", since])
+
+    assert result.exit_code == 0, result.output
+    section = result.output[result.output.index("Feedback") :]
+    assert "none" in section.lower()
+    assert old.title not in result.output
+
+
+def test_build_report_since_counts_only_feedback_from_that_time() -> None:
+    now = datetime(2026, 11, 7, 12, 0, tzinfo=UTC)
+    repo = InMemoryRepository()
+    for slug, ago in (("a", timedelta(days=7)), ("b", timedelta(hours=1))):
+        item = fb_article(slug)
+        repo.upsert_article(item)
+        repo.save_feedback(
+            Feedback(article_id=item.id, event=FeedbackEvent.OPEN, created_at=now - ago)
+        )
+
+    report = build_report(repo, [], since=now - timedelta(days=1), now=now)
+
+    assert report.feedback is not None
+    assert report.feedback.total == 1
+    assert sum(d.counts["open"] for d in report.feedback.days) == 1

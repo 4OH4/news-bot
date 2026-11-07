@@ -112,3 +112,62 @@ def test_the_owner_in_upper_case_still_matches(blobs: RecordingBlobStore) -> Non
 def test_the_app_refuses_a_non_ascii_owner_email(owner: str) -> None:
     with pytest.raises(ValueError):
         make_app(owner_email=owner)
+
+
+# --- #240: gaps found in review ------------------------------------------------
+
+
+def test_create_app_itself_refuses_a_client_dir_holding_a_dot_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Called directly, not through `serve`, so create_app's own check is what is covered.
+    from newsfeed.api.local_safety import UnsafeClientDirError
+
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "index.html").write_text("<!doctype html>")
+    (dist / ".env").write_text("TOKEN=invented-secret-52cd\n")
+
+    with pytest.raises(UnsafeClientDirError):
+        make_app(client_dir=dist)
+
+
+def test_an_index_html_that_links_outside_the_client_dir_is_not_served(
+    client_dir: Path, tmp_path: Path
+) -> None:
+    from tests.api.support import SECRET_MARKER
+
+    (client_dir / "index.html").unlink()
+    (client_dir / "index.html").symlink_to(tmp_path / "secret")
+
+    response = client_for(make_app(client_dir=client_dir)).get("/reconnect", headers=auth())
+
+    assert response.status_code == 404
+    assert SECRET_MARKER not in response.text
+
+
+def test_an_index_html_that_is_a_directory_is_404(client_dir: Path) -> None:
+    (client_dir / "index.html").unlink()
+    (client_dir / "index.html").mkdir()
+
+    response = client_for(make_app(client_dir=client_dir)).get("/reconnect", headers=auth())
+
+    assert response.status_code == 404
+
+
+def test_the_manifest_and_script_types_do_not_depend_on_the_system_mime_table(
+    client_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import mimetypes
+
+    monkeypatch.setattr(mimetypes, "guess_type", lambda *a, **k: ("application/x-wrong", None))
+    client = client_for(make_app(client_dir=client_dir))
+
+    manifest = client.get("/manifest.webmanifest", headers=auth())
+    script = client.get("/assets/app-abc123.js", headers=auth())
+
+    assert manifest.headers["content-type"].startswith("application/manifest+json")
+    assert script.headers["content-type"].startswith("text/javascript")
