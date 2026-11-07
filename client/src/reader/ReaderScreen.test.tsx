@@ -205,3 +205,43 @@ describe("ReaderScreen reading time", () => {
     expect(startReading).toHaveBeenCalledTimes(stop.mock.calls.length);
   });
 });
+
+// Added by the worker (review of PR #248): the Liked-list lookup and the keep mark on text
+// fetched while a like is being saved.
+describe("ReaderScreen with a liked article", () => {
+  it("opens a liked article that has left the feed offline, with its title and Like pressed", async () => {
+    installRouter({ online: false });
+    const s = await loadStores();
+    await s.saveFeed(makeFeed([makeItem("9a8b7c6d5e4f3a2b")]), '"e2"');
+    await s.putArticleHtml(A.id, bodyFor(A.id, "stored"));
+    await (await import("../feedback/liked")).setLiked(A, true);
+
+    await openReader();
+    await vi.waitFor(() => expect(root.querySelector("h1")?.textContent).toBe(A.title));
+    await vi.waitFor(() => expect(likeButton()?.getAttribute("aria-pressed")).toBe("true"));
+  });
+
+  it("a like pressed while the text is loading keeps the text once it is stored", async () => {
+    installRouter({ feed: FEED, articles: { [A.id]: bodyFor(A.id, "network") } });
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    const routed = globalThis.fetch;
+    vi.stubGlobal("fetch", async (input: unknown, init?: RequestInit) => {
+      if (String(input).includes("/api/articles/")) await gate;
+      return routed(input as RequestInfo, init);
+    });
+    const s = await loadStores();
+    await s.saveFeed(FEED, '"run-invented-1"');
+    const liked = await import("../feedback/liked");
+
+    await openReader();
+    await vi.waitFor(() => expect(likeButton()?.getAttribute("aria-pressed")).toBe("false"));
+    likeButton()!.click();
+    await vi.waitFor(async () => expect(await liked.isLiked(A)).toBe(true));
+    expect(await articleRecord(A.id)).toBeUndefined();
+
+    release();
+    await waitForText(`Invented network body text for ${A.id}.`);
+    await vi.waitFor(async () => expect((await articleRecord(A.id))?.keep).toBe(true));
+  });
+});
