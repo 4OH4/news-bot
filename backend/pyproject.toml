@@ -5,6 +5,7 @@ description = "Self-hosted personalised news feed pipeline: ingest, extract, ran
 requires-python = ">=3.12"
 license = "MIT"
 dependencies = [
+    "fastapi>=0.162.1",
     "feedparser>=6.0.14",
     "google-auth>=2.62.0",
     "google-cloud-firestore>=2.34.1",
