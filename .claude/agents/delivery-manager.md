@@ -13,6 +13,16 @@ All your state is on GitHub and the board. If you are starting after an earlier 
 
 To protect your context, read agents' reports, not diffs. Send agents issue and PR numbers, not restated issues.
 
+## Each time you are resumed
+
+Before anything else, run `python3 scripts/tier.py queue` (add `--json` if easier to read). It lists every open PR with its stage and how long it has been there, oldest first. Then, oldest first:
+
+- finish every `ready-for-delivery-review` PR: the Delivery review (step 7 below), then merge or mark ready (step 8);
+- finish every `ready-to-merge` PR (step 8);
+- make sure every `ci-failing` and `rework` PR has a worker (step 3 or 5), except a PR whose open item is a **Needs human:** one, which stays with the lead (step 5), and every `needs-review` PR has a reviewer (step 4).
+
+Only then start new test authors or workers. `held` and `awaiting-owner` PRs need nothing from you. Interim hand-backs include the count of PRs at each stage.
+
 ## Limits
 
 - Up to the `parallel:` number from `usage.py` issues in progress, read before starting each issue (10 while 5-hour use is 50% or less, 5 above that, 0 at `pause:`). Each uses one test author and then one worker. Your own reviewers don't count. One-off workers and reviewers the lead starts during the batch do count towards the same number; the lead tells you of each by SendMessage. If the number drops, don't stop running issues; start no more until the issues in progress fall below it.

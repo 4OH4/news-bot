@@ -6,6 +6,7 @@
   python3 scripts/tier.py tests 70               # print the test change report
   python3 scripts/tier.py merge 70 --dry-run     # check the merge gate only
   python3 scripts/tier.py merge 70               # check the gate, then merge
+  python3 scripts/tier.py queue [--json]         # every open PR's stage and age (read-only)
 
 Tiers (AUTOMATION.md §9):
 
@@ -47,8 +48,9 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from itertools import takewhile
-from typing import Any
+from typing import Any, Callable
 
 REPO = "4OH4/news-bot"
 TIMEOUT = 120
@@ -821,6 +823,162 @@ def cmd_merge(number: int, dry_run: bool) -> None:
     print(f"PR #{number}: merged at {sha[:7]} and labelled {MERGED_LABEL}")
 
 
+# --- Queue: where each open PR stands ----------------------------------------------
+
+CI_PENDING = frozenset({"queued", "in_progress", "pending", "waiting", "requested", "missing"})
+SHA_LEN = 7
+
+
+def parse_time(stamp: str) -> datetime:
+    return datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+
+
+def ci_state(checks: dict[str, str]) -> str:
+    """`failing`, `running` or `green`, for the required checks and any conditional ones present."""
+    values = [checks.get(n, "missing") for n in REQUIRED_CHECKS]
+    values += [checks[n] for n in CONDITIONAL_CHECKS if n in checks]
+    if any(v != "success" and v not in CI_PENDING for v in values):
+        return "failing"
+    return "running" if any(v in CI_PENDING for v in values) else "green"
+
+
+def review_covers(
+    review: dict[str, Any], head: str, commits: list[dict[str, Any]], section: str | None
+) -> bool:
+    """True if this review comment covers the head commit.
+
+    It was posted after the head commit (real reviews rarely name a SHA, and a rebase sets a
+    new committer date, so a rebased head is reviewed again), or it names the head SHA, or it
+    names an earlier commit and the commits after that are only rework whose notes are marked
+    Resolved at the head.
+    """
+    text = review["body"]
+    if commits and parse_time(review["created_at"]) >= parse_time(
+        commits[-1]["commit"]["committer"]["date"]
+    ):
+        return True
+    if head[:SHA_LEN] in text:
+        return True
+    named = [i for i, c in enumerate(commits) if c["sha"][:SHA_LEN] in text]
+    if not named:
+        return False
+    later = commits[max(named) + 1 :]
+    resolved_at_head = any(
+        head[:SHA_LEN] in ln and RESOLVED_RE.search(ln) for ln in (section or "").splitlines()
+    )
+    return resolved_at_head and not any(c["commit"]["message"].startswith("feat") for c in later)
+
+
+def queue_stage(
+    pr: dict[str, Any],
+    classification: Classification,
+    checks: dict[str, str],
+    comments: list[dict[str, Any]],
+    commits: list[dict[str, Any]],
+    merge_view: Callable[[], dict[str, Any]],
+) -> tuple[str, datetime]:
+    """A PR's stage and when it entered it, using the merge gate's own functions.
+
+    The list endpoint omits `mergeable_state`, so `merge_view` fetches the full PR (once
+    per PR, for the conflict check and the gate).
+    """
+    head = pr["head"]["sha"]
+    since = [parse_time(commits[-1]["commit"]["committer"]["date"])] if commits else []
+    owned = [c for c in comments if c.get("author_association") == "OWNER"]
+    reviews = [c for c in owned if heading(c.get("body") or "").lower().startswith("independent review")]
+    deliveries = [
+        c
+        for c in owned
+        if heading(c.get("body") or "").lower().startswith("delivery review")
+        and head[:SHA_LEN] in c["body"]
+        and VERDICT_RE.search(c["body"])
+    ]
+    section = human_review_section(pr.get("body") or "")
+
+    def entered(stage: str) -> tuple[str, datetime]:
+        return stage, max(since) if since else datetime.now(timezone.utc)
+
+    if HOLD_LABEL in {label["name"] for label in pr["labels"]}:
+        return entered("held")
+    # A conflicting head gets no CI run, so it would otherwise read as `ci-running` for ever.
+    if merge_view().get("mergeable_state") == "dirty":
+        return entered("rework")
+    ci = ci_state(checks)
+    if ci != "green":
+        return entered(f"ci-{ci}")
+    latest = reviews[-1] if reviews else None
+    covered = latest is not None and review_covers(latest, head, commits, section)
+    if latest is not None and covered:
+        since.append(parse_time(latest["created_at"]))
+    if (
+        latest is None
+        or not covered
+        or checks_statement_failure(latest["body"]) is not None
+        or section is None
+        or "pending independent review" in section.lower()
+    ):
+        return entered("needs-review")
+    if unresolved(section, DEFECT_RE) or unresolved(section, NEEDS_HUMAN_RE):
+        return entered("rework")
+    if not deliveries:
+        return entered("ready-for-delivery-review")
+    since.append(parse_time(deliveries[-1]["created_at"]))
+    if classification.tier == "C":
+        return entered("ready-for-delivery-review" if pr.get("draft") else "awaiting-owner")
+    if not gate_failures(merge_view(), classification, checks, comments):
+        return entered("ready-to-merge")
+    return entered("ready-for-delivery-review")
+
+
+def format_age(minutes: int) -> str:
+    return f"{minutes}m" if minutes < 60 else f"{minutes // 60}h{minutes % 60:02d}m"
+
+
+def cmd_queue(as_json: bool) -> None:
+    now = datetime.now(timezone.utc)
+    records: list[dict[str, Any]] = []
+
+    def cached(n: int) -> Callable[[], dict[str, Any]]:
+        """Fetch the full PR (with `mergeable_state`) at most once."""
+        full: list[dict[str, Any]] = []
+
+        def get() -> dict[str, Any]:
+            if not full:
+                full.append(fetch_pr(n))
+            return full[0]
+
+        return get
+
+    for pr in gh_api("pulls?state=open&per_page=100", paginate=True):
+        number = pr["number"]
+        classification = classify_pr(pr)
+        checks = fetch_checks(pr["head"]["sha"])
+        comments = gh_api(f"issues/{number}/comments?per_page=100", paginate=True)
+        commits = gh_api(f"pulls/{number}/commits?per_page=100", paginate=True)
+        stage, since = queue_stage(
+            pr, classification, checks, comments, commits, cached(number)
+        )
+        records.append(
+            {
+                "pr": number,
+                "issues": sorted({int(n) for n in CLOSES_RE.findall(pr.get("body") or "")}),
+                "tier": classification.tier,
+                "stage": stage,
+                "age_minutes": max(0, int((now - since).total_seconds() // 60)),
+            }
+        )
+    records.sort(key=lambda r: r["age_minutes"], reverse=True)
+    if as_json:
+        print(json.dumps(records, indent=2))
+        return
+    for r in records:
+        closes = ",".join(f"#{n}" for n in r["issues"]) or "-"
+        age = format_age(r["age_minutes"])
+        print(f"#{r['pr']}  closes {closes}  {r['tier']}  {r['stage']}  {age}")
+    if not records:
+        print("no open PRs")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -834,11 +992,15 @@ def main() -> None:
     p_merge = sub.add_parser("merge", help="merge a Tier A or B PR if the gate passes")
     p_merge.add_argument("pr", type=int)
     p_merge.add_argument("--dry-run", action="store_true", help="check the gate only")
+    p_queue = sub.add_parser("queue", help="list every open PR's stage and age (read-only)")
+    p_queue.add_argument("--json", action="store_true", help="print JSON records")
     args = parser.parse_args()
     if args.command == "classify":
         cmd_classify(args.pr, args.label)
     elif args.command == "tests":
         cmd_tests(args.pr)
+    elif args.command == "queue":
+        cmd_queue(args.json)
     else:
         cmd_merge(args.pr, args.dry_run)
 
