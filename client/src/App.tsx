@@ -9,12 +9,14 @@ import "./liked/liked.css";
 import { ReaderScreen } from "./reader/ReaderScreen";
 import { restoreListScroll, saveListScroll } from "./reader/scroll";
 import { applyStoredTheme } from "./reader/theme";
+import { SettingsScreen } from "./settings/SettingsScreen";
 
 applyStoredTheme();
 
 function Screen({ path }: { path: string }) {
   if (path.startsWith("/article/")) return <ReaderScreen />;
   if (path === "/liked" || path === "/liked/") return <LikedScreen />;
+  if (path === "/settings" || path === "/settings/") return <SettingsScreen />;
   return <FeedScreen />;
 }
 
@@ -47,6 +49,7 @@ export function App() {
               <nav aria-label="Sections">
                 <a href="/">Feed</a>
                 <a href="/liked">Liked</a>
+                <a href="/settings">Settings</a>
               </nav>
             </header>
           )}

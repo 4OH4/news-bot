@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 //
-// The /liked route and the app-level header link to it (#216).
+// The /liked and /settings routes and the app-level header links to them (#216, #217).
 import { h, render } from "preact";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installRouter, loadStores, locationAt, makeFeed, makeItem } from "../test/test-env";
@@ -61,5 +61,28 @@ describe("App routes", () => {
     expect(link?.closest("header")).not.toBeNull();
     // App-level, not the feed screen's own header inside its <main>.
     expect(link?.closest("main")).toBeNull();
+  });
+
+  it.each(["/", "/liked"])("the header on %s links to /settings, outside the screen's <main>", async (path) => {
+    await showApp(path);
+    await vi.waitFor(() => expect(root.querySelector('a[href="/settings"]')).not.toBeNull(), {
+      timeout: 2000,
+    });
+    const link = root.querySelector('a[href="/settings"]');
+    expect(link?.closest("header")).not.toBeNull();
+    expect(link?.closest("main")).toBeNull();
+  });
+
+  it("/settings shows the Settings screen, not the feed", async () => {
+    await showApp("/settings");
+    await vi.waitFor(
+      () =>
+        expect(
+          [...root.querySelectorAll("button")].some((b) => /sign out/i.test(b.textContent ?? "")),
+        ).toBe(true),
+      { timeout: 2000 },
+    );
+    await new Promise((r) => setTimeout(r, 50));
+    expect(root.textContent).not.toContain(IN_FEED.title);
   });
 });
