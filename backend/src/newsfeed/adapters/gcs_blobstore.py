@@ -79,6 +79,11 @@ class GcsBlobStore:
         blob.upload_from_string(data, content_type=_content_type(key, content_type))
         return key
 
+    def ref_for(self, key: str) -> str:
+        """Return the ref ``put`` would return for ``key`` (the key itself)."""
+        validate_blob_key(key)
+        return key
+
     def get(self, ref: str) -> bytes:
         """Return the blob for ``ref``. Raises ``BlobNotFoundError`` if missing."""
         if not _valid(ref):

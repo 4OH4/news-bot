@@ -51,6 +51,7 @@ __all__ = [
     "SourceState",
     "SourceType",
     "UtcDatetime",
+    "VerifiedIdentity",
     "article_id",
 ]
 
@@ -400,6 +401,15 @@ class Feedback(_Model):
     event: FeedbackEvent
     value: float | None = Field(default=None, description="E.g. seconds read for 'read'.")
     created_at: UtcDatetime
+
+
+class VerifiedIdentity(_Model):
+    """Who a verified sign-in token belongs to, as returned by a ``TokenVerifier``."""
+
+    model_config = ConfigDict(frozen=True)
+
+    email: str
+    email_verified: bool
 
 
 class Profile(_Model):

@@ -31,21 +31,31 @@ from newsfeed.models import (
     Source,
     SourceState,
     SourceType,
+    VerifiedIdentity,
 )
 from newsfeed.ports import (
     BlobNotFoundError,
     FetchNotAllowedError,
+    TokenRejectedError,
     validate_blob_key,
 )
 
 if TYPE_CHECKING:
-    from newsfeed.ports import BlobStore, Extractor, Fetcher, Repository, SourceIngester
+    from newsfeed.ports import (
+        BlobStore,
+        Extractor,
+        Fetcher,
+        Repository,
+        SourceIngester,
+        TokenVerifier,
+    )
 
 __all__ = [
     "FakeExtractor",
     "FakeFetcher",
     "FakeResponse",
     "FakeSourceIngester",
+    "FakeTokenVerifier",
     "FetchCall",
     "InMemoryBlobStore",
     "InMemoryRepository",
@@ -168,6 +178,20 @@ class InMemoryRepository:
 # --- BlobStore ---------------------------------------------------------------
 
 
+class FakeTokenVerifier:
+    """A ``TokenVerifier`` that accepts only the tokens it was built with."""
+
+    def __init__(self, identities: Mapping[str, VerifiedIdentity]) -> None:
+        self._identities = dict(identities)
+
+    def verify(self, token: str) -> VerifiedIdentity:
+        """Return the identity for ``token``, or raise ``TokenRejectedError``."""
+        try:
+            return self._identities[token]
+        except KeyError:
+            raise TokenRejectedError("unknown token") from None
+
+
 class InMemoryBlobStore:
     """A ``BlobStore`` backed by a dict.
 
@@ -188,6 +212,11 @@ class InMemoryBlobStore:
         with self._lock:
             self._blobs[ref] = (bytes(data), content_type)
         return ref
+
+    def ref_for(self, key: str) -> str:
+        """Return the ref ``put`` would return for ``key``, without storing anything."""
+        validate_blob_key(key)
+        return f"{self.PREFIX}{key}"
 
     def get(self, ref: str) -> bytes:
         """Return the blob for ``ref``, or raise ``BlobNotFoundError``."""
@@ -535,3 +564,4 @@ if TYPE_CHECKING:
     _fetcher: Fetcher = FakeFetcher()
     _extractor: Extractor = FakeExtractor()
     _ingester: SourceIngester = FakeSourceIngester()
+    _verifier: TokenVerifier = FakeTokenVerifier({})
