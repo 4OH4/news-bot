@@ -344,3 +344,37 @@ def test_queue_is_read_only(
     monkeypatch.setattr(tier, "gh_api", spy)
     run_queue(capsys)
     assert not [c for c in calls if "-X" in c[1]]
+
+
+# --- real reviews name no SHA; conflicts ----------------------------------------------
+
+
+def unnamed_review(minutes: float) -> dict[str, Any]:
+    """A review as the reviewer writes it: no commit SHA anywhere."""
+    return {
+        "body": f"## Independent review\nNo defects.\n{CHECKS_LINE}",
+        "author_association": "OWNER",
+        "created_at": ago(minutes),
+    }
+
+
+def test_review_naming_no_sha_posted_after_the_head_commit_covers_it(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    rec = Recorded(comments=[unnamed_review(30)], commits=[commit(HEAD_SHA, 60)])
+    assert stage_of(monkeypatch, capsys, rec) == "ready-for-delivery-review"
+
+
+def test_review_naming_no_sha_posted_before_the_head_commit_is_needs_review(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    rec = Recorded(comments=[unnamed_review(60)], commits=[commit(HEAD_SHA, 20)])
+    assert stage_of(monkeypatch, capsys, rec) == "needs-review"
+
+
+def test_conflicting_pr_is_rework(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    rec = Recorded(checks={})
+    rec.pr["mergeable_state"] = "dirty"
+    assert stage_of(monkeypatch, capsys, rec) == "rework"

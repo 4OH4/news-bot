@@ -843,16 +843,23 @@ def ci_state(checks: dict[str, str]) -> str:
 
 
 def review_covers(
-    review: str, head: str, commits: list[dict[str, Any]], section: str | None
+    review: dict[str, Any], head: str, commits: list[dict[str, Any]], section: str | None
 ) -> bool:
-    """True if this review covers the head commit.
+    """True if this review comment covers the head commit.
 
-    It names the head SHA, or it names an earlier commit and the commits after that are only
-    rework whose notes are marked Resolved at the head.
+    It was posted after the head commit (real reviews rarely name a SHA, and a rebase sets a
+    new committer date, so a rebased head is reviewed again), or it names the head SHA, or it
+    names an earlier commit and the commits after that are only rework whose notes are marked
+    Resolved at the head.
     """
-    if head[:SHA_LEN] in review:
+    text = review["body"]
+    if commits and parse_time(review["created_at"]) >= parse_time(
+        commits[-1]["commit"]["committer"]["date"]
+    ):
         return True
-    named = [i for i, c in enumerate(commits) if c["sha"][:SHA_LEN] in review]
+    if head[:SHA_LEN] in text:
+        return True
+    named = [i for i, c in enumerate(commits) if c["sha"][:SHA_LEN] in text]
     if not named:
         return False
     later = commits[max(named) + 1 :]
@@ -893,11 +900,14 @@ def queue_stage(
 
     if HOLD_LABEL in {label["name"] for label in pr["labels"]}:
         return entered("held")
+    # A conflicting head gets no CI run, so it would otherwise read as `ci-running` for ever.
+    if merge_view().get("mergeable_state") == "dirty":
+        return entered("rework")
     ci = ci_state(checks)
     if ci != "green":
         return entered(f"ci-{ci}")
     latest = reviews[-1] if reviews else None
-    covered = latest is not None and review_covers(latest["body"], head, commits, section)
+    covered = latest is not None and review_covers(latest, head, commits, section)
     if latest is not None and covered:
         since.append(parse_time(latest["created_at"]))
     if (
@@ -927,6 +937,18 @@ def format_age(minutes: int) -> str:
 def cmd_queue(as_json: bool) -> None:
     now = datetime.now(timezone.utc)
     records: list[dict[str, Any]] = []
+
+    def cached(n: int) -> Callable[[], dict[str, Any]]:
+        """Fetch the full PR (with `mergeable_state`) at most once."""
+        full: list[dict[str, Any]] = []
+
+        def get() -> dict[str, Any]:
+            if not full:
+                full.append(fetch_pr(n))
+            return full[0]
+
+        return get
+
     for pr in gh_api("pulls?state=open&per_page=100", paginate=True):
         number = pr["number"]
         classification = classify_pr(pr)
@@ -934,7 +956,7 @@ def cmd_queue(as_json: bool) -> None:
         comments = gh_api(f"issues/{number}/comments?per_page=100", paginate=True)
         commits = gh_api(f"pulls/{number}/commits?per_page=100", paginate=True)
         stage, since = queue_stage(
-            pr, classification, checks, comments, commits, lambda n=number: fetch_pr(n)
+            pr, classification, checks, comments, commits, cached(number)
         )
         records.append(
             {
