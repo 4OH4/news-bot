@@ -115,3 +115,9 @@ def test_blobs_are_world_readable(tmp_path: Path) -> None:
     store.put("feed.json", b"{}")
     mode = stat.S_IMODE(os.stat(tmp_path / "blobs" / "feed.json").st_mode)
     assert mode == 0o644
+
+
+def test_ref_for_returns_the_key(tmp_path: Path) -> None:
+    store = LocalBlobStore(tmp_path / "blobs")
+    assert store.ref_for("articles/abc.html") == "articles/abc.html"
+    assert all_files(tmp_path) == []

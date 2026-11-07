@@ -483,3 +483,24 @@ def test_error_type_rejects_free_text(value: str) -> None:
         ArticleExtraction(error_type=value)
     with pytest.raises(ValidationError):
         RunStats(run_id="r", started_at=NOW, failures_by_reason={value: 1})
+
+
+def test_verified_identity_is_exported_and_frozen() -> None:
+    from newsfeed import models
+    from newsfeed.models import VerifiedIdentity
+
+    assert "VerifiedIdentity" in models.__all__
+    identity = VerifiedIdentity(email="reader@example.invalid", email_verified=True)
+    assert identity.email == "reader@example.invalid"
+    assert identity.email_verified is True
+    with pytest.raises(ValidationError):
+        identity.email = "other@example.invalid"
+
+
+def test_verified_identity_requires_both_fields() -> None:
+    from newsfeed.models import VerifiedIdentity
+
+    with pytest.raises(ValidationError):
+        VerifiedIdentity(email="reader@example.invalid")  # type: ignore[call-arg]
+    with pytest.raises(ValidationError):
+        VerifiedIdentity(email_verified=True)  # type: ignore[call-arg]

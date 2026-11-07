@@ -448,3 +448,35 @@ class TestFakeSourceIngester:
         ingester = FakeSourceIngester(errors={"broken": RuntimeError("boom")})
         with pytest.raises(RuntimeError, match="boom"):
             ingester.ingest(source, FakeFetcher(), SourceState(source_id="broken"))
+
+
+def test_in_memory_blob_store_ref_for_is_not_the_key() -> None:
+    store = InMemoryBlobStore()
+    ref = store.ref_for("feed.json")
+    assert ref == "memory://feed.json"
+    assert ref != "feed.json"
+    assert store.put("feed.json", b"{}") == ref
+    assert store.get(ref) == b"{}"
+    assert not store.exists("feed.json")
+
+
+def test_fake_token_verifier_returns_known_identity() -> None:
+    from newsfeed.models import VerifiedIdentity
+    from tests.fakes import FakeTokenVerifier
+
+    identity = VerifiedIdentity(email="reader@example.invalid", email_verified=True)
+    verifier = FakeTokenVerifier({"good-token": identity})
+    assert verifier.verify("good-token") == identity
+
+
+def test_fake_token_verifier_rejects_unknown_token() -> None:
+    from newsfeed.models import VerifiedIdentity
+    from newsfeed.ports import TokenRejectedError
+    from tests.fakes import FakeTokenVerifier
+
+    identity = VerifiedIdentity(email="reader@example.invalid", email_verified=True)
+    verifier = FakeTokenVerifier({"good-token": identity})
+    with pytest.raises(TokenRejectedError):
+        verifier.verify("other-token")
+    with pytest.raises(TokenRejectedError):
+        verifier.verify("")

@@ -155,3 +155,37 @@ def test_readers_never_see_partial_writes(blob_store: BlobStore) -> None:
     assert errors == []
     assert seen_bad == []
     assert sum(reads) > 0
+
+
+def test_ref_for_reads_a_blob_stored_under_the_key(blob_store: BlobStore) -> None:
+    blob_store.put("feed.json", b'{"items": []}', "application/json")
+    ref = blob_store.ref_for("feed.json")
+    assert isinstance(ref, str)
+    assert blob_store.get(ref) == b'{"items": []}'
+    assert blob_store.exists(ref)
+
+
+def test_ref_for_matches_the_ref_put_returns(blob_store: BlobStore) -> None:
+    ref = blob_store.put("articles/known.html", b"x", "text/html")
+    assert blob_store.ref_for("articles/known.html") == ref
+
+
+def test_ref_for_an_unwritten_key_is_a_missing_blob(blob_store: BlobStore) -> None:
+    ref = blob_store.ref_for("articles/never-written.html")
+    assert isinstance(ref, str)
+    assert not blob_store.exists(ref)
+    with pytest.raises(BlobNotFoundError):
+        blob_store.get(ref)
+
+
+def test_ref_for_does_not_write_anything(blob_store: BlobStore) -> None:
+    ref = blob_store.ref_for("articles/untouched.html")
+    assert not blob_store.exists(ref)
+    blob_store.put("articles/other.html", b"x")
+    assert not blob_store.exists(ref)
+
+
+@pytest.mark.parametrize("key", INVALID_KEYS)
+def test_ref_for_rejects_invalid_keys(blob_store: BlobStore, key: str) -> None:
+    with pytest.raises(ValueError, match="invalid blob key"):
+        blob_store.ref_for(key)

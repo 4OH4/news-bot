@@ -45,6 +45,7 @@ from newsfeed.models import (
     Source,
     SourceState,
     SourceType,
+    VerifiedIdentity,
 )
 
 __all__ = [
@@ -55,6 +56,8 @@ __all__ = [
     "Fetcher",
     "Repository",
     "SourceIngester",
+    "TokenRejectedError",
+    "TokenVerifier",
     "validate_blob_key",
 ]
 
@@ -68,6 +71,10 @@ class BlobNotFoundError(LookupError):
 
 class FetchNotAllowedError(Exception):
     """Raised by ``Fetcher.permit`` when robots.txt forbids fetching a URL."""
+
+
+class TokenRejectedError(Exception):
+    """Raised by ``TokenVerifier.verify`` for a token it can't accept."""
 
 
 # --- Repository --------------------------------------------------------------
@@ -210,12 +217,40 @@ class BlobStore(Protocol):
         """
         ...
 
+    def ref_for(self, key: str) -> str:
+        """Return the ref ``put`` would return for ``key``, without touching storage.
+
+        Raises ``ValueError`` if ``key`` fails ``validate_blob_key``. The blob
+        may not exist.
+        """
+        ...
+
     def get(self, ref: str) -> bytes:
         """Return the blob for ``ref``. Raises ``BlobNotFoundError`` if missing."""
         ...
 
     def exists(self, ref: str) -> bool:
         """Return True if a blob exists for ``ref``."""
+        ...
+
+
+# --- TokenVerifier -----------------------------------------------------------
+
+
+@runtime_checkable
+class TokenVerifier(Protocol):
+    """Turn a sign-in token into a verified identity.
+
+    Keeps identity-provider libraries out of core code (CLAUDE.md, rule 1).
+    Implementations: a Firebase adapter (#175), ``FakeTokenVerifier`` (tests).
+    """
+
+    def verify(self, token: str) -> VerifiedIdentity:
+        """Return the identity the token proves.
+
+        Raises ``TokenRejectedError`` for any token it can't accept, including
+        malformed, expired or wrongly signed tokens. Must be thread-safe.
+        """
         ...
 
 
