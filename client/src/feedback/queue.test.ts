@@ -1,3 +1,4 @@
+import { IDBDatabase as FakeIDBDatabase } from "fake-indexeddb";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { answerBy, fakeLocation, installFakeApi, loadFeedback, settle, type Answer } from "./test-env";
 
@@ -218,5 +219,116 @@ describe("queuedCount and listRejected", () => {
     await f.flushQueue();
     expect(await f.queuedCount()).toBe(2);
     expect(await f.listRejected()).toEqual([events[0]]);
+  });
+});
+
+/** Makes `AbortSignal.timeout` return signals the test ends by hand, and records each limit. */
+function controlTimeouts(): { ms: number; controller: AbortController }[] {
+  const made: { ms: number; controller: AbortController }[] = [];
+  vi.spyOn(AbortSignal, "timeout").mockImplementation((ms: number) => {
+    const controller = new AbortController();
+    made.push({ ms, controller });
+    return controller.signal;
+  });
+  return made;
+}
+
+/** Ends every time limit made so far, as the browser does when one runs out. */
+function runOut(made: { controller: AbortController }[]): void {
+  for (const { controller } of made) {
+    if (!controller.signal.aborted) {
+      controller.abort(new DOMException("The operation timed out.", "TimeoutError"));
+    }
+  }
+}
+
+describe("flushQueue with a send that never answers", () => {
+  it("gives every feedback POST a time limit of at most a minute", async () => {
+    const made = controlTimeouts();
+    const f = await loadFeedback();
+    const { api } = await queueOffline(f, A);
+    api.answer = () => 204;
+    await f.flushQueue();
+    expect(api.signals.at(-1)).toBeInstanceOf(AbortSignal);
+    expect(made.length).toBeGreaterThan(0);
+    for (const { ms } of made) {
+      expect(ms).toBeGreaterThan(0);
+      expect(ms).toBeLessThanOrEqual(60_000);
+    }
+  });
+
+  it("ends a stalled send when its time limit runs out, keeps the entries, and a later flush sends them", async () => {
+    const made = controlTimeouts();
+    const f = await loadFeedback();
+    const { api, events } = await queueOffline(f, A, B);
+    api.answer = () => "hang";
+    const before = api.attempts;
+    let finished = false;
+    const first = f.flushQueue().then(() => {
+      finished = true;
+    });
+    await vi.waitFor(() => expect(api.attempts).toBe(before + 1));
+    await settle();
+    expect(finished).toBe(false);
+
+    runOut(made);
+    await vi.waitFor(() => expect(finished).toBe(true));
+    await first;
+    expect(await f.queuedCount()).toBe(2);
+    expect(await f.listRejected()).toEqual([]);
+
+    // Without a time limit the stalled flush would still hold every later one.
+    api.answer = () => 204;
+    await f.flushQueue();
+    expect(api.posts.map((p) => p.id)).toEqual(events.map((e) => e.id));
+    expect(await f.queuedCount()).toBe(0);
+  });
+});
+
+describe("flushQueue asked for while a flush is finishing", () => {
+  it("runs once more, so an event that landed behind the flush's last look is still sent", async () => {
+    const f = await loadFeedback();
+    const { api, events } = await queueOffline(f, A);
+    const late = f.buildEvent(B, "open");
+    let postedA = false;
+    let removedA = false;
+    let injected = false;
+    let second: Promise<void> | undefined;
+    api.answer = (body) => {
+      if (body.article_id === A) postedA = true;
+      return 204;
+    };
+
+    // Watches the flush's own transactions. Once A has been sent and removed, the flush's next
+    // look at the queue is its last; B is written just behind that look (so the look can't see
+    // it) and a flush is asked for straight away, while the first is still running. Nothing
+    // else asks for a flush afterwards, so only the re-run can send B.
+    const original = FakeIDBDatabase.prototype.transaction;
+    vi.spyOn(FakeIDBDatabase.prototype, "transaction").mockImplementation(function (
+      this: IDBDatabase,
+      ...args: Parameters<IDBDatabase["transaction"]>
+    ) {
+      const tx = original.apply(this, args);
+      const names = typeof args[0] === "string" ? [args[0]] : [...args[0]];
+      if (!names.includes("queue") || injected) return tx;
+      if (postedA && removedA) {
+        injected = true;
+        const write = original.call(this, "queue", "readwrite");
+        write.objectStore("queue").put({ ...late, seq: 1000 });
+        second = f.flushQueue();
+      } else if (postedA && args[1] === "readwrite") {
+        tx.addEventListener("complete", () => {
+          removedA = true;
+        });
+      }
+      return tx;
+    });
+
+    await f.flushQueue();
+    expect(injected).toBe(true);
+    await second;
+    await settle();
+    expect(api.posts.map((p) => p.id)).toEqual([events[0]!.id, late.id]);
+    expect(await f.queuedCount()).toBe(0);
   });
 });

@@ -11,7 +11,30 @@ import { buildEvent, toPayload, type FeedbackEventName, type FeedbackPayload } f
 /** Answers a retry could fix: the entry stays and the flush stops. */
 const RETRYABLE = new Set([401, 403, 408, 429]);
 
-/** Adds an event to the queue, resolving once it is stored, then starts a send. */
+/**
+ * How long one feedback POST may take. A send that never answers would otherwise hold the flush,
+ * and with it every later flush and the sign-out dialog's send, until the page closes.
+ */
+export const SEND_TIMEOUT_MS = 30_000;
+
+/**
+ * The time limit for one POST. `AbortSignal.timeout` is missing on older browsers (Safari before
+ * 16); there a timer does the same job, rather than the call throwing and the queue never sending.
+ */
+function sendTimeout(): AbortSignal {
+  if (typeof AbortSignal.timeout === "function") return AbortSignal.timeout(SEND_TIMEOUT_MS);
+  const controller = new AbortController();
+  setTimeout(
+    () => controller.abort(new DOMException("The operation timed out.", "TimeoutError")),
+    SEND_TIMEOUT_MS,
+  );
+  return controller.signal;
+}
+
+/**
+ * Adds an event to the queue, resolving once it is stored, then starts a send. The write happens
+ * at once, even while a sign-out is asking: the sign-out deletes only the events it counted.
+ */
 export async function enqueueFeedback(
   articleId: string,
   event: FeedbackEventName,
@@ -64,15 +87,18 @@ async function drain(): Promise<"empty" | "stopped"> {
     const row = await oldest(db);
     if (!row) return "empty";
     const payload = toPayload(row);
+    const signal = sendTimeout();
     let response: Response;
     try {
       response = await apiFetch("/api/feedback", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
+        signal,
       });
     } catch {
-      // Offline, a lost answer, 401 or 403 (apiFetch reports the last two): keep and stop.
+      // Offline, a lost answer, the time limit, 401 or 403 (apiFetch reports the last two):
+      // keep and stop.
       return "stopped";
     }
     const { status } = response;
@@ -99,6 +125,17 @@ export async function queuedCount(): Promise<number> {
 
 export async function rejectedCount(): Promise<number> {
   return (await openFeedbackDb()).count("rejected");
+}
+
+/** The ids of every queued and rejected event, read in one transaction. */
+export async function unsentIds(): Promise<{ queued: string[]; rejected: string[] }> {
+  const tx = (await openFeedbackDb()).transaction(["queue", "rejected"]);
+  const [queued, rejected] = await Promise.all([
+    tx.objectStore("queue").getAllKeys(),
+    tx.objectStore("rejected").getAllKeys(),
+    tx.done,
+  ]);
+  return { queued, rejected };
 }
 
 export async function listRejected(): Promise<FeedbackPayload[]> {

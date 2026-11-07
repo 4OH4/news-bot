@@ -33,6 +33,8 @@ export interface FakeApi {
   answer: (body: Record<string, unknown>) => Answer;
   /** Delay before a reached POST is answered, to keep two flushes overlapping. */
   delayMs: number;
+  /** The `signal` passed with each feedback POST attempt, in order. */
+  signals: (AbortSignal | null | undefined)[];
 }
 
 function urlOf(input: unknown): string {
@@ -43,7 +45,14 @@ function urlOf(input: unknown): string {
 
 /** Replaces `fetch` with the fake server. */
 export function installFakeApi(initial: Answer = 204): FakeApi {
-  const api: FakeApi = { posts: [], attempts: 0, other: [], answer: () => initial, delayMs: 0 };
+  const api: FakeApi = {
+    posts: [],
+    attempts: 0,
+    other: [],
+    answer: () => initial,
+    delayMs: 0,
+    signals: [],
+  };
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: unknown, init: RequestInit = {}): Promise<Response> => {
@@ -53,11 +62,19 @@ export function installFakeApi(initial: Answer = 204): FakeApi {
         return new Response(null, { status: 200 });
       }
       api.attempts++;
+      api.signals.push(init.signal);
       const rawBody = String(init.body);
       const body = JSON.parse(rawBody) as Record<string, unknown>;
       const answer = api.answer(body);
       if (answer === "offline") throw new TypeError("Failed to fetch");
-      if (answer === "hang") return new Promise<Response>(() => {});
+      if (answer === "hang") {
+        // Like a real fetch: no answer ever comes, but an aborted signal ends the request.
+        const signal = init.signal;
+        return new Promise<Response>((_resolve, reject) => {
+          if (signal?.aborted) reject(signal.reason);
+          signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
+        });
+      }
       api.posts.push({
         url,
         method: String(init.method ?? "GET").toUpperCase(),
@@ -102,6 +119,14 @@ export async function loadFeedback() {
     return typeof v === "function" ? (v as () => unknown)() : v;
   };
   return { ...db, ...event, ...queue, ...seen, ...signout, ...store, status };
+}
+
+/** `loadFeedback` plus the sign-out guard and start-up wiring (part 2 of #184). */
+export async function loadApp() {
+  const base = await loadFeedback();
+  const guard = await import("./signout-guard");
+  const start = await import("./start");
+  return { ...base, ...guard, ...start };
 }
 
 interface StoreLike {

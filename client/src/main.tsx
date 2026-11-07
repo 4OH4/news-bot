@@ -4,6 +4,9 @@ import { RECONNECT_PATH } from "./auth/reconnect";
 import { onSignOut } from "./auth/signout";
 import { clearAll } from "./store/db";
 import "./style.css";
+import { startFeedback } from "./feedback/start";
+
+startFeedback();
 
 // A sign-out the user chooses wipes the stored feed and articles (#183).
 onSignOut(clearAll);
