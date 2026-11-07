@@ -149,3 +149,29 @@ def test_the_default_delegates_to_google_auth_with_the_audience_and_iap_keys(
     assert isinstance(bound.arguments["request"], google.auth.transport.requests.Request)
     assert bound.arguments["audience"] == AUDIENCE
     assert bound.arguments["certs_url"] == IAP_CERTS_URL
+
+
+# --- Guards the issue doesn't list -------------------------------------------
+
+
+def test_the_verifier_refuses_an_empty_audience() -> None:
+    # google-auth skips the audience check when given none.
+    with pytest.raises(ValueError):
+        IapJwtVerifier("  ", verify_token=Library(claims()))
+
+
+def test_a_requests_error_from_the_library_is_a_connection_error() -> None:
+    import requests
+
+    cause = requests.ConnectionError("dns")
+    with pytest.raises(ConnectionError) as raised:
+        IapJwtVerifier(AUDIENCE, verify_token=Library(cause)).verify(TOKEN)
+    assert not isinstance(raised.value, TokenRejectedError)
+
+
+def test_a_result_that_is_not_a_mapping_is_rejected() -> None:
+    def odd(token: str) -> Any:
+        return ["not", "claims"]
+
+    with pytest.raises(TokenRejectedError):
+        IapJwtVerifier(AUDIENCE, verify_token=odd).verify(TOKEN)
