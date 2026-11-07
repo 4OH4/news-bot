@@ -179,6 +179,59 @@ export async function storyStateCounts(
   return out;
 }
 
+/** The `localStorage` key prefix of the feedback outbox (#254): one key per event. */
+export const OUTBOX_PREFIX = "newsfeed-outbox:";
+
+/** A `Storage` held in memory, for tests that run without a DOM. */
+export function memoryStorage(): Storage {
+  const data = new Map<string, string>();
+  return {
+    get length() {
+      return data.size;
+    },
+    key: (i: number) => [...data.keys()][i] ?? null,
+    getItem: (k: string) => data.get(k) ?? null,
+    setItem: (k: string, v: string) => void data.set(k, String(v)),
+    removeItem: (k: string) => void data.delete(k),
+    clear: () => data.clear(),
+  };
+}
+
+/** A `Storage` that throws on every call, as when storage is blocked or full. */
+export function throwingStorage(): Storage {
+  const fail = (): never => {
+    throw new DOMException("invented: storage blocked", "SecurityError");
+  };
+  return {
+    get length(): number {
+      return fail();
+    },
+    key: fail,
+    getItem: fail,
+    setItem: fail,
+    removeItem: fail,
+    clear: fail,
+  };
+}
+
+/** Makes `storage` the global `localStorage` (undone by `vi.unstubAllGlobals`). */
+export function installStorage(storage: Storage = memoryStorage()): Storage {
+  vi.stubGlobal("localStorage", storage);
+  return storage;
+}
+
+/** Every outbox entry in `storage`, parsed, in no particular order. */
+export function outboxEntries(storage: Storage = localStorage): Record<string, unknown>[] {
+  const out: Record<string, unknown>[] = [];
+  for (let i = 0; i < storage.length; i++) {
+    const key = storage.key(i);
+    if (key?.startsWith(OUTBOX_PREFIX)) {
+      out.push(JSON.parse(storage.getItem(key)!) as Record<string, unknown>);
+    }
+  }
+  return out;
+}
+
 /** A stand-in for `location` that records replacements instead of navigating. */
 export function fakeLocation() {
   return { href: "/", pathname: "/", replace: vi.fn(), assign: vi.fn() };

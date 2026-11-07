@@ -1,5 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fakeLocation, installFakeApi, loadApp, settle, STORY_KEY } from "./test-env";
+import {
+  fakeLocation,
+  installFakeApi,
+  installStorage,
+  loadApp,
+  OUTBOX_PREFIX,
+  outboxEntries,
+  settle,
+  STORY_KEY,
+} from "./test-env";
 
 const A = "d0d0d0d0d0d0d0d1";
 
@@ -26,6 +35,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -113,5 +123,44 @@ describe("startFeedback", () => {
     expect(await f.isSeen(STORY_KEY)).toBe(false);
     expect(loc.replace).toHaveBeenCalledTimes(1);
     expect(loc.replace).toHaveBeenCalledWith("/");
+  });
+
+  it("moves outbox entries into the queue on start, posting each with its own id and created_at", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-07T11:00:00Z"));
+    const storage = installStorage();
+    // Written at 08:00 by a page that closed before its IndexedDB write ran.
+    const left = {
+      id: "6".repeat(32),
+      article_id: A,
+      event: "like",
+      value: 1,
+      created_at: "2026-11-07T08:00:00.000Z",
+    };
+    storage.setItem(`${OUTBOX_PREFIX}${left.id}`, JSON.stringify(left));
+    const f = await loadApp();
+    const api = installFakeApi(204);
+
+    f.startFeedback();
+
+    await vi.waitFor(() => expect(api.posts.map((p) => p.body)).toEqual([left]));
+    await vi.waitFor(async () => expect(await f.queuedCount()).toBe(0));
+    expect(outboxEntries(storage)).toEqual([]);
+  });
+
+  it("drains a newsfeed-pending-reads entry left by the old version into one read event", async () => {
+    const storage = installStorage();
+    storage.setItem("newsfeed-pending-reads", JSON.stringify({ o1: { article_id: A, value: 9 } }));
+    const f = await loadApp();
+    const api = installFakeApi(204);
+
+    f.startFeedback();
+
+    await vi.waitFor(() =>
+      expect(api.posts.map((p) => [p.body.article_id, p.body.event, p.body.value])).toEqual([
+        [A, "read", 9],
+      ]),
+    );
+    expect(storage.getItem("newsfeed-pending-reads")).toBeNull();
   });
 });

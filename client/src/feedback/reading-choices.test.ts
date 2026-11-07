@@ -12,6 +12,7 @@ import {
   resetVisibility,
   setVisibility,
 } from "../../test/test-env";
+import { outboxEntries } from "./test-env";
 
 const ITEM = makeItem("0f1e2d3c4b5a6978");
 
@@ -49,14 +50,14 @@ describe("startReading after a short reading", () => {
   });
 });
 
-// Leaving the reader is a full page load: no unmount runs and the queue write may never finish,
-// so the reading is handed to the next page through localStorage.
+// Leaving the reader is a full page load: no unmount runs and the queue write may never finish.
+// Since #254 the reading goes straight to enqueueFeedback, whose outbox entry is the copy that
+// survives; the old `newsfeed-pending-reads` hand-off and `movePendingReads` are gone.
 describe("a reading that outlives its page", () => {
   const PENDING = "newsfeed-pending-reads";
 
   beforeEach(() => {
     vi.resetModules();
-    vi.useFakeTimers();
     setVisibility("visible", false);
     localStorage.clear();
     for (const m of ["error", "warn", "log", "info"] as const) {
@@ -69,6 +70,7 @@ describe("a reading that outlives its page", () => {
   });
 
   it("pagehide alone ends the reading and sends it", async () => {
+    vi.useFakeTimers();
     const enqueue = vi.fn(async () => ({}));
     vi.doMock("./queue", () => ({ enqueueFeedback: enqueue }));
     const { startReading } = await import("./reading");
@@ -80,49 +82,54 @@ describe("a reading that outlives its page", () => {
     expect(localStorage.getItem(PENDING)).toBeNull();
   });
 
-  it("a queue write the unload cut off is queued by the next page, once", async () => {
+  it("calls enqueueFeedback inside the pagehide and writes no newsfeed-pending-reads copy", async () => {
+    vi.useFakeTimers();
     // This page's queue write never finishes, as when the page unloads mid-write.
     const stuck = vi.fn(() => new Promise<never>(() => {}));
     vi.doMock("./queue", () => ({ enqueueFeedback: stuck }));
-    const first = await import("./reading");
-    first.startReading(ITEM);
+    const reading = await import("./reading");
+    reading.startReading(ITEM);
     await vi.advanceTimersByTimeAsync(8_000);
+
     window.dispatchEvent(new Event("pagehide"));
-    expect(localStorage.getItem(PENDING)).not.toBeNull();
 
-    // The next page.
-    vi.resetModules();
-    const enqueue = vi.fn(async () => ({}));
-    vi.doMock("./queue", () => ({ enqueueFeedback: enqueue }));
-    const next = await import("./reading");
-    await next.movePendingReads();
-    expect(enqueue.mock.calls).toEqual([[ITEM.id, "read", 8]]);
+    expect(stuck.mock.calls).toEqual([[ITEM.id, "read", 8]]);
     expect(localStorage.getItem(PENDING)).toBeNull();
-    await next.movePendingReads();
-    expect(enqueue).toHaveBeenCalledTimes(1);
+    expect(reading).not.toHaveProperty("movePendingReads");
   });
 
-  it("a pending reading the queue refuses stays for the next start", async () => {
-    localStorage.setItem(PENDING, JSON.stringify({ o1: { article_id: ITEM.id, value: 12 } }));
-    const failing = vi.fn(async () => {
-      throw new Error("invented storage failure");
-    });
-    vi.doMock("./queue", () => ({ enqueueFeedback: failing }));
-    const { movePendingReads } = await import("./reading");
-    await movePendingReads();
-    expect(failing).toHaveBeenCalledTimes(1);
-    expect(JSON.parse(localStorage.getItem(PENDING)!)).toEqual({
-      o1: { article_id: ITEM.id, value: 12 },
-    });
-  });
-
-  it("drops a malformed pending entry without queuing it", async () => {
-    localStorage.setItem(PENDING, JSON.stringify({ o1: { article_id: 7, value: "x" } }));
+  it("a page restored from the back/forward cache sends no second read for the opening", async () => {
+    vi.useFakeTimers();
     const enqueue = vi.fn(async () => ({}));
     vi.doMock("./queue", () => ({ enqueueFeedback: enqueue }));
-    const { movePendingReads } = await import("./reading");
-    await movePendingReads();
-    expect(enqueue).not.toHaveBeenCalled();
+    const { startReading } = await import("./reading");
+    startReading(ITEM);
+    await vi.advanceTimersByTimeAsync(7_000);
+    setVisibility("hidden");
+    window.dispatchEvent(new Event("pagehide"));
+    // Restored: shown again and read for a while, then left once more.
+    window.dispatchEvent(new Event("pageshow"));
+    setVisibility("visible");
+    await vi.advanceTimersByTimeAsync(20_000);
+    window.dispatchEvent(new Event("pagehide"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(enqueue.mock.calls).toEqual([[ITEM.id, "read", 7]]);
+  });
+
+  it("with the real queue, the read event is in the outbox as the pagehide returns", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-07T10:00:00Z"));
+    installRouter({ online: false });
+    await loadStores();
+    const { startReading } = await import("./reading");
+    startReading(ITEM);
+    vi.setSystemTime(new Date("2026-11-07T10:00:07Z"));
+
+    window.dispatchEvent(new Event("pagehide"));
+
+    expect(outboxEntries()).toEqual([
+      expect.objectContaining({ article_id: ITEM.id, event: "read", value: 7 }),
+    ]);
     expect(localStorage.getItem(PENDING)).toBeNull();
   });
 });

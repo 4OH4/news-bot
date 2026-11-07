@@ -61,7 +61,11 @@ test("leaving the reader by the Back link sends its read event", async ({ page }
   const [read] = reads(posted);
   expect(read).toMatchObject({ article_id: top.id, event: "read" });
   expect(read!.value as number).toBeGreaterThanOrEqual(7);
+  // Page time also runs with the real clock for the click and the load, hence up to 9.
   expect(read!.value as number).toBeLessThanOrEqual(9);
+  // Exactly one: neither the outbox nor a moved copy sends it a second time (#254).
+  await page.waitForTimeout(500);
+  expect(reads(posted)).toHaveLength(1);
 });
 
 test("leaving the reader by going to another address sends its read event", async ({ page }) => {
@@ -74,4 +78,9 @@ test("leaving the reader by going to another address sends its read event", asyn
   expect(reads(posted)[0]).toMatchObject({ article_id: top.id, event: "read" });
   // Nothing is left over to be sent a second time.
   expect(await page.evaluate(() => localStorage.getItem("newsfeed-pending-reads"))).toBeNull();
+  await expect
+    .poll(() =>
+      page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith("newsfeed-outbox:"))),
+    )
+    .toEqual([]);
 });

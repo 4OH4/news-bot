@@ -15,6 +15,7 @@ import {
   settle,
   type Stores,
 } from "../../test/test-env";
+import { outboxEntries } from "../feedback/test-env";
 import type { FeedItem } from "./types";
 
 const ARTICLE = makeItem("a1b2c3d4e5f60718", { title: "Invented story about canal locks" });
@@ -186,6 +187,61 @@ describe("the card menu", () => {
     expect(buttonsNamed(root, /undo/i)).toHaveLength(1);
     const mutes = (await queuedEvents(s)).filter((e) => e.event === "mute_source");
     expect(mutes.map((e) => [e.article_id, e.value])).toEqual([[ARTICLE.id, 1]]);
+  });
+
+  // #254: a full page load can follow the tap at once, so the event is in the outbox before the
+  // click returns.
+  it.each([
+    [/dismiss/i, "dismiss"],
+    [/mute/i, "mute_source"],
+  ])("tapping %s writes its event to the outbox inside the tap", async (name, event) => {
+    await load();
+    localStorage.clear();
+    await showCards(ARTICLE);
+    const card = cardFor(ARTICLE)!;
+    if (buttonsNamed(card, name).length === 0) menuToggle(card)?.click();
+    await settle(0);
+
+    buttonsNamed(card, name)[0]!.click();
+
+    expect(outboxEntries()).toEqual([
+      expect.objectContaining({ article_id: ARTICLE.id, event, value: 1 }),
+    ]);
+  });
+
+  it("Undo writes its event to the outbox inside the tap", async () => {
+    await load();
+    await showCards(ARTICLE);
+    await chooseAction(cardFor(ARTICLE)!, /dismiss/i);
+    await vi.waitFor(() => expect(buttonsNamed(root, /undo/i)).toHaveLength(1));
+    await settle();
+    localStorage.clear();
+
+    buttonsNamed(root, /undo/i)[0]!.click();
+
+    expect(outboxEntries()).toEqual([
+      expect.objectContaining({ article_id: ARTICLE.id, event: "dismiss", value: 0 }),
+    ]);
+  });
+
+  it("Undo after a mute queues mute_source 0, not dismiss 0, and the source's other cards show again", async () => {
+    const s = await load();
+    await showCards(ARTICLE, OTHER, ELSEWHERE);
+    await chooseAction(cardFor(ARTICLE)!, /mute/i);
+    await vi.waitFor(() => expect(root.textContent).not.toContain(OTHER.title));
+
+    buttonsNamed(root, /undo/i)[0]!.click();
+
+    await vi.waitFor(() => {
+      expect(root.textContent).toContain(ARTICLE.title);
+      expect(root.textContent).toContain(OTHER.title);
+    });
+    await settle();
+    const events = (await queuedEvents(s)).map((e) => [e.article_id, e.event, e.value]);
+    expect(events).toEqual([
+      [ARTICLE.id, "mute_source", 1],
+      [ARTICLE.id, "mute_source", 0],
+    ]);
   });
 
   it("a card already hidden when the screen loads renders nothing, not an Undo row", async () => {
