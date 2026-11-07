@@ -1491,6 +1491,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "feedparser" },
+    { name = "google-auth" },
     { name = "google-cloud-firestore" },
     { name = "google-cloud-storage" },
     { name = "httpx" },
@@ -1503,6 +1504,7 @@ dependencies = [
     { name = "pydantic-settings" },
     { name = "pyyaml" },
     { name = "readability-lxml" },
+    { name = "requests" },
     { name = "trafilatura" },
     { name = "typer" },
 ]
@@ -1526,6 +1528,7 @@ playwright = [
 [package.metadata]
 requires-dist = [
     { name = "feedparser", specifier = ">=6.0.14" },
+    { name = "google-auth", specifier = ">=2.62.0" },
     { name = "google-cloud-firestore", specifier = ">=2.34.1" },
     { name = "google-cloud-storage", specifier = ">=3.17.1" },
     { name = "httpx", specifier = ">=0.28.1" },
@@ -1538,6 +1541,7 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.15.0" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "readability-lxml", specifier = ">=0.9" },
+    { name = "requests", specifier = ">=2.34.2" },
     { name = "trafilatura", specifier = ">=2.3.1,<2.4" },
     { name = "typer", specifier = ">=0.27.3" },
 ]
