@@ -12,6 +12,7 @@
     "e2e": "playwright test"
   },
   "dependencies": {
+    "dompurify": "^3.4.17",
     "idb": "^8.0.4",
     "preact": "^10.25.4"
   },

@@ -51,7 +51,8 @@ describe("module boundaries", () => {
     const pkg = JSON.parse(
       readFileSync(new URL("../../package.json", import.meta.url), "utf8"),
     ) as { dependencies: Record<string, string> };
-    // idb is the feedback queue's IndexedDB wrapper (#184), not a sign-in library.
-    expect(Object.keys(pkg.dependencies).sort()).toEqual(["idb", "preact"]);
+    // dompurify is the reader's HTML sanitiser (#182) and idb the feedback queue's IndexedDB
+    // wrapper (#184); neither is a sign-in library.
+    expect(Object.keys(pkg.dependencies).sort()).toEqual(["dompurify", "idb", "preact"]);
   });
 });

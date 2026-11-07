@@ -1,4 +1,5 @@
-/* Shared design tokens. Dark mode follows the system setting. */
+/* Shared design tokens. Dark mode follows the system setting; the reader's toggle sets
+   data-theme on the root element to override it. */
 :root {
   color-scheme: light dark;
   --bg: #ffffff;
@@ -13,7 +14,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #14161a;
     --surface: #1e2127;
     --text: #e6e8eb;
@@ -23,4 +24,20 @@
     --notice-bg: #4a3d12;
     --notice-text: #f5ecc8;
   }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #14161a;
+  --surface: #1e2127;
+  --text: #e6e8eb;
+  --muted: #9aa1ab;
+  --link: #8ab4f8;
+  --border: #343941;
+  --notice-bg: #4a3d12;
+  --notice-text: #f5ecc8;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
 }
