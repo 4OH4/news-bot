@@ -46,7 +46,11 @@ test("the app loaded at /reconnect replaces the address with / without navigatin
 }) => {
   await page.route("**/reconnect", (route) => route.continue());
   let navigations = 0;
-  page.on("framenavigated", () => navigations++);
+  // Playwright's framenavigated also fires for history.replaceState (a same-document change),
+  // so count document requests instead: a second one would be a real navigation.
+  page.on("request", (req) => {
+    if (req.isNavigationRequest()) navigations++;
+  });
   await page.goto("/reconnect");
   await expect.poll(() => new URL(page.url()).pathname).toBe("/");
   expect(navigations).toBe(1);
@@ -62,6 +66,8 @@ test("signing out requests the clear-cookie URL from the network, not the precac
   page,
 }) => {
   await loadWithFeedStatus(page, 403);
+  // Wait for the startup call's 403 to land before the catch-all route below can answer it.
+  await expect(page.getByRole("button", { name: /sign out/i })).toBeVisible();
   const seen: string[] = [];
   await page.route("**/*", (route) => {
     const url = new URL(route.request().url());
@@ -72,8 +78,10 @@ test("signing out requests the clear-cookie URL from the network, not the precac
     return route.fulfill({ status: 200, body: "" });
   });
   await page.getByRole("button", { name: /sign out/i }).click();
-  await expect(page.locator("#landed")).toBeVisible();
-  expect(seen).toContain("/?gcp-iap-mode=CLEAR_LOGIN_COOKIE");
+  await expect.poll(() => seen).toContain("/?gcp-iap-mode=CLEAR_LOGIN_COOKIE");
+  // location.replace("/") is answered by the service worker's precached shell (the app is
+  // reloaded), so the stub never sees that navigation; only the final address is checked.
+  await expect.poll(() => new URL(page.url()).pathname).toBe("/");
   expect(new URL(page.url()).search).toBe("");
 });
 

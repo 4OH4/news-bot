@@ -34,12 +34,13 @@ test("a new version replaces the old precache and loads after a reload", async (
     const path = new URL(req.url ?? "/", "http://x").pathname;
     const file = join(roots[current], normalize(path) === "/" ? "index.html" : normalize(path));
     try {
+      const body = readFileSync(file); // read first, so a missing file can still get a 404
       res.writeHead(200, {
         ...headers,
         "Content-Type": TYPES[extname(file)] ?? "application/octet-stream",
         "Cache-Control": "no-cache",
       });
-      res.end(readFileSync(file));
+      res.end(body);
     } catch {
       res.writeHead(404).end();
     }

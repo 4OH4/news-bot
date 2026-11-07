@@ -7,3 +7,18 @@ body {
   margin: 0;
   padding: 16px;
 }
+
+.banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  background: #fff3cd;
+  color: #222;
+}
