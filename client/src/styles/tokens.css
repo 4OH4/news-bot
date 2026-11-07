@@ -1,0 +1,26 @@
+/* Shared design tokens. Dark mode follows the system setting. */
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff;
+  --surface: #f4f5f7;
+  --text: #1b1d21;
+  --muted: #5b616b;
+  --link: #0b57d0;
+  --border: #d9dce1;
+  --notice-bg: #fff3cd;
+  --notice-text: #222222;
+  --space: 12px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14161a;
+    --surface: #1e2127;
+    --text: #e6e8eb;
+    --muted: #9aa1ab;
+    --link: #8ab4f8;
+    --border: #343941;
+    --notice-bg: #4a3d12;
+    --notice-text: #f5ecc8;
+  }
+}
