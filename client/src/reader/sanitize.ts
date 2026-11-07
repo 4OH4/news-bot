@@ -7,11 +7,16 @@ import lists from "./allowed-tags.json";
 const ALLOWED_TAGS: string[] = lists.tags;
 const ALLOWED_ATTR: string[] = lists.attributes;
 
+// DOMPurify lets data: image URLs past ALLOWED_URI_REGEXP, so the hook enforces the rule.
+const HTTP = /^https?:/i;
+
 DOMPurify.addHook("afterSanitizeAttributes", (node) => {
   if (node.tagName === "A") {
+    if (!HTTP.test(node.getAttribute("href") ?? "")) node.removeAttribute("href");
     node.setAttribute("target", "_blank");
     node.setAttribute("rel", "noopener noreferrer");
   } else if (node.tagName === "IMG") {
+    if (!HTTP.test(node.getAttribute("src") ?? "")) node.removeAttribute("src");
     node.setAttribute("loading", "lazy");
     node.setAttribute("referrerpolicy", "no-referrer");
   }
