@@ -2,13 +2,14 @@
 # Build from the repo root so config/ can be copied in:
 #   docker build -f backend/Dockerfile -t newsfeed .
 
+# Every pinned image sits on a FROM line, which is all Dependabot reads (#256).
 # Both stages must use the same Python image: the venv links to its interpreter.
-# python:3.12-slim-bookworm
-ARG PYTHON_IMAGE=python:3.12-slim-bookworm@sha256:935c3c5b12357a7e10caa9c1e6ca5692344d97cf229832ef584be2cec9fc03df
+FROM python:3.12-slim-bookworm@sha256:935c3c5b12357a7e10caa9c1e6ca5692344d97cf229832ef584be2cec9fc03df AS python-base
 
-FROM ${PYTHON_IMAGE} AS builder
-# ghcr.io/astral-sh/uv:0.13.0
-COPY --from=ghcr.io/astral-sh/uv:0.13.0@sha256:cdc6093146eb3ff6a40107b38f008b789e050e77ad87865e381d9917da55a168 /uv /bin/uv
+FROM ghcr.io/astral-sh/uv:0.13.0@sha256:cdc6093146eb3ff6a40107b38f008b789e050e77ad87865e381d9917da55a168 AS uv
+
+FROM python-base AS builder
+COPY --from=uv /uv /bin/uv
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_PYTHON_DOWNLOADS=0 \
@@ -30,8 +31,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # The reader client (PWA), built from client/ alone (#178). This stage runs
 # third-party build code, so it gets nothing but what it copies: no credential and
 # nothing outside client/. --ignore-scripts stops packages running install hooks.
-# The image must equal CLIENT_NODE_IMAGE in the Makefile, tag and digest; a test
-# checks they match.
+# The Makefile reads this FROM line as CLIENT_NODE_IMAGE; a test checks it.
 FROM node:24.22.2-bookworm-slim@sha256:01d566e8d94d8c619591d78652babfccd3c6992a3dffa9ed5ab39e11cf6c70e9 AS client-builder
 WORKDIR /client
 COPY client/package.json client/package-lock.json ./
@@ -40,7 +40,7 @@ COPY client/ ./
 RUN npm run build
 
 # Shared by both final targets: the unprivileged user, config and environment.
-FROM ${PYTHON_IMAGE} AS base
+FROM python-base AS base
 RUN useradd --create-home --uid 10001 newsfeed \
     && mkdir /data && chown newsfeed:newsfeed /data
 COPY config /app/config

@@ -5,6 +5,7 @@ the workflow itself can only run on `main`.
 """
 
 import re
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -43,13 +44,35 @@ def step_index(steps: list[dict[str, Any]], command: str) -> int:
     return matches[0]
 
 
+def expanded_makefile_variable(name: str) -> str:
+    """Expand a Makefile variable offline, by dumping make's database without running a rule."""
+    result = subprocess.run(
+        ["make", "-s", "-p", "-n", "-f", "Makefile"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    match = re.search(rf"^{name} :?= (\S+)$", result.stdout, re.MULTILINE)
+    assert match, f"{name} not found in make's database"
+    return match.group(1)
+
+
 def test_client_builder_uses_the_makefile_node_image() -> None:
-    match = re.search(r"^CLIENT_NODE_IMAGE := (\S+)$", MAKEFILE, re.MULTILINE)
-    assert match
-    makefile_image = match.group(1)
-    assert "@sha256:" in makefile_image
+    # The Makefile reads the image from the Dockerfile rather than repeating it, so a
+    # Dependabot bump of the FROM line moves both (#256).
+    assert re.search(r"^CLIENT_NODE_IMAGE :?= \$\(shell .*Dockerfile", MAKEFILE, re.MULTILINE)
     from_line = stages(DOCKERFILE)["client-builder"][0]
-    assert from_line.split()[1] == makefile_image
+    image = from_line.split()[1]
+    assert re.search(r"^node:\S+@sha256:[0-9a-f]{64}$", image), image
+    assert expanded_makefile_variable("CLIENT_NODE_IMAGE") == image
+
+
+def test_client_builder_has_no_add_and_no_mount() -> None:
+    # Either would hand the npm build code (third-party) more than the files it copies.
+    for line in stages(DOCKERFILE)["client-builder"]:
+        assert not re.match(r"ADD\b", line, re.IGNORECASE), line
+        assert "--mount" not in line, line
 
 
 def test_client_builder_copies_only_client_paths() -> None:
@@ -132,7 +155,7 @@ DIGEST = re.compile(r"@sha256:[0-9a-f]{64}(?=\s|$)")
 
 
 def image_references(dockerfile: str) -> list[str]:
-    """Every external image a build pulls: FROM, COPY --from=<image> and the default ARG."""
+    """Every external image a build pulls, and any image named outside a FROM line."""
     stage_names = {name.lower() for name in stages(dockerfile)}
     references: list[str] = []
     for raw in dockerfile.splitlines():
@@ -149,28 +172,36 @@ def image_references(dockerfile: str) -> list[str]:
     return references
 
 
-def test_every_external_image_reference_has_a_digest() -> None:
-    references = [r for r in image_references(DOCKERFILE) if not r.startswith("${")]
-    # Python default ARG, the uv copy and the node stage are all external.
-    assert any(r.startswith("python:") for r in references)
-    assert any("astral-sh/uv" in r for r in references)
-    assert any(r.startswith("node:") for r in references)
-    for reference in references:
-        assert re.search(r"@sha256:[0-9a-f]{64}$", reference), reference
+def external_from_images(dockerfile: str) -> list[str]:
+    """The image on each FROM line that is not an earlier stage."""
+    stage_names = {name.lower() for name in stages(dockerfile)}
+    pattern = re.compile(r"^FROM\s+(?:--\S+\s+)*(\S+)", re.MULTILINE | re.IGNORECASE)
+    images = [m.group(1) for m in pattern.finditer(dockerfile)]
+    return [image for image in images if image.lower() not in stage_names]
 
 
-def test_python_image_default_is_pinned_and_keeps_its_tag_in_a_comment() -> None:
-    lines = DOCKERFILE.splitlines()
-    index = next(i for i, line in enumerate(lines) if line.startswith("ARG PYTHON_IMAGE="))
-    assert DIGEST.search(lines[index]), lines[index]
-    assert "python:3.12-slim-bookworm" in lines[index - 1] and lines[index - 1].startswith("#")
+def test_every_external_from_has_a_tag_and_a_digest() -> None:
+    images = external_from_images(DOCKERFILE)
+    assert any(i.startswith("python:") for i in images)
+    assert any("astral-sh/uv" in i for i in images)
+    assert any(i.startswith("node:") for i in images)
+    for image in images:
+        assert re.fullmatch(r"\S+?:[\w.-]+@sha256:[0-9a-f]{64}", image), image
 
 
-def test_uv_image_is_pinned_and_keeps_its_tag_in_a_comment() -> None:
-    lines = DOCKERFILE.splitlines()
-    index = next(i for i, line in enumerate(lines) if "astral-sh/uv" in line and "COPY" in line)
-    assert DIGEST.search(lines[index]), lines[index]
-    assert lines[index - 1].startswith("#") and "uv:0.13.0" in lines[index - 1]
+def test_no_image_is_referenced_outside_a_from_line() -> None:
+    # Dependabot reads only FROM lines; a pin elsewhere would never be refreshed.
+    assert image_references(DOCKERFILE) == external_from_images(DOCKERFILE)
+
+
+def test_python_and_uv_images_are_named_stages() -> None:
+    all_stages = stages(DOCKERFILE)
+    assert all_stages["python-base"][0].startswith("FROM python:3.12-slim-bookworm@sha256:")
+    assert "astral-sh/uv:0.13.0@sha256:" in all_stages["uv"][0]
+    # Both Python stages share one interpreter image: the venv links to it.
+    assert all_stages["builder"][0] == "FROM python-base AS builder"
+    assert all_stages["base"][0] == "FROM python-base AS base"
+    assert "COPY --from=uv /uv /bin/uv" in all_stages["builder"]
 
 
 def test_dockerfile_syntax_directive_is_pinned_by_digest() -> None:

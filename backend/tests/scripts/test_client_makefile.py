@@ -15,8 +15,8 @@ def variable(name: str) -> str:
 
 
 def test_client_images_are_pinned_by_tag_and_digest() -> None:
-    for name in ("CLIENT_NODE_IMAGE", "CLIENT_PLAYWRIGHT_IMAGE"):
-        assert PINNED.match(variable(name)), name
+    # CLIENT_NODE_IMAGE is read from the Dockerfile (#256); test_deploy_image.py checks its pin.
+    assert PINNED.match(variable("CLIENT_PLAYWRIGHT_IMAGE"))
 
 
 def test_playwright_image_matches_the_npm_package_version() -> None:
