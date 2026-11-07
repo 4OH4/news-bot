@@ -208,3 +208,24 @@ test("returning to the list restores the scroll position", async ({ page }) => {
   await expect(page.locator("[data-testid='feed-item']")).toHaveCount(5);
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(before - 10);
 });
+
+test("the Back to the feed link returns to the list at the same scroll position", async ({
+  page,
+}) => {
+  await page.route("**/api/feed", (route) => route.fulfill({ json: example }));
+  await page.route(`**/api/articles/${item.id}`, (route) =>
+    route.fulfill({ status: 200, contentType: "text/html", body: NORMAL }),
+  );
+  await page.goto("/");
+  await expect(page.locator("[data-testid='feed-item']")).toHaveCount(5);
+  await page.evaluate(() => window.scrollTo(0, 150));
+  const before = await page.evaluate(() => window.scrollY);
+  await page
+    .getByRole("link", { name: item.title })
+    .first()
+    .evaluate((el) => (el as HTMLElement).click());
+  await expect(page.getByText("First invented paragraph")).toBeVisible();
+  await page.getByRole("link", { name: /back to the feed/i }).click();
+  await expect(page.locator("[data-testid='feed-item']")).toHaveCount(5);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(before - 10);
+});
