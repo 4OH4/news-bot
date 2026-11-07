@@ -190,6 +190,19 @@ gh variable set GCP_WIF_PROVIDER --repo 4OH4/news-bot --body "$(tf workload_iden
 These are identifiers, not secrets. The apply creates IAM, so the human runs it
 (ADR-0007). The next merge to `main` then deploys.
 
+Once the API service exists (`api_service.tf`, Phase 3), the same workflow points
+it at the new image right after the job, so the app and API on the phone run the
+same commit as the job (#178). Until this variable is set that step is skipped and
+only the job is updated:
+
+```bash
+gh variable set GCP_API_SERVICE --repo 4OH4/news-bot --body "$(tf api_service_name)"
+```
+
+The step changes only the image, so Terraform sees no drift and IAP's settings are
+untouched. The image also holds the built client at `/app/client`, from a Node stage
+of `backend/Dockerfile` that sees only `client/`.
+
 If the agents' development service account exists, also give it read access to
 the new resources, or its `terraform apply` can't refresh them (see "The
 development identity" below for the account itself):
