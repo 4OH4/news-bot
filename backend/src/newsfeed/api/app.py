@@ -16,6 +16,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.responses import FileResponse
 
 from newsfeed.api.auth import owner_check
+from newsfeed.api.feedback import feedback_router
 from newsfeed.api.headers import SecurityHeadersMiddleware
 from newsfeed.ports import BlobNotFoundError, BlobStore, Repository, TokenVerifier
 
@@ -41,8 +42,7 @@ def create_app(
 ) -> FastAPI:
     """Build the API.
 
-    ``repository`` is unused by the read routes; it is taken now so the feedback
-    route (#176) needs no signature change. ``client_dir`` is the built client;
+    ``repository`` is used only by the feedback route. ``client_dir`` is the built client;
     when None, every non-API path is 404.
     """
     if client_dir is not None and not client_dir.is_dir():
@@ -81,6 +81,8 @@ def create_app(
                 continue
             return _blob_response(request, data, "text/html; charset=utf-8")
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Article not found")
+
+    app.include_router(feedback_router(blobs, repository))
 
     # Registered last, so it only catches what the API routes don't.
     @app.get("/{path:path}")
