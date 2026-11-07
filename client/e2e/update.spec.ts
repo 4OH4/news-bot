@@ -64,8 +64,9 @@ test("a new version replaces the old precache and loads after a reload", async (
 
     current = "2";
     // Ask the browser to check for the new service worker once, then wait for the real event:
-    // the new worker activating and swapping the precache. Reloading in the poll loop raced
-    // with autoUpdate's own reload on activation and destroyed the evaluate's page context.
+    // the new worker activating and swapping the precache. The cause of the earlier flake is
+    // unconfirmed; reloading on every poll iteration (the old approach) interrupted the page
+    // while the new worker installed, so this avoids it.
     await page.evaluate(async () => {
       const registration = await navigator.serviceWorker.getRegistration();
       await registration?.update();
@@ -76,8 +77,10 @@ test("a new version replaces the old precache and loads after a reload", async (
           try {
             const after = await v1Assets();
             return after.length > 0 && before.every((u) => !after.includes(u));
-          } catch {
-            return false; // page mid-navigation (autoUpdate reload); poll again
+          } catch (error) {
+            // A navigation in flight destroys the context; anything else is a real failure.
+            if (String(error).includes("Execution context was destroyed")) return false;
+            throw error;
           }
         },
         { timeout: 30_000 },
