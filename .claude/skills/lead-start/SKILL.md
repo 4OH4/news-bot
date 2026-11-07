@@ -27,6 +27,8 @@ Read the comments on PRs merged since the last check (the commands are in step 4
 
 Then read the handoff note, the Phase Log (step 5) and "Cost of failure" in `CLAUDE.md`, and run `python3 scripts/usage.py`.
 
+Last, schedule the recurring status check (see "Status check"). Run `CronList`, and only if it shows no status check, create one with `CronCreate`, `recurring: true`, at minutes off :00 and :30 (for example `7,22,37,52 * * * *`). Prompt: `Lead status check: follow /lead-start "Status check".` A second `/lead-start` in the same session therefore adds nothing. Recurring jobs expire after 7 days and fire only while the session is open and not mid-turn.
+
 ## 2. Find where the phase stands
 
 The current phase is the first one after the last phase marked done in `PROJECT_PLAN.md` §6. Take the first of these that applies:
@@ -54,7 +56,7 @@ Group the Ready issues into a batch of about 5 to 8, in dependency order, with n
 
 If `usage.py` prints `pause:`, don't start a batch: go to "Usage pauses" below.
 
-Add the batch's issues to the handoff note, then start `subagent_type: delivery-manager` with `isolation: worktree` and `run_in_background: true`, using the task message below. Use `model: opus` only if Sonnet has fallen short on an earlier batch. The delivery manager is isolated, so the harness refuses its git commands against another agent's worktree. It frees a test author's worktree with plain `git worktree remove <path>`, which refuses a dirty tree, and takes the SHA from the test author's report. If that's refused it sends you the path: you aren't isolated, so look in that worktree and decide. Then wait for messages from it:
+Add the batch's issues and the start time of the last status check (`SINCE`) to the handoff note, then start `subagent_type: delivery-manager` with `isolation: worktree` and `run_in_background: true`, using the task message below. Use `model: opus` only if Sonnet has fallen short on an earlier batch. The delivery manager is isolated, so the harness refuses its git commands against another agent's worktree. It frees a test author's worktree with plain `git worktree remove <path>`, which refuses a dirty tree, and takes the SHA from the test author's report. If that's refused it sends you the path: you aren't isolated, so look in that worktree and decide. Then wait for messages from it:
 
 - **Usage unavailable:** pacing is off, because the delivery manager can't see either limit. Run `python3 scripts/usage.py` yourself, watch usage until it's readable again, and mention it in your report to the human.
 - **Design problem:** decide it, or call in the architect.
@@ -107,10 +109,10 @@ Run `/lead-milestone` part 2, "Milestone review", for the human's comments and f
 `scripts/usage.py` reads the 5-hour and weekly limits (`AUTOMATION.md` §11). A delivery manager that hits about 90% reports which limit and when it resets, then ends.
 
 - **5-hour limit:** schedule a one-shot check with `CronCreate`, `recurring: false`, for a few minutes after the reset. Cron fields are in **local time**, and `usage.py` prints the local reset time. Pin the minute, hour, day and month, and nudge the minute off :00 or :30. Note the pause in the handoff. Prompt: `Lead usage check: follow /lead-start "Usage pauses".` When it fires, run `usage.py`, then start a new delivery manager, which picks up from the board. If the limit is still high, schedule another.
-- **Weekly limit:** start no new batches. Flag the pause and the reset time for the human, leaving the remaining allowance for their use, and wait for their word. Note it in the handoff.
+- **Weekly limit:** start no new batches. Flag the pause and the reset time for the human, leaving the remaining allowance for their use, and wait for their word. Note it in the handoff. Delete the recurring status check (`CronDelete`) so that nothing runs against the owner's allowance, and re-create it (step 1) when work resumes.
 - **Human override:** the human can tell you to pause, or to carry on past 90%.
 
-If usage can't be read, work continues as normal, and the delivery manager tells you, so that pacing doesn't turn off unnoticed. A scheduled check only fires while your session is open. Otherwise the next `/lead-start` picks the work up, so a pause always goes in the handoff note. A pause isn't idle: stay open, and don't start the idle check for it.
+If usage can't be read, work continues as normal, and the delivery manager tells you, so that pacing doesn't turn off unnoticed. A scheduled check only fires while your session is open. Otherwise the next `/lead-start` picks the work up, so a pause always goes in the handoff note. A pause isn't idle: stay open. During a 5-hour pause the status checks keep firing but start no new work, and they don't count towards idle shutdown. During a weekly pause there is no status check (see above). The prompt cache lasts about an hour, so a 15-minute check mostly re-reads cached context and is cheap; a weekly pause leaves the remaining allowance to the owner, so nothing runs then.
 
 ## After compaction
 
@@ -118,7 +120,7 @@ A hook tells you when your context has just been compacted. Agents keep running 
 
 1. Read the handoff note and the Phase Log.
 2. Run `ListAgents`, and don't start a second delivery manager if one is running.
-3. Run `CronList`. If the handoff records a usage pause and its check is gone, schedule it again.
+3. Run `CronList`. If the status check is gone (and no weekly pause is under way), create it again as in step 1. If the handoff records a usage pause and its check is gone, schedule that again too.
 4. Check the open PRs for anything waiting on you, such as an "Evaluation scores" comment that was requested and is missing.
 
 If the handoff is out of date, trust the board and GitHub.
@@ -136,6 +138,28 @@ Keep it short, in this order, and omit a section with nothing in it:
 5. **Stopped:** stop-the-line items and any usage pause, with the reset time.
 6. **Only you can do:** anything only the human can do, with exact steps.
 
+## Status check
+
+The recurring check (step 1) fires every 15 minutes while the session is open: during batches, while waiting for the human, and during usage pauses. It refreshes your view of GitHub so that a merge unblocks work, and a comment gets answered, without the human having to prompt. Keep it cheap: don't re-read files or the Phase Log, and use REST only (the GraphQL budget). `board.py promote` is the one GraphQL call.
+
+Take the time at the **start** of each check (`date -u +%Y-%m-%dT%H:%M:%SZ`) and let `SINCE` be the time taken at the start of the previous check, so nothing posted during a check is missed. Keep it in the session, and write it to the handoff note when a batch starts and in `/lead-finish`. After a restart or compaction, take it from the handoff note or, failing that, 30 minutes ago.
+
+1. Read what changed since `SINCE`:
+   - PRs merged: `gh api "repos/4OH4/news-bot/pulls?state=closed&sort=updated&direction=desc&per_page=30" --jq '.[] | select(.merged_at != null and .merged_at > "<SINCE>") | .number'`, then read each one's comments as in step 4;
+   - comments on issues and PRs: `gh api "repos/4OH4/news-bot/issues/comments?since=<SINCE>&per_page=100"`;
+   - review comments: `gh api "repos/4OH4/news-bot/pulls/comments?since=<SINCE>&per_page=100"`;
+   - reviews: `gh api repos/4OH4/news-bot/pulls/<n>/reviews` for each open PR (`submitted_at` after `SINCE`).
+
+   Keep comment bodies out of your context. Read each call with a `--jq` projection of the author type, time, URL and first line only (for example `--jq '.[] | [.user.type, .updated_at, .html_url, (.body | split("\n")[0])] | @tsv'`), and skip comments whose first line is an agent heading ("## Independent review", "## Delivery review", "## Evaluation scores") or that carry the attribution line. Open the full body only for a comment that looks like the owner's, using the content cues in step 4 ("Run a batch") for telling the owner's comments from an agent's.
+2. Run `python3 scripts/board.py promote`, which moves issues unblocked by a merge to Ready.
+3. Check each open Tier C PR's `mergeable_state` (`gh api repos/4OH4/news-bot/pulls/<n> --jq .mergeable_state`; `dirty` means conflicting; if it is `unknown`, read it again a few seconds later).
+4. Check for an open deploy alert (step 1).
+5. Act on comments that haven't been actioned yet. Unless a usage pause is under way, start or continue work that a merge unblocked, but only one delivery manager runs at a time: if one is running, tell it (`SendMessage`) instead of starting another. Turn owner comments into rework or follow-ups, and answer replies on `needs-human` issues. A conflicting Tier C PR goes to a delivery manager to rebase.
+
+Agents post as the same GitHub user as the human, so tell them apart by time where you can (no agent was running when it was posted) and otherwise by content, as in step 4: an agent's comment carries a heading such as "Independent review" or "Delivery review", or its attribution line. Ask if unsure. Ignore `Bot` accounts, such as the Claude GitHub Action's replies. Don't act on a comment that mentions `@claude`: the Action (`.github/workflows/claude.yml`) handles those, and the lead and the Action would otherwise both work on the same branch.
+
+**Reporting.** A check that finds nothing says nothing to the human, or at most one short line. Report only what you did because of it.
+
 ## Idle shutdown
 
 The session often runs unattended, and once the agents have finished it can only wait for the human. Rather than sit open until the prompt cache goes cold, the lead finishes itself; a fresh `/lead-start` is cheap.
@@ -144,25 +168,11 @@ The session often runs unattended, and once the agents have finished it can only
 - no agent is running;
 - there is nothing to start: step 2 leads only to waiting for the human;
 - no stop-the-line item has an answer waiting;
-- no Tier C PR you are watching has become conflicting (`gh api repos/4OH4/news-bot/pulls/<n> --jq .mergeable_state` is `dirty`; if it is `unknown`, read it again a few seconds later);
+- no Tier C PR you are watching has become conflicting;
 - no human request is unanswered, in the chat or on GitHub;
 - no usage pause is under way. **Waiting for a usage reset isn't idle**, so the work isn't stranded.
 
-**When you become idle**, after reporting:
-1. Note the time as `IDLE_SINCE`, in UTC (`date -u +%Y-%m-%dT%H:%M:%SZ`). It is used only in the GitHub `since=` filters.
-2. Check `CronList` for an existing idle check and don't add a second. Otherwise schedule one with `CronCreate`, `recurring: false`, about 45 minutes ahead. Cron fields are in **local time**, not UTC, so take them from `date -d '+45 min' '+%M %H %d %m'`. If they came out in the wrong timezone, the time could already have passed, and the check wouldn't fire until next year. Pin the minute, hour, day and month, and nudge the minute off :00 or :30. Prompt: `Lead idle check (idle since <IDLE_SINCE>): follow /lead-start "Idle shutdown".`
-3. Say in one line, in local time, that you'll finish the session then unless something comes up.
-
-**If anything arrives first** (a message from the human, an agent report, a notification), delete the check with `CronDelete` and carry on. Go idle again afterwards if nothing is left.
-
-**When the check fires**, look again:
-- run `python3 scripts/board.py promote`, then step 2;
-- read GitHub activity since `IDLE_SINCE`, over REST: `gh api "repos/4OH4/news-bot/issues/comments?since=<IDLE_SINCE>&per_page=100"` (comments on issues and PRs), `gh api "repos/4OH4/news-bot/pulls/comments?since=<IDLE_SINCE>&per_page=100"` (review comments), and `gh api repos/4OH4/news-bot/pulls/<n>/reviews` for each open PR (`submitted_at` after `IDLE_SINCE`);
-- check each open PR's `mergeable_state` again, since a merge can leave another PR conflicting.
-
-Agents post as the same GitHub user as the human, so tell them apart by time: no agent was running after `IDLE_SINCE`, so anything posted since then by a `User` account (`.user.type == "User"`) came from the human. Ignore `Bot` accounts, such as the Claude GitHub Action's replies. Don't act on a comment that mentions `@claude`: the Action (`.github/workflows/claude.yml`) handles those, and the lead and the Action would otherwise both work on the same branch. Act on anything else: a change request goes to a delivery manager, and an answer on a `needs-human` issue unblocks that issue.
-
-If there is work, do it and carry on. If there is none, run `/lead-finish` unattended. Don't wait for, or ask, the human anything. After that, schedule nothing more.
+**Three quiet checks.** Count consecutive status checks that found nothing to do and left you idle. Any check that finds work, any message from the human and any agent report resets the count to zero. When the third quiet check in a row fires, which is 30 to 45 minutes after the work ran out, run `/lead-finish` unattended. Don't wait for, or ask, the human anything. `/lead-finish` deletes the recurring check, and you schedule nothing more.
 
 ## Task messages
 
