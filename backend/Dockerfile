@@ -1,12 +1,14 @@
-# syntax=docker/dockerfile:1
+# syntax=docker/dockerfile:1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
 # Build from the repo root so config/ can be copied in:
 #   docker build -f backend/Dockerfile -t newsfeed .
 
 # Both stages must use the same Python image: the venv links to its interpreter.
-ARG PYTHON_IMAGE=python:3.12-slim-bookworm
+# python:3.12-slim-bookworm
+ARG PYTHON_IMAGE=python:3.12-slim-bookworm@sha256:935c3c5b12357a7e10caa9c1e6ca5692344d97cf229832ef584be2cec9fc03df
 
 FROM ${PYTHON_IMAGE} AS builder
-COPY --from=ghcr.io/astral-sh/uv:0.13.0 /uv /bin/uv
+# ghcr.io/astral-sh/uv:0.13.0
+COPY --from=ghcr.io/astral-sh/uv:0.13.0@sha256:cdc6093146eb3ff6a40107b38f008b789e050e77ad87865e381d9917da55a168 /uv /bin/uv
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_PYTHON_DOWNLOADS=0 \
