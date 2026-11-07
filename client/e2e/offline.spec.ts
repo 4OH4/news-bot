@@ -61,6 +61,8 @@ test("offline in real Chromium: reloading shows the stored feed with an offline 
 }) => {
   await firstRun(page);
   await context.setOffline(true);
+  // A fulfilled route answers even while offline, so drop the stub: the request must fail.
+  await page.unroute("**/api/feed");
   await page.reload();
   await expect(cards(page)).toHaveCount(5);
   await expect(page.getByText(/offline/i).first()).toBeVisible();
@@ -137,9 +139,9 @@ test("a lapsed session with no network shows the feed and the offline notice, no
   context,
 }) => {
   await firstRun(page);
-  await page.unroute("**/api/feed");
-  await page.route("**/api/feed", (route) => route.fulfill({ status: 401, body: "" }));
   await context.setOffline(true);
+  // A fulfilled route answers even while offline, so drop the stub: the request must fail.
+  await page.unroute("**/api/feed");
   await page.reload();
   await expect(cards(page)).toHaveCount(5);
   await expect(page.getByText(/offline/i).first()).toBeVisible();

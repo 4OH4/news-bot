@@ -107,8 +107,10 @@ describe("prefetchArticles", () => {
     let calls = 0;
     const fetchHtml = async (id: string) => {
       calls += 1;
+      const mine = calls;
       await tick();
-      if (calls === 3) throw new Error("network down");
+      // Compare this call's own number: `calls` has moved on by the time 4 requests resume.
+      if (mine === 3) throw new Error("network down");
       return `<p>invented body ${id}</p>`;
     };
 
