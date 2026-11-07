@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 import requests
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from newsfeed.adapters.dev_auth import DevTokenVerifier
@@ -98,3 +99,26 @@ def test_the_app_starts_and_stops_with_its_lifespan(blobs: RecordingBlobStore) -
     # Lifespan messages pass through the security-headers middleware untouched.
     with TestClient(make_app(blobs)) as client:
         assert client.get("/api/feed", headers=auth()).status_code == 200
+
+
+# Each path guard is tested on its own, because the others would also stop these paths.
+
+
+@pytest.mark.parametrize("path", ["../secret", "assets/../../secret", "ok/..", "a\x00b"])
+def test_the_client_route_refuses_dot_dot_segments_itself(client_dir: Path, path: str) -> None:
+    from newsfeed.api.app import _client_response
+
+    with pytest.raises(HTTPException) as raised:
+        _client_response(client_dir.resolve(), path)
+    assert raised.value.status_code == 404
+
+
+@pytest.mark.parametrize("path", ["escape.txt", "assets/escape.js", "/etc/hostname"])
+def test_the_client_route_refuses_what_resolves_outside_the_client_dir(
+    client_dir: Path, path: str
+) -> None:
+    from newsfeed.api.app import _client_response
+
+    with pytest.raises(HTTPException) as raised:
+        _client_response(client_dir.resolve(), path)
+    assert raised.value.status_code == 404
