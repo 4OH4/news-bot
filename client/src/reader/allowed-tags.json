@@ -1,0 +1,8 @@
+{
+  "tags": [
+    "p", "h2", "h3", "h4", "ul", "ol", "li", "blockquote", "a", "img", "figure",
+    "figcaption", "em", "strong", "code", "pre", "table", "thead", "tbody", "tr",
+    "th", "td", "br", "hr"
+  ],
+  "attributes": ["href", "src", "alt"]
+}

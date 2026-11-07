@@ -51,6 +51,7 @@ describe("module boundaries", () => {
     const pkg = JSON.parse(
       readFileSync(new URL("../../package.json", import.meta.url), "utf8"),
     ) as { dependencies: Record<string, string> };
-    expect(Object.keys(pkg.dependencies)).toEqual(["preact"]);
+    // dompurify is the reader's HTML sanitiser (#182), not a sign-in SDK.
+    expect(Object.keys(pkg.dependencies).sort()).toEqual(["dompurify", "preact"]);
   });
 });
