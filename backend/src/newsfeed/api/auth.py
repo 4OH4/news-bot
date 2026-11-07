@@ -31,9 +31,12 @@ def owner_check(verifier: TokenVerifier, owner_email: str) -> Callable[[Request]
 
     Never logs the token: only the outcome and the path.
     """
-    owner = owner_email.strip().casefold()
-    if not owner:
-        raise ValueError("owner_email must not be empty")
+    # ASCII lower-casing, not casefold: casefold maps some non-ASCII letters onto ASCII
+    # ones (the Kelvin sign U+212A becomes "k"), so a lookalike address could match.
+    # Check before lowering: the Kelvin sign lower-cases to an ASCII "k" too.
+    if not owner_email.strip() or not owner_email.isascii():
+        raise ValueError("owner_email must be a non-empty ASCII address")
+    owner = owner_email.strip().lower()
 
     def require_owner(request: Request) -> VerifiedIdentity:
         # A missing header is checked like any other token, so the verifier decides.
@@ -53,7 +56,8 @@ def owner_check(verifier: TokenVerifier, owner_email: str) -> Callable[[Request]
             raise HTTPException(
                 status.HTTP_503_SERVICE_UNAVAILABLE, "Sign-in check unavailable; try again later"
             ) from None
-        if not identity.email_verified or identity.email.casefold() != owner:
+        email = identity.email
+        if not identity.email_verified or not email.isascii() or email.lower() != owner:
             log.info("api auth: not the owner", extra={**context, "outcome": "forbidden"})
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Not allowed")
         log.debug("api auth: owner", extra={**context, "outcome": "owner"})

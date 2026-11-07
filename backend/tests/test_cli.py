@@ -7,6 +7,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 from typer.testing import CliRunner
@@ -15,6 +16,9 @@ from newsfeed import cli, wiring
 from newsfeed.adapters.sqlite_repository import SqliteRepository
 from newsfeed.models import Article, ExtractionStatus
 from tests.fakes import FakeFetcher
+
+if TYPE_CHECKING:
+    from fastapi.testclient import TestClient
 
 runner = CliRunner()
 
@@ -276,3 +280,147 @@ def test_report_prints_a_summary_after_a_run(env: Path) -> None:
 def test_report_rejects_an_unknown_run_and_conflicting_options(env: Path) -> None:
     assert runner.invoke(cli.app, ["report", "--run", "nope"]).exit_code == 1
     assert runner.invoke(cli.app, ["report", "--run", "x", "--since", "2026-01-01"]).exit_code == 2
+
+
+# --- newsfeed serve (#175) ---------------------------------------------------
+# uvicorn and fastapi are imported inside the fixtures, so the tests above still
+# run before the API's dependencies are installed.
+
+_SERVE_ENV = (
+    "NEWSFEED_API_AUTH",
+    "NEWSFEED_OWNER_EMAIL",
+    "NEWSFEED_IAP_AUDIENCE",
+    "NEWSFEED_CLIENT_DIR",
+    "NEWSFEED_STORAGE",
+    "NEWSFEED_GCS_BUCKET",
+    "PORT",
+)
+_INVENTED_OWNER = "owner@example.com"
+_FEED = b'{"schema_version": 1, "items": [], "note": "served-feed-marker"}'
+
+
+@pytest.fixture
+def serve_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A data dir holding a feed, no API variables, and no ``.env`` in the working dir."""
+    for name in _SERVE_ENV:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.chdir(tmp_path)
+    data = tmp_path / "data"
+    (data / "blobs").mkdir(parents=True)
+    (data / "blobs" / "feed.json").write_bytes(_FEED)
+    monkeypatch.setenv("NEWSFEED_DATA_DIR", str(data))
+    monkeypatch.setenv("NEWSFEED_CONFIG_DIR", str(tmp_path / "config"))
+    return data
+
+
+@pytest.fixture
+def uvicorn_calls(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, object]]:
+    """Replace ``uvicorn.run`` so nothing binds a socket; record its arguments."""
+    import inspect
+
+    import uvicorn
+
+    real = uvicorn.run
+    calls: list[dict[str, object]] = []
+
+    def fake_run(*args: object, **kwargs: object) -> None:
+        bound = inspect.signature(real).bind(*args, **kwargs)
+        bound.apply_defaults()
+        calls.append(dict(bound.arguments))
+
+    monkeypatch.setattr(uvicorn, "run", fake_run)
+    return calls
+
+
+def _served_client(calls: list[dict[str, object]]) -> TestClient:
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    assert len(calls) == 1, calls
+    app = calls[0]["app"]
+    assert isinstance(app, FastAPI), f"serve should pass the app object, got {app!r}"
+    return TestClient(app, raise_server_exceptions=False)
+
+
+def test_serve_refuses_to_start_without_an_owner_email(
+    serve_env: Path, uvicorn_calls: list[dict[str, object]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("NEWSFEED_API_AUTH", "none")
+
+    result = runner.invoke(cli.app, ["serve"])
+
+    assert result.exit_code != 0
+    assert uvicorn_calls == []
+
+
+def test_serve_refuses_to_start_with_iap_and_no_audience(
+    serve_env: Path, uvicorn_calls: list[dict[str, object]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Fail closed: google-auth skips the audience check when given none.
+    monkeypatch.setenv("NEWSFEED_OWNER_EMAIL", _INVENTED_OWNER)
+
+    result = runner.invoke(cli.app, ["serve"])
+
+    assert result.exit_code != 0
+    assert uvicorn_calls == []
+
+
+def test_serve_without_auth_binds_to_localhost_and_serves_the_owner(
+    serve_env: Path,
+    uvicorn_calls: list[dict[str, object]],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    client_dir = tmp_path / "dist"
+    client_dir.mkdir()
+    (client_dir / "index.html").write_text("<!doctype html>client-index-marker")
+    monkeypatch.setenv("NEWSFEED_API_AUTH", "none")
+    monkeypatch.setenv("NEWSFEED_OWNER_EMAIL", _INVENTED_OWNER)
+    monkeypatch.setenv("NEWSFEED_CLIENT_DIR", str(client_dir))
+    monkeypatch.setenv("PORT", "9123")
+
+    result = runner.invoke(cli.app, ["serve"])
+
+    assert result.exit_code == 0, result.output
+    assert uvicorn_calls[0]["host"] == "127.0.0.1"
+    assert uvicorn_calls[0]["port"] == 9123
+    client = _served_client(uvicorn_calls)
+    feed = client.get("/api/feed")  # no IAP header: the dev verifier accepts it as the owner
+    assert feed.status_code == 200
+    assert feed.content == _FEED
+    assert "client-index-marker" in client.get("/reconnect").text
+
+
+def test_serve_with_iap_binds_to_all_interfaces_and_refuses_a_missing_jwt(
+    serve_env: Path, uvicorn_calls: list[dict[str, object]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("NEWSFEED_API_AUTH", "iap")
+    monkeypatch.setenv("NEWSFEED_OWNER_EMAIL", _INVENTED_OWNER)
+    monkeypatch.setenv(
+        "NEWSFEED_IAP_AUDIENCE", "/projects/123456789/locations/europe-west2/services/reader-api"
+    )
+
+    result = runner.invoke(cli.app, ["serve"])
+
+    assert result.exit_code == 0, result.output
+    assert uvicorn_calls[0]["host"] == "0.0.0.0"
+    assert uvicorn_calls[0]["port"] == 8080
+    response = _served_client(uvicorn_calls).get("/api/feed")
+    assert response.status_code == 401
+    assert b"served-feed-marker" not in response.content
+
+
+def test_serve_refuses_a_client_dir_that_is_not_a_directory(
+    serve_env: Path,
+    uvicorn_calls: list[dict[str, object]],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("NEWSFEED_API_AUTH", "none")
+    monkeypatch.setenv("NEWSFEED_OWNER_EMAIL", _INVENTED_OWNER)
+    monkeypatch.setenv("NEWSFEED_CLIENT_DIR", str(tmp_path / "missing"))
+
+    result = runner.invoke(cli.app, ["serve"])
+
+    assert result.exit_code != 0
+    assert uvicorn_calls == []
