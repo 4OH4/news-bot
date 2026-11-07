@@ -69,3 +69,15 @@ def test_valid_blob_keys(key: str) -> None:
 def test_invalid_blob_keys(key: str) -> None:
     with pytest.raises(ValueError, match="invalid blob key"):
         validate_blob_key(key)
+
+
+def test_token_verifier_exports_and_protocol() -> None:
+    from newsfeed import ports
+    from newsfeed.ports import TokenRejectedError, TokenVerifier
+    from tests.fakes import FakeTokenVerifier
+
+    for name in ("TokenVerifier", "TokenRejectedError"):
+        assert name in ports.__all__
+    assert issubclass(TokenRejectedError, Exception)
+    assert isinstance(FakeTokenVerifier({}), TokenVerifier)
+    assert not isinstance(object(), TokenVerifier)
