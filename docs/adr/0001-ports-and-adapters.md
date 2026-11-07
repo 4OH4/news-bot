@@ -23,6 +23,7 @@ The initial ports are:
 | `Fetcher` | All outbound HTTP, applying robots.txt, per-domain rate limits, User-Agent, conditional GETs and retries | `httpx`-based polite fetcher, `FakeFetcher` (tests) |
 | `Extractor` | Turn a fetched page into an extraction result (content, metadata, status) | Trafilatura, then fallbacks and Playwright (#13–#15) |
 | `SourceIngester` | Turn one configured source into normalised items | RSS/Atom, Google News, Hacker News, ... (#10, #11) |
+| `TokenVerifier` | Turn a sign-in token into a verified identity (added in Phase 3, #172; see ADR-0010) | `IapJwtVerifier` (#175), `FakeTokenVerifier` (tests) |
 
 `Embedder` is deferred to Phase 4 and will be added to `ports.py` through its own contract-change issue.
 
