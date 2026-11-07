@@ -3,7 +3,7 @@
 // Reading time (#216): one `read` event per reader opening, with the whole seconds the article
 // was visible, sent through the feedback queue, and none under 5 seconds.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { makeItem, resetVisibility, setVisibility } from "../reader/test-env";
+import { makeItem, resetVisibility, setVisibility } from "../../test/test-env";
 
 const ITEM = makeItem("d4e5f6a7b8c9d0e1");
 

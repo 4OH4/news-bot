@@ -3,7 +3,7 @@
 // The /liked route and the app-level header link to it (#216).
 import { h, render } from "preact";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { installRouter, loadStores, locationAt, makeFeed, makeItem } from "./reader/test-env";
+import { installRouter, loadStores, locationAt, makeFeed, makeItem } from "../test/test-env";
 
 const LIKED = makeItem("1a2b3c4d5e6f7a8b", { title: "Invented liked story about kites" });
 const IN_FEED = makeItem("9f8e7d6c5b4a3f2e", { title: "Invented feed story about ferries" });

@@ -12,7 +12,7 @@ import {
   queuedEvents,
   settle,
   type Stores,
-} from "../reader/test-env";
+} from "../../test/test-env";
 
 const A = makeItem("a1a1a1a1a1a1a1a1");
 const B = makeItem("b2b2b2b2b2b2b2b2");

@@ -11,7 +11,7 @@ import {
   makeItem,
   resetVisibility,
   setVisibility,
-} from "../reader/test-env";
+} from "../../test/test-env";
 
 const ITEM = makeItem("0f1e2d3c4b5a6978");
 

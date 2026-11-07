@@ -11,7 +11,7 @@ import {
   locationAt,
   makeFeed,
   makeItem,
-} from "../reader/test-env";
+} from "../../test/test-env";
 
 const A = makeItem("a9a9a9a9a9a9a9a9", { title: "Invented story about lighthouse keepers" });
 const B = makeItem("b8b8b8b8b8b8b8b8", { title: "Invented story about allotment rules" });

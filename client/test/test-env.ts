@@ -7,7 +7,7 @@ import "fake-indexeddb/auto";
 import { IDBFactory } from "fake-indexeddb";
 import { openDB } from "idb";
 import { vi } from "vitest";
-import type { Feed, FeedItem } from "../feed/types";
+import type { Feed, FeedItem } from "../src/feed/types";
 
 /** An invented feed item; `overrides` replaces any field. */
 export function makeItem(id: string, overrides: Partial<FeedItem> = {}): FeedItem {
@@ -135,9 +135,9 @@ export function feedbackPosts(router: FakeRouter): Record<string, unknown>[] {
 export async function loadStores() {
   vi.resetModules();
   vi.stubGlobal("indexedDB", new IDBFactory());
-  const feedbackDb = await import("../feedback/db");
-  const queue = await import("../feedback/queue");
-  const store = await import("../store/db");
+  const feedbackDb = await import("../src/feedback/db");
+  const queue = await import("../src/feedback/queue");
+  const store = await import("../src/store/db");
   return { ...feedbackDb, ...queue, ...store };
 }
 

@@ -18,7 +18,7 @@ import {
   queuedEvents,
   settle,
   type FakeRouter,
-} from "./test-env";
+} from "../../test/test-env";
 
 const A = makeItem("aa11bb22cc33dd44", {
   title: "Invented headline about canal boats",

@@ -4,7 +4,7 @@
 // with fetchArticle, so the top stories open offline.
 import { h, render } from "preact";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { installRouter, loadStores, makeFeed, makeItem } from "../reader/test-env";
+import { installRouter, loadStores, makeFeed, makeItem } from "../../test/test-env";
 
 let root: HTMLElement;
 
