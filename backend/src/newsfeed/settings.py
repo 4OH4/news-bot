@@ -78,6 +78,33 @@ class Settings(BaseSettings):
         ge=0,
         description="Minimum seconds between requests to one host.",
     )
+    api_auth: Literal["iap", "none"] = Field(
+        default="iap",
+        description=(
+            "How the API checks callers: IAP's signed JWT, or none (local development only; "
+            "every caller is the owner)."
+        ),
+    )
+    owner_email: str | None = Field(
+        default=None, description="The one Google account the API serves. Required by serve."
+    )
+    iap_audience: str | None = Field(
+        default=None,
+        description=(
+            "Expected ``aud`` of IAP's JWT, e.g. /projects/<number>/locations/<region>/"
+            "services/<name>. Required with api_auth=iap."
+        ),
+    )
+    client_dir: Path | None = Field(
+        default=None, description="The built client the API serves; none when unset."
+    )
+    api_port: int = Field(
+        default=8080,
+        ge=1,
+        le=65535,
+        validation_alias="PORT",  # set by Cloud Run, without the NEWSFEED_ prefix
+        description="Port the API listens on.",
+    )
 
     @field_validator("retry_backoff_hours")
     @classmethod
@@ -99,6 +126,22 @@ class Settings(BaseSettings):
     def _gcp_needs_bucket(self) -> Settings:
         if self.storage == "gcp" and not (self.gcs_bucket or "").strip():
             raise ValueError("NEWSFEED_STORAGE=gcp requires NEWSFEED_GCS_BUCKET")
+        return self
+
+    @model_validator(mode="after")
+    def _api_auth_is_safe(self) -> Settings:
+        # No auth is for a laptop only: with cloud storage it would serve real content.
+        if self.api_auth == "none" and self.storage == "gcp":
+            raise ValueError("NEWSFEED_API_AUTH=none is not allowed with NEWSFEED_STORAGE=gcp")
+        # google-auth skips the audience check when given none, so IAP needs one. Only an
+        # explicit NEWSFEED_API_AUTH=iap is rejected here, because the pipeline commands
+        # load these settings with the default too; ``newsfeed serve`` refuses the default.
+        if (
+            self.api_auth == "iap"
+            and "api_auth" in self.model_fields_set
+            and not (self.iap_audience or "").strip()
+        ):
+            raise ValueError("NEWSFEED_API_AUTH=iap requires NEWSFEED_IAP_AUDIENCE")
         return self
 
     @property

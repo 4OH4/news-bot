@@ -242,14 +242,17 @@ class TokenVerifier(Protocol):
     """Turn a sign-in token into a verified identity.
 
     Keeps identity-provider libraries out of core code (CLAUDE.md, rule 1).
-    Implementations: a Firebase adapter (#175), ``FakeTokenVerifier`` (tests).
+    Implementations: ``IapJwtVerifier`` (#175), ``DevTokenVerifier`` and
+    ``FakeTokenVerifier`` (tests).
     """
 
     def verify(self, token: str) -> VerifiedIdentity:
         """Return the identity the token proves.
 
         Raises ``TokenRejectedError`` for any token it can't accept, including
-        malformed, expired or wrongly signed tokens. Must be thread-safe.
+        malformed, expired or wrongly signed tokens. Any other exception means
+        the check couldn't be made, such as when signing keys can't be fetched.
+        Must be thread-safe.
         """
         ...
 
