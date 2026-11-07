@@ -8,6 +8,7 @@ Failure patterns taken from real defects in this repo. Test authors and workers 
 - A check on data must be written against what real sources send, not what the fixture happens to contain. Fixtures stay synthetic, but they should copy the structure and quirks of real pages and feeds.
 - A feature that crosses stages needs one test through the real pipeline, with the real `Repository` and `BlobStore` adapters.
 - A claim about what a later run will do needs a test across two runs. In #144, a design note promised a later merge that didn't exist.
+- A parser of agents' comments or PR text must be tested against real comments from the repo, not a helper that writes the field it reads.
 
 ## Robust code
 
@@ -25,7 +26,10 @@ Failure patterns taken from real defects in this repo. Test authors and workers 
 - A rule protecting stored state must cover every path that writes it, including earlier steps that re-key or delete.
 - A batch article is a snapshot, so a write must not overwrite or delete a row another article changed earlier in the run.
 - Don't replace stored state on a result not yet known.
+- A write deferred to protect stored state must still be durable: holding it in memory trades a race for a loss when the page closes.
 - Nothing may bypass a paywall or an access control, and third-party article text must not reach the public repo.
+- For an XSS-style risk (script injected through content), check whether it can persist through browser storage, such as the service-worker cache or IndexedDB, and so outlive the fix.
+- Build output can contain symlinks: copy and serve code must not follow them out of the tree.
 - A privileged deploy must not consume a cache, or any other file, that a less-trusted step could write. The instance: build code wrote the file the deploy then read (PR #186, defect 2 of its second review).
 - A stage that runs third-party build code must be checked for `RUN --mount` and `ADD` as well as `COPY`, since each can bring in files from outside the build context.
 
@@ -33,6 +37,9 @@ Failure patterns taken from real defects in this repo. Test authors and workers 
 
 - A criterion in one issue must be checked against the mounts, scopes and gates that an earlier issue set up. The instance: PR #186, defect 2 of its first review (a drift test that the earlier issue's mounts put out of reach).
 - A limit claimed for an account must count what it can do by acting as another account, and what each client library does with its credentials.
+- Renumbering (ADR or issue numbers) must be checked against what is already merged, so no number is reused or a reference left pointing at the old one.
+- A cost claim needs a per-request estimate, not only a monthly one, because a monthly total hides a request that is costly on its own.
+- A Terraform map or variable holding sensitive values must be marked `sensitive`, or the values show in plan output.
 
 ## Rules that classify changes
 
@@ -57,6 +64,8 @@ Failure patterns taken from real defects in this repo. Test authors and workers 
 - A test that one async step finishes before the next must use a step that resolves later, or dropping an `await` goes unnoticed.
 - A behaviour that depends on a browser value set by a header must be tested through the control the user actually uses, under the production headers.
 - A time-relative test must fix "now" on both sides, the code under test and the data it compares against.
+- When a rework changes which function a hook registers, the tests must register the new one too, or they keep exercising the old path.
+- A flaky-test fix must first show the failure it fixes (a reproduction or a captured failing run) before it claims a cause.
 
 ## Workflows and exemptions
 
