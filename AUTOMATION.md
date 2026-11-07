@@ -146,7 +146,7 @@ The phase design goes in as the phase's first PR. The lead checks it, then it ta
 
 ### 5.3 Delivery manager
 
-The delivery manager is Gear 2's orchestrator. A fresh one runs each batch of up to about 15 issues, so its context stays small. A large epic takes several batches. It:
+The delivery manager is Gear 2's orchestrator. A fresh one runs each batch of about 5 to 8 issues and about 2 hours of work, so its context stays small. A large epic takes several batches. A batch is fixed when it starts: the lead does not add issues to a running delivery manager, issues that become Ready mid-batch wait for the next batch, and the lead starts the next delivery manager as soon as the current one reports. It:
 
 - starts test authors, workers and reviewers, within the limits in §11, using the architect's risk flags to choose models;
 - runs `board.py promote` after each merge and keeps the cards up to date;
@@ -519,6 +519,7 @@ Some things are deliberately kept out of the repo:
 | 2026-11-01 | Process steps are defaults the human can waive, and work can carry forward at a milestone | The steps exist so nothing is lost and work stays efficient. An agent can use judgement, so rigid steps would only become barriers |
 | 2026-11-07 | The lead runs a recurring GitHub status check every 15 minutes while its session is open, and idle shutdown becomes three quiet checks | The owner merged PRs #200, #202 and #203 and the lead didn't notice until told, so issue #175 waited on a merge that had already happened; the single 45-minute idle check was too slow and fired only when idle |
 | 2026-11-07 | Parallel issues scale with 5-hour usage: 10 up to 50%, 5 above, none at 90% (#213) | Allowance was going unused at a fixed 3; owner's decision |
+| 2026-11-07 | Batches stay at about 5 to 8 issues and about 2 hours of work, fixed when they start; the next delivery manager starts as soon as one reports (#213) | A batch grew from 3 to about 12 issues, ran over 2 hours, and its delivery manager's context grew until it lost track of reviewed PRs |
 
 ## 15. Learnings
 

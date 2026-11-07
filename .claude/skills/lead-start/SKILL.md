@@ -52,7 +52,7 @@ Call the architect back whenever a design problem emerges, and it updates the fi
 
 ## 4. Run a batch
 
-Group the Ready issues into a batch of up to about 15, in dependency order, with no two in progress touching the same files. Run `python3 scripts/board.py promote` first. A large epic takes several batches. Only one delivery manager runs at a time.
+Group the Ready issues into a batch of about 5 to 8 issues and about 2 hours of work, in dependency order, with no two in progress touching the same files. Run `python3 scripts/board.py promote` first. A large epic takes several batches. Only one delivery manager runs at a time. A batch is fixed when it starts: do not add issues to a running delivery manager. Issues that become Ready mid-batch wait for the next batch, and you start the next delivery manager as soon as the current one reports.
 
 If `usage.py` prints `pause:`, don't start a batch: go to "Usage pauses" below.
 
