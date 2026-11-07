@@ -1,0 +1,50 @@
+/**
+ * Likes (#216). A like is owner feedback, so the event is queued first; the `liked` store (keyed
+ * by story) and the kept article text are conveniences for the Liked list and offline reading.
+ */
+import { storyKey, type FeedItem } from "../feed/types";
+import { getArticleHtml, markKept, putArticleHtml } from "../store/db";
+import { openFeedbackDb, type StoredFeedItem } from "./db";
+import { enqueueFeedback } from "./queue";
+
+/**
+ * Likes or unlikes `item`. Liking also keeps its stored text past pruning, storing `html` (what
+ * the reader shows) when no text is stored yet. Unliking drops the keep mark but leaves the text
+ * for normal pruning. The latest event wins on the server.
+ */
+export async function setLiked(item: FeedItem, liked: boolean, html?: string): Promise<void> {
+  await enqueueFeedback(item.id, "like", liked ? 1 : 0);
+  const db = await openFeedbackDb();
+  if (liked) {
+    const stored = item as unknown as StoredFeedItem;
+    await db.put("liked", { key: storyKey(item), item: stored, at: new Date().toISOString() });
+  } else {
+    await db.delete("liked", storyKey(item));
+  }
+  try {
+    if (liked && html !== undefined && (await getArticleHtml(item.id)) === null) {
+      await putArticleHtml(item.id, html, { keep: true });
+    } else {
+      await markKept(item.id, liked);
+    }
+  } catch (err) {
+    // The like itself is queued and recorded; only the offline copy is missing.
+    console.warn("could not update kept article text", { article_id: item.id, err });
+  }
+}
+
+export async function isLiked(item: FeedItem): Promise<boolean> {
+  return (await (await openFeedbackDb()).count("liked", storyKey(item))) > 0;
+}
+
+/** Liked items, most recently liked first. */
+export async function listLiked(): Promise<FeedItem[]> {
+  const rows = await (await openFeedbackDb()).getAll("liked");
+  rows.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
+  return rows.map((row) => row.item as unknown as FeedItem);
+}
+
+/** The liked item with this article id, or null; lets the reader open one that left the feed. */
+export async function findLiked(id: string): Promise<FeedItem | null> {
+  return (await listLiked()).find((item) => item.id === id) ?? null;
+}

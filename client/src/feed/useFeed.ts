@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { FeedNotReadyError, fetchFeed, UnsupportedFeedError } from "../api/feed";
+import { fetchArticle } from "../api/articles";
 import { OfflineError } from "../api/client";
 import { loadFeed, pruneArticles, saveFeed } from "../store/db";
+import { prefetchArticles } from "../store/prefetch";
 import type { Feed } from "./types";
 
 export interface UseFeed {
@@ -51,6 +53,8 @@ export function useFeed(): UseFeed {
         try {
           await saveFeed(next, result.etag);
           await pruneArticles(next);
+          // In the background, so the top stories open with no signal (#216).
+          void prefetchArticles(next, fetchArticle);
         } catch {
           // Storage is a convenience; the feed on screen is still good.
         }

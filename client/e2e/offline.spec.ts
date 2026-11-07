@@ -49,6 +49,10 @@ async function stored(page: Page): Promise<{ feed: number; articles: number } | 
 /** Opens the app once with the example feed, and waits until it is stored and the worker is on. */
 async function firstRun(page: Page, headers: Record<string, string> = { ETag: '"v1"' }) {
   await page.route("**/api/feed", (route) => route.fulfill({ json: example, headers }));
+  // The feed's background prefetch (#216) asks for article text. Unstubbed, the preview server
+  // answers with the app's own HTML, which would be stored; a 404 stores nothing, so these
+  // tests count only the articles they put there themselves.
+  await page.route("**/api/articles/*", (route) => route.fulfill({ status: 404, body: "" }));
   await page.goto("/");
   await expect(cards(page)).toHaveCount(5);
   await expect.poll(async () => (await stored(page))?.feed).toBe(1);
