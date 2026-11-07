@@ -45,7 +45,7 @@ One more path is narrower: if the owner opens `/api/articles/<id>` directly, the
 
 - The reader keeps formatting, links and images, on one origin with no extra service.
 - The allowlist is now a security boundary in two places: any change to it is a change to this decision, and the pytest test keeps the two copies equal.
-- Forged feedback, the one lasting harm, stays possible only through a bypass of every layer, but once that happens it can persist through the service-worker cache until a deploy or longer. A mitigation (for example, the service worker checking its cached shell entries) would be separate work.
+- Forged feedback, the one lasting harm, stays possible only through a bypass of every layer, but once that happens it can persist through the service-worker cache until a deploy or longer. The owner accepted this wider risk on 2026-11-07; the mitigation, containing the article HTML, is follow-up issue #239.
 - Reversible: move the article into a sandboxed iframe on another origin, or render text only. Either replaces `client/src/reader/` and leaves the API and the stored HTML as they are.
 - **Revisit when:**
   - the app gains a user who isn't also a developer;
