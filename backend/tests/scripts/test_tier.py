@@ -1562,3 +1562,32 @@ def test_pr_template_has_evidence_after_for_human_review() -> None:
     assert "## Evidence" in headings
     assert "## For human review" in headings
     assert headings.index("## Evidence") > headings.index("## For human review")
+
+
+# --- client check and test lines in the size limit -----------------------------------
+
+
+@pytest.mark.parametrize("state", ["failure", "cancelled", "in_progress"])
+def test_a_client_check_that_is_not_green_blocks_the_merge(state: str) -> None:
+    failures = tier.gate_failures(pr(), TIER_A, {**GREEN, "client": state}, REVIEWED)
+    assert failures == [f"check 'client' is {state}"]
+
+
+def test_a_green_or_absent_client_check_does_not_block() -> None:
+    assert tier.gate_failures(pr(), TIER_A, {**GREEN, "client": "success"}, REVIEWED) == []
+    assert tier.gate_failures(pr(), TIER_A, GREEN, REVIEWED) == []
+
+
+def test_client_test_lines_do_not_count_as_source_lines() -> None:
+    result = classify(F("client/src/feed.ts", 200), F("client/src/feed.test.tsx", 320))
+    assert result.blocks == []
+
+
+def test_client_source_over_the_limit_reports_its_lines() -> None:
+    result = classify(F("client/src/feed.ts", 401))
+    assert result.blocks == ["401 source lines changed (limit 400): split it"]
+
+
+def test_client_test_lines_still_count_towards_the_total() -> None:
+    result = classify(F("client/e2e/feed.spec.ts", 1600))
+    assert result.blocks == ["1600 lines changed in total (limit 1500): split it"]

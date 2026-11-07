@@ -11,7 +11,19 @@ UV := uv --directory $(BACKEND)
 export NEWSFEED_CONFIG_DIR := $(CURDIR)/config
 export NEWSFEED_DATA_DIR := $(CURDIR)/data
 
-.PHONY: help setup lint fmt test eval run docker
+# Client tooling runs in pinned images (this machine has no Node). Pin by tag and digest.
+# #178 builds the client image FROM the same CLIENT_NODE_IMAGE, and a test checks they match.
+CLIENT_NODE_IMAGE := node:22.12.0-bookworm-slim@sha256:35531c52ce27b6575d69755c73e65d4468dba93a25644eed56dc12879cae9213
+# The tag must equal the @playwright/test version in client/package.json.
+CLIENT_PLAYWRIGHT_IMAGE := mcr.microsoft.com/playwright:v1.49.1-noble@sha256:70e367e0cbf60340a5b5fd562f6247a34eb3196efab9f88a3dd56482d9fe09d2
+# Runs as the caller, so node_modules is never root-owned. Only client/ (writable) and
+# docs/ (read-only, for tests that read the docs) are mounted.
+CLIENT_DOCKER = docker run --rm --user $(shell id -u):$(shell id -g) \
+	-e HOME=/tmp -e npm_config_cache=/tmp/.npm -e CI=$(CI) \
+	-v $(CURDIR)/client:/work/client -v $(CURDIR)/docs:/work/docs:ro -w /work/client
+
+.PHONY: help setup lint fmt test eval run docker \
+	client-install client-add client-lint client-test client-build client-e2e
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -43,3 +55,21 @@ run: ## Run the full pipeline locally
 
 docker: ## Build the backend Docker image (context is the repo root)
 	docker build -f $(BACKEND)/Dockerfile -t newsfeed .
+
+client-install: ## Install client dependencies from the lockfile (scripts disabled)
+	$(CLIENT_DOCKER) $(CLIENT_NODE_IMAGE) npm ci --ignore-scripts
+
+client-add: ## Add client packages and update the lockfile (make client-add PKG="-D name")
+	$(CLIENT_DOCKER) $(CLIENT_NODE_IMAGE) npm install --ignore-scripts $(PKG)
+
+client-lint: ## ESLint and tsc --noEmit on the client
+	$(CLIENT_DOCKER) $(CLIENT_NODE_IMAGE) npm run lint
+
+client-test: ## Vitest unit tests for the client
+	$(CLIENT_DOCKER) $(CLIENT_NODE_IMAGE) npm test
+
+client-build: ## Production build of the client into client/dist
+	$(CLIENT_DOCKER) $(CLIENT_NODE_IMAGE) npm run build
+
+client-e2e: ## Playwright tests against the production build
+	$(CLIENT_DOCKER) --ipc=host $(CLIENT_PLAYWRIGHT_IMAGE) npm run e2e

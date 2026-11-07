@@ -53,8 +53,9 @@ from typing import Any
 REPO = "4OH4/news-bot"
 TIMEOUT = 120
 REQUIRED_CHECKS = ("lint", "test", "docker")  # must match the "Protect main" ruleset
-# Runs only on PRs touching infra/ (the infra workflow's job), so absent is fine; present must pass.
-CONDITIONAL_CHECKS = ("terraform",)
+# `terraform` runs only on PRs touching infra/ (the infra workflow's job). `client` runs on every
+# PR but is absent on a PR opened before the job reached main. Absent is fine; present must pass.
+CONDITIONAL_CHECKS = ("terraform", "client")
 TIER_LABELS = ("tier:A", "tier:B", "tier:C")
 HOLD_LABEL = "hold"
 MERGED_LABEL = "agent-merged"
@@ -397,7 +398,12 @@ def pyproject_risk(f: ChangedFile) -> str | None:
 
 def size_blocks(files: list[ChangedFile]) -> list[str]:
     counted = [f for f in files if not matches(f.path, GENERATED_PATHS)]
-    src_lines = sum(f.changes for f in counted if matches(f.path, SRC_PATHS))
+    # Tests count towards the total only: SRC_PATHS includes client/*, which holds client tests.
+    src_lines = sum(
+        f.changes
+        for f in counted
+        if matches(f.path, SRC_PATHS) and not matches(f.path, TEST_PATHS)
+    )
     total = sum(f.changes for f in counted)
     blocks = []
     if src_lines > MAX_SRC_LINES:

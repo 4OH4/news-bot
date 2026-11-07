@@ -34,6 +34,19 @@ uv run newsfeed preview        # static HTML preview of extracted articles
 uv run newsfeed eval
 ```
 
+The client (`client/`, a Preact and Vite PWA) has no Node on this machine, so its commands run in pinned Docker images through `make`. Never run `npm` or `npx` directly:
+
+```bash
+make client-install   # npm ci --ignore-scripts
+make client-add PKG="-D name"   # add a package and update the lockfile
+make client-lint      # ESLint and tsc --noEmit
+make client-test      # Vitest
+make client-build     # production build into client/dist
+make client-e2e       # Playwright against the production build
+```
+
+Client PRs must pass `make client-lint` and `make client-test` (CI's `client` job also runs the build and `client-e2e`).
+
 Before opening a PR, `make lint` and `make test` must both pass. Subagents can't run `make eval`, so the lead runs it for each PR that touches `extract/` and posts the scores (`AUTOMATION.md` §6).
 
 ## Architecture rules
