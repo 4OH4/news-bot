@@ -132,7 +132,7 @@ def test_a_failed_request_never_shows_the_token_and_exits_zero(
     assert exit_info.value.code == 0
     out = capsys.readouterr().out
     assert TOKEN not in out
-    assert out == "usage unavailable (OSError)\n"
+    assert out == "usage unavailable (OSError)\nparallel: 3\n"
 
 
 def test_missing_credentials_mean_unavailable(tmp_path: Path) -> None:
@@ -140,7 +140,7 @@ def test_missing_credentials_mean_unavailable(tmp_path: Path) -> None:
         raise AssertionError("must not make a request with no token")
 
     result = usage.read_limits(lambda: usage.read_token(tmp_path / "none.json"), fetcher)
-    assert result == ["usage unavailable (FileNotFoundError)"]
+    assert result == ["usage unavailable (FileNotFoundError)", "parallel: 3"]
 
 
 def test_reads_the_token_from_the_credentials_file(tmp_path: Path) -> None:

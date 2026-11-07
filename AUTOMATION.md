@@ -146,7 +146,7 @@ The phase design goes in as the phase's first PR. The lead checks it, then it ta
 
 ### 5.3 Delivery manager
 
-The delivery manager is Gear 2's orchestrator. A fresh one runs each batch of about 5 to 8 issues, so its context stays small. A large epic takes several batches. It:
+The delivery manager is Gear 2's orchestrator. A fresh one runs each batch of up to about 15 issues, so its context stays small. A large epic takes several batches. It:
 
 - starts test authors, workers and reviewers, within the limits in §11, using the architect's risk flags to choose models;
 - runs `board.py promote` after each merge and keeps the cards up to date;
@@ -374,7 +374,7 @@ Permission prompts are counted only when an agent reports them. Usage per issue,
 
 ## 11. Operating limits
 
-- **Parallelism:** up to 3 issues in progress, each using one test author and then one worker. Reviewers, the architect and the delivery manager don't count. No two in-progress issues touch the same files, and only one delivery manager runs at a time.
+- **Parallelism:** the number of issues in progress depends on 5-hour usage, and `scripts/usage.py` prints it as `parallel: <n>`: 10 while use is 50% or less, 5 above that, 0 once either limit reaches 90%, and 3 (the old limit) if usage can't be read. Each issue uses one test author and then one worker. Reviewers, the architect and the delivery manager don't count, but one-off workers the lead starts during a batch do. If the number drops, running issues carry on and no more start until fewer are in progress. No two in-progress issues touch the same files, and only one delivery manager runs at a time.
 - **Sessions:** while its session is open the lead checks GitHub at least every 15 minutes (a recurring status check), so a merge or a comment is noticed without the human prompting. It finishes after three quiet checks in a row, 30 to 45 minutes, because restarting is cheaper than reloading a cold session. A usage pause doesn't count as idle: a 5-hour pause keeps the checks but starts no new work, and a weekly pause deletes the check, leaving the allowance to the owner.
 - **Context checkpoint (not fully resolved, see §16):** the lead can't clear or compact its own context, and stopping would end unattended work, so it lets automatic compaction happen and makes sure little depends on the summary. At each batch close it runs `python3 scripts/lead.py context`. At 150k tokens or more, or after three batches if that can't be read, it curates the Phase Log, rewrites the handoff note, tells the human they can restart to save usage, and starts the next batch. A batch costs about 55k tokens, so compaction may come mid-batch. Agents keep running through it, and a `SessionStart` hook sends the lead back to its handoff note, the Phase Log and its open work. The lead also records each batch in the handoff note as it starts. Agents don't depend on the lead's memory: a delivery manager with an unanswered request sends it again.
 - **GitHub API:** 5,000 GraphQL points an hour are shared across every agent, so prefer REST in loops.
@@ -400,7 +400,7 @@ Two limits apply: a 5-hour window and a weekly one. Agents are cut off when eith
 
 `scripts/usage.py` reads both limits and their reset times from the usage endpoint, which has proved reliable.
 
-- **Delivery manager:** checks `usage.py` before starting each issue. When either limit is at about 90%, it avoids starting a new issue, and tells the lead which limit it is and when it resets. Agents already running carry on, then it reports and ends. If it prints `usage unavailable`, it carries on and tells the lead, so that pacing can't turn off unnoticed.
+- **Delivery manager:** checks `usage.py` before starting each issue. When either limit is at about 90%, it starts no new agent (test author, worker or reviewer), and tells the lead which limit it is and when it resets. Agents already running carry on, then it reports and ends. If it prints `usage unavailable`, it carries on and tells the lead, so that pacing can't turn off unnoticed.
 - **Lead:** for a 5-hour pause, schedules a one-shot check for shortly after the reset, then starts a new delivery manager, which picks up from the board. For a weekly pause, it starts no new batches and flags the pause and reset time for the human, leaving the remaining allowance for the human's use.
 - **Workers and test authors:** commit and push regularly, so a cut-off loses little.
 - **Human:** shares both limits, and can tell the lead to pause or to carry on past 90%.
@@ -518,6 +518,7 @@ Some things are deliberately kept out of the repo:
 | 2026-11-01 | This document describes the method, and no agent needs it in context | The briefs and skills are the implementation, and reading it costs the lead 12k tokens a session |
 | 2026-11-01 | Process steps are defaults the human can waive, and work can carry forward at a milestone | The steps exist so nothing is lost and work stays efficient. An agent can use judgement, so rigid steps would only become barriers |
 | 2026-11-07 | The lead runs a recurring GitHub status check every 15 minutes while its session is open, and idle shutdown becomes three quiet checks | The owner merged PRs #200, #202 and #203 and the lead didn't notice until told, so issue #175 waited on a merge that had already happened; the single 45-minute idle check was too slow and fired only when idle |
+| 2026-11-07 | Parallel issues scale with 5-hour usage: 10 up to 50%, 5 above, none at 90% (#213) | Allowance was going unused at a fixed 3; owner's decision |
 
 ## 15. Learnings
 
