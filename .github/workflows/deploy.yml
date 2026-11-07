@@ -1,5 +1,6 @@
 # Deploy: once CI has passed on a push to main, build the backend image, push it
-# to Artifact Registry and point the Cloud Run Job at it (#75). The next scheduled
+# to Artifact Registry and point the Cloud Run Job at it (#75), then the API
+# service, which serves the client from the same image (#178). The next scheduled
 # run uses the new image. It authenticates through Workload Identity Federation,
 # so no key exists, and it never runs Terraform (ADR-0004).
 #
@@ -88,8 +89,21 @@ jobs:
           PROJECT: ${{ vars.GCP_PROJECT_ID }}
         run: gcloud run jobs update "$JOB" --image="$IMAGE" --region="$REGION" --project="$PROJECT" --quiet
 
-  # A failed deploy leaves the old image running and shows only in the Actions
-  # tab, so raise an issue (#149). failure() is needed because a job whose
+      # The same image, after the job, so the two never run different commits for
+      # long. Image only, as for the job: Terraform owns every other setting,
+      # including IAP's. Never `gcloud run deploy --source`: Cloud Build's default
+      # account has no rights in this project (#196). Skipped until the owner has
+      # applied api_service.tf and set GCP_API_SERVICE (#179).
+      - name: Update the Cloud Run service
+        if: vars.GCP_API_SERVICE != ''
+        env:
+          API_SERVICE: ${{ vars.GCP_API_SERVICE }}
+          REGION: ${{ vars.GCP_REGION }}
+          PROJECT: ${{ vars.GCP_PROJECT_ID }}
+        run: gcloud run services update "$API_SERVICE" --image="$IMAGE" --region="$REGION" --project="$PROJECT" --quiet
+
+  # A failed deploy leaves an old image running on the job, the service or both,
+  # and shows only in the Actions tab, so raise an issue (#149). failure() is needed because a job whose
   # dependency failed is skipped unless its condition has a status function; the
   # result check then limits it to a failed deploy, not a skipped or successful
   # one ('skipped' or 'success'). It uses
@@ -108,7 +122,7 @@ jobs:
       GH_REPO: ${{ github.repository }}
       SHA: ${{ github.event.workflow_run.head_sha }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-      TITLE: "Deploy failed: the Cloud Run Job is running an older image"
+      TITLE: "Deploy failed: the Cloud Run Job or service may be running an older image"
     steps:
       - name: Open or update the alert issue
         run: |
