@@ -140,7 +140,9 @@ test("a lapsed session with no network shows the feed and the offline notice, no
 }) => {
   await firstRun(page);
   await context.setOffline(true);
-  // A fulfilled route answers even while offline, so drop the stub: the request must fail.
+  // Offline, the request never reaches IAP, so a lapsed session cannot be told apart from the
+  // first offline test above: the same steps cover this case. The 401-while-offline mapping
+  // itself is covered by reportAuthRequired (auth/status.test.ts).
   await page.unroute("**/api/feed");
   await page.reload();
   await expect(cards(page)).toHaveCount(5);
@@ -186,6 +188,10 @@ test("a sign-out the user chooses leaves no feed or article in IndexedDB", async
     route.fulfill({ contentType: "text/html", body: "<p>signed out</p>" }),
   );
   await page.reload();
+  // Sign-out ends with location.replace("/"); let that navigation finish before reading the store.
+  const navigated = page.waitForEvent("framenavigated");
   await page.getByRole("button", { name: /sign out/i }).click();
+  await navigated;
+  await page.waitForLoadState("load");
   await expect.poll(async () => await stored(page)).toEqual({ feed: 0, articles: 0 });
 });
