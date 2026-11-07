@@ -1,0 +1,19 @@
+# Opens a PR when a base image pinned in backend/Dockerfile has a newer build (#256).
+# Dependabot reads only FROM lines. Other ecosystems are deliberately left out.
+version: 2
+updates:
+  - package-ecosystem: "docker"
+    directory: "/backend"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 2
+    # Majors for node and uv, and Python minors, are deliberate upgrades, not monthly bumps.
+    ignore:
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "ghcr.io/astral-sh/uv"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "python"
+        update-types: ["version-update:semver-minor"]
+    commit-message:
+      prefix: "chore(deps)"
