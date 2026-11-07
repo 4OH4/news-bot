@@ -2,15 +2,22 @@
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import pytest
+from typer.testing import CliRunner
 
+from newsfeed import cli
+from newsfeed.adapters.sqlite_repository import SqliteRepository
 from newsfeed.models import (
     Article,
     ArticleExtraction,
     ExtractionStatus,
+    Feedback,
+    FeedbackEvent,
     RunStats,
     SourceState,
 )
@@ -170,3 +177,250 @@ def test_text_lists_urls_but_no_article_text(repo: InMemoryRepository) -> None:
 
     assert "a.example.com: http_403 (failed) x1" in text
     assert "https://a.example.com/new" in text
+
+
+# --- Feedback section (issue #185) -------------------------------------------
+#
+# These run `newsfeed report` against a real SQLite database. The issue names no
+# field names for FeedbackSummary, so they check the text a reader sees.
+
+runner = CliRunner()
+MARK = "Zebra"  # in every seeded title, so lines that show a title can be told apart
+
+
+@pytest.fixture
+def data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    config = tmp_path / "config"
+    config.mkdir()
+    (config / "sources.yaml").write_text("sources: []\n")
+    (config / "url_params.yaml").write_text("domains: {}\n")
+    (config / "extraction.yaml").write_text("domains: {}\n")
+    data = tmp_path / "data"
+    monkeypatch.setenv("NEWSFEED_CONFIG_DIR", str(config))
+    monkeypatch.setenv("NEWSFEED_DATA_DIR", str(data))
+    return data
+
+
+def fb_article(slug: str, source_id: str = "fbsource") -> Article:
+    return Article(
+        canonical_url=f"https://fb.example.com/{slug}",
+        url=f"https://fb.example.com/{slug}",
+        source_id=source_id,
+        title=f"{MARK} headline {slug}",
+        fetched_at=T0,
+    )
+
+
+def seed(data: Path, articles: list[Article], events: list[Feedback]) -> None:
+    with SqliteRepository(data / "newsfeed.db") as repo:
+        for a in articles:
+            repo.upsert_article(a)
+        for e in events:
+            repo.save_feedback(e)
+
+
+def event(
+    a: Article | str, kind: FeedbackEvent, ago: timedelta, value: float | None = None
+) -> Feedback:
+    article_id = a if isinstance(a, str) else a.id
+    return Feedback(
+        article_id=article_id,
+        event=kind,
+        value=value,
+        created_at=datetime.now(UTC) - ago,
+    )
+
+
+def feedback_output(data: Path) -> str:
+    result = runner.invoke(cli.app, ["report"])
+    assert result.exit_code == 0, result.output
+    assert "Feedback" in result.output
+    return result.output
+
+
+def day_lines(output: str, day: datetime) -> list[str]:
+    """Lines that name ``day`` and show no article title: the daily counts."""
+    stamp = f"{day:%Y-%m-%d}"
+    return [ln for ln in output.splitlines() if stamp in ln and MARK not in ln]
+
+
+def numbers_besides_date(line: str) -> list[str]:
+    return re.findall(r"\d+", re.sub(r"\d{4}-\d{2}-\d{2}", "", line))
+
+
+def test_report_says_there_is_no_feedback_when_none_is_stored(data_dir: Path) -> None:
+    out = feedback_output(data_dir)
+
+    section = out[out.index("Feedback") :]
+    assert "none" in section.lower()
+
+
+def test_a_day_without_events_between_two_active_days_shows_zero(data_dir: Path) -> None:
+    a = fb_article("one")
+    seed(
+        data_dir,
+        [a],
+        [
+            event(a, FeedbackEvent.OPEN, timedelta(days=2, minutes=1)),
+            event(a, FeedbackEvent.OPEN, timedelta(minutes=1)),
+        ],
+    )
+
+    out = feedback_output(data_dir)
+
+    middle = day_lines(out, datetime.now(UTC) - timedelta(days=1))
+    assert middle, "the empty middle day is missing from the daily counts"
+    assert set(numbers_besides_date(middle[0])) <= {"0"}
+    busy = day_lines(out, datetime.now(UTC) - timedelta(days=2, minutes=1))
+    assert "1" in numbers_besides_date(busy[0])
+
+
+def test_feedback_for_a_missing_article_shows_its_id(data_dir: Path) -> None:
+    seed(data_dir, [], [event("ghost0123456789a", FeedbackEvent.LIKE, timedelta(minutes=1), 1)])
+
+    out = feedback_output(data_dir)
+
+    assert "ghost0123456789a" in out
+
+
+def test_two_mutes_on_one_source_are_listed_with_a_count_of_two(data_dir: Path) -> None:
+    a, b = fb_article("m1", "noisysite"), fb_article("m2", "noisysite")
+    seed(
+        data_dir,
+        [a, b],
+        [
+            event(a, FeedbackEvent.MUTE_SOURCE, timedelta(minutes=5), 1),
+            event(b, FeedbackEvent.MUTE_SOURCE, timedelta(minutes=4), 1),
+        ],
+    )
+
+    out = feedback_output(data_dir)
+
+    lines = [ln for ln in out.splitlines() if "noisysite" in ln]
+    assert len(lines) == 1
+    assert "2" in re.findall(r"\d+", lines[0])
+
+
+def test_a_source_unmuted_by_a_later_zero_event_is_not_listed(data_dir: Path) -> None:
+    a, b = fb_article("u1", "calmsite"), fb_article("u2", "kept-muted")
+    seed(
+        data_dir,
+        [a, b],
+        [
+            event(a, FeedbackEvent.MUTE_SOURCE, timedelta(minutes=5), 1),
+            event(a, FeedbackEvent.MUTE_SOURCE, timedelta(minutes=4), 0),
+            event(b, FeedbackEvent.MUTE_SOURCE, timedelta(minutes=3), 1),
+        ],
+    )
+
+    out = feedback_output(data_dir)
+
+    assert "calmsite" not in out
+    assert "kept-muted" in out
+
+
+def test_muting_an_unknown_article_counts_under_unknown(data_dir: Path) -> None:
+    seed(
+        data_dir,
+        [],
+        [event("ghost9876543210b", FeedbackEvent.MUTE_SOURCE, timedelta(minutes=2), 1)],
+    )
+
+    out = feedback_output(data_dir)
+
+    assert any("unknown" in ln.lower() and "1" in ln for ln in out.splitlines())
+
+
+def test_a_dismiss_undone_the_same_day_leaves_no_dismissals_in_the_day(data_dir: Path) -> None:
+    a = fb_article("d1")
+    seed(
+        data_dir,
+        [a],
+        [
+            event(a, FeedbackEvent.DISMISS, timedelta(minutes=2), 1),
+            event(a, FeedbackEvent.DISMISS, timedelta(minutes=1), 0),
+        ],
+    )
+
+    out = feedback_output(data_dir)
+
+    today = day_lines(out, datetime.now(UTC) - timedelta(minutes=2))
+    assert today, "today is missing from the daily counts"
+    assert set(numbers_besides_date(today[0])) <= {"0"}
+    # The Recent list still shows the undo as it was stored.
+    assert any(MARK in ln and "dismiss" in ln for ln in out.splitlines())
+
+
+def test_feedback_written_by_the_real_repository_appears_in_the_report(data_dir: Path) -> None:
+    a = fb_article("real")
+    seed(data_dir, [a], [event(a, FeedbackEvent.LIKE, timedelta(minutes=1), 1)])
+    with SqliteRepository(data_dir / "newsfeed.db") as repo:
+        assert [f.event for f in repo.list_feedback()] == [FeedbackEvent.LIKE]
+
+    out = feedback_output(data_dir)
+
+    assert any(a.title in ln and "like" in ln for ln in out.splitlines())
+
+
+def test_only_the_recent_ten_events_cause_article_reads(
+    data_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    articles = [fb_article(f"bulk{i:02d}") for i in range(25)]
+    seed(
+        data_dir,
+        articles,
+        [event(a, FeedbackEvent.OPEN, timedelta(minutes=60 - i)) for i, a in enumerate(articles)],
+    )
+    reads: list[str] = []
+    real_open = cli.open_storage
+
+    def counting_open(settings: Any) -> Any:
+        repo, blobs = real_open(settings)
+        original = repo.get_article
+
+        def get_article(article_id: str) -> Article | None:
+            reads.append(article_id)
+            return original(article_id)
+
+        repo.get_article = get_article  # type: ignore[method-assign]
+        return repo, blobs
+
+    monkeypatch.setattr(cli, "open_storage", counting_open)
+
+    out = feedback_output(data_dir)
+
+    assert len(set(reads)) == 10
+    assert set(reads) == {a.id for a in articles[-10:]}
+    assert articles[-1].title in out
+    assert articles[0].title not in out
+
+
+def test_summarise_feedback_is_pure_and_counts_per_day() -> None:
+    from newsfeed.report import FeedbackSummary, summarise_feedback
+
+    now = datetime(2026, 11, 7, 12, 0, tzinfo=UTC)
+    a = fb_article("pure")
+    events = [
+        Feedback(article_id=a.id, event=FeedbackEvent.OPEN, created_at=now - timedelta(hours=1)),
+        Feedback(
+            article_id=a.id,
+            event=FeedbackEvent.DISMISS,
+            value=1,
+            created_at=now - timedelta(hours=2),
+        ),
+        Feedback(
+            article_id=a.id,
+            event=FeedbackEvent.DISMISS,
+            value=0,
+            created_at=now - timedelta(hours=3),
+        ),
+    ]
+    before = [e.model_copy() for e in events]
+
+    first = summarise_feedback(events, {a.id: a}, now=now)
+    second = summarise_feedback(events, {a.id: a}, now=now)
+
+    assert isinstance(first, FeedbackSummary)
+    assert first == second
+    assert events == before
+    assert summarise_feedback([], {}, now=now) != first

@@ -25,6 +25,18 @@ FROM builder AS playwright-builder
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev --no-editable --group playwright
 
+# The reader client (PWA), built from client/ alone (#178). This stage runs
+# third-party build code, so it gets nothing but what it copies: no credential and
+# nothing outside client/. --ignore-scripts stops packages running install hooks.
+# The image must equal CLIENT_NODE_IMAGE in the Makefile, tag and digest; a test
+# checks they match.
+FROM node:24.22.2-bookworm-slim@sha256:01d566e8d94d8c619591d78652babfccd3c6992a3dffa9ed5ab39e11cf6c70e9 AS client-builder
+WORKDIR /client
+COPY client/package.json client/package-lock.json ./
+RUN npm ci --ignore-scripts
+COPY client/ ./
+RUN npm run build
+
 # Shared by both final targets: the unprivileged user, config and environment.
 FROM ${PYTHON_IMAGE} AS base
 RUN useradd --create-home --uid 10001 newsfeed \
@@ -52,4 +64,7 @@ USER newsfeed
 # it must stay slim.
 FROM base AS runtime
 COPY --from=builder /app/.venv /app/.venv
+# The built client, served by `newsfeed serve` (#175).
+COPY --from=client-builder /client/dist /app/client
+ENV NEWSFEED_CLIENT_DIR=/app/client
 USER newsfeed
