@@ -49,6 +49,84 @@ describe("startReading after a short reading", () => {
   });
 });
 
+// Leaving the reader is a full page load: no unmount runs and the queue write may never finish,
+// so the reading is handed to the next page through localStorage.
+describe("a reading that outlives its page", () => {
+  const PENDING = "newsfeed-pending-reads";
+
+  beforeEach(() => {
+    vi.resetModules();
+    vi.useFakeTimers();
+    setVisibility("visible", false);
+    localStorage.clear();
+    for (const m of ["error", "warn", "log", "info"] as const) {
+      vi.spyOn(console, m).mockImplementation(() => {});
+    }
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it("pagehide alone ends the reading and sends it", async () => {
+    const enqueue = vi.fn(async () => ({}));
+    vi.doMock("./queue", () => ({ enqueueFeedback: enqueue }));
+    const { startReading } = await import("./reading");
+    startReading(ITEM);
+    await vi.advanceTimersByTimeAsync(9_000);
+    window.dispatchEvent(new Event("pagehide"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(enqueue.mock.calls).toEqual([[ITEM.id, "read", 9]]);
+    expect(localStorage.getItem(PENDING)).toBeNull();
+  });
+
+  it("a queue write the unload cut off is queued by the next page, once", async () => {
+    // This page's queue write never finishes, as when the page unloads mid-write.
+    const stuck = vi.fn(() => new Promise<never>(() => {}));
+    vi.doMock("./queue", () => ({ enqueueFeedback: stuck }));
+    const first = await import("./reading");
+    first.startReading(ITEM);
+    await vi.advanceTimersByTimeAsync(8_000);
+    window.dispatchEvent(new Event("pagehide"));
+    expect(localStorage.getItem(PENDING)).not.toBeNull();
+
+    // The next page.
+    vi.resetModules();
+    const enqueue = vi.fn(async () => ({}));
+    vi.doMock("./queue", () => ({ enqueueFeedback: enqueue }));
+    const next = await import("./reading");
+    await next.movePendingReads();
+    expect(enqueue.mock.calls).toEqual([[ITEM.id, "read", 8]]);
+    expect(localStorage.getItem(PENDING)).toBeNull();
+    await next.movePendingReads();
+    expect(enqueue).toHaveBeenCalledTimes(1);
+  });
+
+  it("a pending reading the queue refuses stays for the next start", async () => {
+    localStorage.setItem(PENDING, JSON.stringify({ o1: { article_id: ITEM.id, value: 12 } }));
+    const failing = vi.fn(async () => {
+      throw new Error("invented storage failure");
+    });
+    vi.doMock("./queue", () => ({ enqueueFeedback: failing }));
+    const { movePendingReads } = await import("./reading");
+    await movePendingReads();
+    expect(failing).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(localStorage.getItem(PENDING)!)).toEqual({
+      o1: { article_id: ITEM.id, value: 12 },
+    });
+  });
+
+  it("drops a malformed pending entry without queuing it", async () => {
+    localStorage.setItem(PENDING, JSON.stringify({ o1: { article_id: 7, value: "x" } }));
+    const enqueue = vi.fn(async () => ({}));
+    vi.doMock("./queue", () => ({ enqueueFeedback: enqueue }));
+    const { movePendingReads } = await import("./reading");
+    await movePendingReads();
+    expect(enqueue).not.toHaveBeenCalled();
+    expect(localStorage.getItem(PENDING)).toBeNull();
+  });
+});
+
 describe("setLiked with the reader's text", () => {
   beforeEach(() => {
     for (const m of ["error", "warn", "log", "info"] as const) {
