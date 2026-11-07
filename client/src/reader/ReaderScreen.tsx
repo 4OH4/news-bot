@@ -7,7 +7,7 @@ import { findLiked, isLiked, setLiked } from "../feedback/liked";
 import { startReading } from "../feedback/reading";
 import { getArticleHtml, loadFeed, putArticleHtml } from "../store/db";
 import { cleanArticleHtml } from "./sanitize";
-import { openedFromList } from "./scroll";
+import { listOrigin } from "./scroll";
 import { currentTheme, toggleTheme, type Theme } from "./theme";
 
 const WORDS_PER_MINUTE = 200;
@@ -37,7 +37,7 @@ type Body =
 
 /** Goes back in history when the list is the previous page, so its scroll position returns. */
 function goBack(event: MouseEvent) {
-  if (!openedFromList()) return;
+  if (listOrigin() === null) return;
   event.preventDefault();
   history.back();
 }
@@ -100,6 +100,7 @@ export function ReaderScreen() {
   const [item, setItem] = useState<FeedItem | null>(null);
   const [body, setBody] = useState<Body>({ state: "loading" });
   const [label, setLabel] = useState(() => themeLabel(currentTheme()));
+  const [fromLiked] = useState(() => listOrigin() === "/liked");
   // null until the stored like state is known, so the button never shows a wrong state.
   const [liked, setLikedState] = useState<boolean | null>(null);
   const likedRef = useRef(false);
@@ -181,8 +182,8 @@ export function ReaderScreen() {
   return (
     <main class="reader">
       <nav class="reader-bar">
-        <a href="/" onClick={goBack}>
-          Back to the feed
+        <a href={fromLiked ? "/liked" : "/"} onClick={goBack}>
+          {fromLiked ? "Back to Liked" : "Back to the feed"}
         </a>
         <button type="button" onClick={() => setLabel(themeLabel(toggleTheme()))}>
           {label}

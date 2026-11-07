@@ -35,3 +35,25 @@ export function toggleTheme(): Theme {
   }
   return next;
 }
+
+export type ThemeChoice = Theme | "system";
+
+/** The stored choice, or "system" when the app follows the phone's setting. */
+export function themeChoice(): ThemeChoice {
+  return readStored() ?? "system";
+}
+
+/** Sets the theme choice; "system" clears the stored key and the `data-theme` attribute. */
+export function setThemeChoice(choice: ThemeChoice): void {
+  if (choice === "system") {
+    delete document.documentElement.dataset.theme;
+  } else {
+    document.documentElement.dataset.theme = choice;
+  }
+  try {
+    if (choice === "system") localStorage.removeItem(KEY);
+    else localStorage.setItem(KEY, choice);
+  } catch {
+    // Storage can be blocked; the choice then lasts until reload.
+  }
+}

@@ -1,7 +1,14 @@
 import { useEffect, useState } from "preact/hooks";
 import { signOut } from "../auth/signout";
 import type { FeedItem } from "../feed/types";
+import { setThemeChoice, themeChoice, type ThemeChoice } from "../reader/theme";
 import { listMuted, subscribeHidden, unmuteSource } from "../feedback/hidden";
+
+const THEME_OPTIONS: [ThemeChoice, string][] = [
+  ["system", "Follow system"],
+  ["light", "Light"],
+  ["dark", "Dark"],
+];
 
 /**
  * Settings at /settings (#217): muted sources with Unmute, Sign out (through #184's guard, so
@@ -9,6 +16,7 @@ import { listMuted, subscribeHidden, unmuteSource } from "../feedback/hidden";
  */
 export function SettingsScreen() {
   const [muted, setMuted] = useState<FeedItem[] | null>(null);
+  const [theme, setTheme] = useState<ThemeChoice>(themeChoice);
 
   useEffect(() => {
     const load = () =>
@@ -50,6 +58,24 @@ export function SettingsScreen() {
           ))}
         </ul>
       )}
+      <h2>Theme</h2>
+      <div role="radiogroup" aria-label="Theme">
+        {THEME_OPTIONS.map(([value, label]) => (
+          <label key={value}>
+            <input
+              type="radio"
+              name="theme"
+              value={value}
+              checked={theme === value}
+              onChange={() => {
+                setThemeChoice(value);
+                setTheme(value);
+              }}
+            />{" "}
+            {label}
+          </label>
+        ))}
+      </div>
       <h2>Account</h2>
       <button type="button" onClick={() => void signOut()}>
         Sign out

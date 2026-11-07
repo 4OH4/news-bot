@@ -1,11 +1,19 @@
 const KEY = "newsfeed-list-scroll";
+const STATE_KEY = "newsfeedListOrigin";
+
+export type ListPath = "/" | "/liked";
+
+function currentList(): ListPath {
+  return location.pathname.replace(/\/+$/, "") === "/liked" ? "/liked" : "/";
+}
 const FROM_LIST = "newsfeed-from-list";
 
 /** Remembers the list's scroll position when the page is left for an article. */
 export function saveListScroll(): void {
   try {
-    sessionStorage.setItem(KEY, String(window.scrollY));
-    sessionStorage.setItem(FROM_LIST, "1");
+    const list = currentList();
+    sessionStorage.setItem(`${KEY}:${list}`, String(window.scrollY));
+    sessionStorage.setItem(FROM_LIST, list);
   } catch {
     // Not essential.
   }
@@ -19,7 +27,7 @@ export function restoreListScroll(): void {
   if (nav?.type !== "back_forward") return;
   let target = 0;
   try {
-    target = Number(sessionStorage.getItem(KEY) ?? 0);
+    target = Number(sessionStorage.getItem(`${KEY}:${currentList()}`) ?? 0);
   } catch {
     return;
   }
@@ -34,12 +42,24 @@ export function restoreListScroll(): void {
   requestAnimationFrame(step);
 }
 
-/** True when this tab opened the article from the list, so history.back() returns to it.
- * The referrer cannot tell: the app sends Referrer-Policy: no-referrer. */
-export function openedFromList(): boolean {
+/** The list this article was opened from, or null. The referrer cannot tell: the app sends
+ * Referrer-Policy: no-referrer. The first call moves the session flag into this history entry's
+ * state, so it is used once and a later direct open in the same tab does not inherit it. */
+export function listOrigin(): ListPath | null {
+  let origin: unknown = null;
   try {
-    return sessionStorage.getItem(FROM_LIST) === "1" && history.length > 1;
+    const state = history.state as Record<string, unknown> | null;
+    origin = state?.[STATE_KEY] ?? null;
+    if (origin === null) {
+      origin = sessionStorage.getItem(FROM_LIST);
+      if (origin === "/" || origin === "/liked") {
+        history.replaceState({ ...state, [STATE_KEY]: origin }, "");
+      }
+    }
+    sessionStorage.removeItem(FROM_LIST);
   } catch {
-    return false;
+    return null;
   }
+  if (history.length <= 1) return null;
+  return origin === "/" || origin === "/liked" ? origin : null;
 }
