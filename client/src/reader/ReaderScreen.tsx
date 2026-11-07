@@ -104,7 +104,6 @@ export function ReaderScreen() {
   const [liked, setLikedState] = useState<boolean | null>(null);
   const likedRef = useRef(false);
   const rawHtml = useRef<string | undefined>(undefined);
-  const likeChain = useRef<Promise<void>>(Promise.resolve());
   const bodyRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -159,10 +158,10 @@ export function ReaderScreen() {
     const next = !liked;
     likedRef.current = next;
     setLikedState(next);
-    // One at a time and in order, so a quick like then unlike are queued in the order pressed.
-    likeChain.current = likeChain.current
-      .then(() => setLiked(item, next, rawHtml.current))
-      .catch((err: unknown) => console.error("could not save like", { article_id: item.id, err }));
+    // Inside the tap, as leaving may follow at once; liked.ts keeps quick taps in order.
+    setLiked(item, next, rawHtml.current).catch((err: unknown) =>
+      console.error("could not save like", { article_id: item.id, err }),
+    );
   }
 
   // Broken images hide. `error` does not bubble, so listen in the capture phase.

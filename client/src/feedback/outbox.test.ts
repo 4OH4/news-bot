@@ -2,6 +2,7 @@
 // event, before its IndexedDB write starts, so a page that closes straight after a tap can't lose
 // it. On the next start `moveOutbox` queues what is left, keeping each event's own id and time.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { FeedbackPayload } from "./event";
 import {
   installFakeApi,
   installStorage,
@@ -44,7 +45,7 @@ async function load() {
 
 /** An invented event as the tap would have built it. */
 function payload(id: string, articleId: string, createdAt: string, event = "like", value = 1) {
-  return { id, article_id: articleId, event, value, created_at: createdAt } as const;
+  return { id, article_id: articleId, event, value, created_at: createdAt } as FeedbackPayload;
 }
 
 const ID1 = "1".repeat(32);

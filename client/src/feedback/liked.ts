@@ -8,24 +8,43 @@ import { openFeedbackDb, type StoredFeedItem } from "./db";
 import { enqueueFeedback } from "./queue";
 
 /**
- * Likes or unlikes `item`. Liking also keeps its stored text past pruning, storing `html` (what
- * the reader shows) when no text is stored yet. Unliking drops the keep mark but leaves the text
- * for normal pruning. The latest event wins on the server.
+ * The `liked` store and kept-text writes, one at a time in the order tapped, so a quick Like then
+ * Unlike lands on the phone as not liked without the caller chaining.
  */
-export async function setLiked(item: FeedItem, liked: boolean, html?: string): Promise<void> {
-  await enqueueFeedback(item.id, "like", liked ? 1 : 0);
+let stateWrites: Promise<void> = Promise.resolve();
+
+/**
+ * Likes or unlikes `item`. Call it synchronously inside the tap: the event is queued (and so in
+ * the outbox) before anything is awaited. Liking also keeps its stored text past pruning,
+ * storing `html` (what the reader shows) when no text is stored yet. Unliking drops the keep
+ * mark, on the text stored under the id it was liked as too, but leaves the text for normal
+ * pruning. The latest event wins on the server.
+ */
+export function setLiked(item: FeedItem, liked: boolean, html?: string): Promise<void> {
+  const queued = enqueueFeedback(item.id, "like", liked ? 1 : 0);
+  const state = stateWrites.then(() => writeLiked(item, liked, html));
+  stateWrites = state.catch(() => {});
+  return Promise.all([queued, state]).then(() => undefined);
+}
+
+async function writeLiked(item: FeedItem, liked: boolean, html?: string): Promise<void> {
   const db = await openFeedbackDb();
+  const key = storyKey(item);
+  const ids = [item.id];
   if (liked) {
     const stored = item as unknown as StoredFeedItem;
-    await db.put("liked", { key: storyKey(item), item: stored, at: new Date().toISOString() });
+    await db.put("liked", { key, item: stored, at: new Date().toISOString() });
   } else {
-    await db.delete("liked", storyKey(item));
+    // A later feed may have re-keyed the story since the like; its old id's text was kept too.
+    const row = await db.get("liked", key);
+    if (row && row.item.id !== item.id) ids.push(row.item.id);
+    await db.delete("liked", key);
   }
   try {
     if (liked && html !== undefined && (await getArticleHtml(item.id)) === null) {
       await putArticleHtml(item.id, html, { keep: true });
     } else {
-      await markKept(item.id, liked);
+      for (const id of ids) await markKept(id, liked);
     }
   } catch (err) {
     // The like itself is queued and recorded; only the offline copy is missing.

@@ -3,7 +3,6 @@ import { NotAllowed } from "./auth/NotAllowed";
 import { ReconnectBanner } from "./auth/ReconnectBanner";
 import { useSessionStatus } from "./auth/useSessionStatus";
 import { FeedScreen } from "./feed/FeedScreen";
-import { movePendingReads } from "./feedback/reading";
 import { LikedScreen } from "./liked/LikedScreen";
 import "./liked/liked.css";
 import { ReaderScreen } from "./reader/ReaderScreen";
@@ -23,10 +22,6 @@ function Screen({ path }: { path: string }) {
 export function App() {
   const status = useSessionStatus();
   const isArticle = location.pathname.startsWith("/article/");
-  // A reading the last page finished as it unloaded is queued here (see feedback/reading.ts).
-  useEffect(() => {
-    void movePendingReads();
-  }, []);
   useEffect(() => {
     if (isArticle) return;
     restoreListScroll();

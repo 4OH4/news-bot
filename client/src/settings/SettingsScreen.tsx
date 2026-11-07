@@ -22,9 +22,9 @@ export function SettingsScreen() {
     return subscribeHidden(() => void load());
   }, []);
 
-  const unmute = (sourceId: string) => {
-    unmuteSource(sourceId).catch((err: unknown) =>
-      console.error("could not unmute", { source_id: sourceId, err }),
+  const unmute = (item: FeedItem) => {
+    unmuteSource(item).catch((err: unknown) =>
+      console.error("could not unmute", { source_id: item.source_id, err }),
     );
   };
 
@@ -42,7 +42,7 @@ export function SettingsScreen() {
               <button
                 type="button"
                 aria-label={`Unmute ${item.domain}`}
-                onClick={() => unmute(item.source_id)}
+                onClick={() => unmute(item)}
               >
                 Unmute
               </button>
