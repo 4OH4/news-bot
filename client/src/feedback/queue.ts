@@ -7,6 +7,7 @@
 import { apiFetch } from "../api/client";
 import { openFeedbackDb, type FeedbackDb, type QueuedEvent } from "./db";
 import { buildEvent, toPayload, type FeedbackEventName, type FeedbackPayload } from "./event";
+import { removeOutbox, writeOutbox } from "./outbox";
 
 /** Answers a retry could fix: the entry stays and the flush stops. */
 const RETRYABLE = new Set([401, 403, 408, 429]);
@@ -32,7 +33,8 @@ function sendTimeout(): AbortSignal {
 }
 
 /**
- * Adds an event to the queue, resolving once it is stored, then starts a send. The write happens
+ * Adds an event to the queue, resolving once it is stored, then starts a send. The outbox copy
+ * (#254) is written before anything is awaited, so call this inside the tap. The write happens
  * at once, even while a sign-out is asking: the sign-out deletes only the events it counted.
  */
 export async function enqueueFeedback(
@@ -41,13 +43,28 @@ export async function enqueueFeedback(
   value?: number,
 ): Promise<FeedbackPayload> {
   const payload = buildEvent(articleId, event, value);
-  const db = await openFeedbackDb();
-  const tx = db.transaction("queue", "readwrite");
-  const last = await tx.store.index("seq").openCursor(null, "prev");
-  await tx.store.add({ ...payload, seq: (last?.value.seq ?? 0) + 1 });
-  await tx.done;
+  writeOutbox(payload);
+  await storeEvent(payload);
+  removeOutbox(payload.id);
   void flushQueue().catch((err: unknown) => console.error("feedback flush failed", err));
   return payload;
+}
+
+/**
+ * Stores `payload` at the end of the queue as given, resolving once committed. An id already
+ * queued counts as stored, so an event moved from the outbox is never queued twice.
+ */
+export async function storeEvent(payload: FeedbackPayload): Promise<void> {
+  const tx = (await openFeedbackDb()).transaction("queue", "readwrite");
+  tx.done.catch(() => {}); // Awaited below; this keeps the abort after a failed add handled.
+  try {
+    const last = await tx.store.index("seq").openCursor(null, "prev");
+    await tx.store.add({ ...payload, seq: (last?.value.seq ?? 0) + 1 });
+    await tx.done;
+  } catch (err) {
+    // `add` fails with ConstraintError when the id is already queued.
+    if (!(err instanceof DOMException && err.name === "ConstraintError")) throw err;
+  }
 }
 
 let running: Promise<void> | null = null;

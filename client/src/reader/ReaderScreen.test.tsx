@@ -19,6 +19,7 @@ import {
   settle,
   type FakeRouter,
 } from "../../test/test-env";
+import { outboxEntries } from "../feedback/test-env";
 
 const A = makeItem("aa11bb22cc33dd44", {
   title: "Invented headline about canal boats",
@@ -159,6 +160,36 @@ describe("ReaderScreen like button", () => {
       ]),
     );
     await vi.waitFor(() => expect(s.queuedCount()).resolves.toBe(0));
+  });
+
+  // #254: leaving the reader is a full page load that can follow the tap at once.
+  it("writes the like event to the outbox inside the tap", async () => {
+    await openWithStoredArticle({ online: false });
+    localStorage.clear();
+
+    likeButton()!.click();
+
+    expect(outboxEntries()).toEqual([
+      expect.objectContaining({ article_id: A.id, event: "like", value: 1 }),
+    ]);
+  });
+
+  it("Like then Unlike tapped quickly shows not liked and queues like 1 then like 0", async () => {
+    const { s } = await openWithStoredArticle({ online: false });
+    const liked = await import("../feedback/liked");
+
+    likeButton()!.click();
+    await vi.waitFor(() => expect(likeButton()!.getAttribute("aria-pressed")).toBe("true"));
+    likeButton()!.click();
+
+    await vi.waitFor(async () =>
+      expect((await queuedEvents(s)).filter((e) => e.event === "like")).toHaveLength(2),
+    );
+    await settle();
+    expect(likeButton()!.getAttribute("aria-pressed")).toBe("false");
+    expect(await liked.isLiked(A)).toBe(false);
+    const likes = (await queuedEvents(s)).filter((e) => e.event === "like");
+    expect(likes.map((e) => e.value)).toEqual([1, 0]);
   });
 
   it("liking from the reader keeps the article's text", async () => {

@@ -13,6 +13,7 @@ import {
   settle,
   type Stores,
 } from "../../test/test-env";
+import { installStorage, outboxEntries, throwingStorage } from "./test-env";
 
 const A = makeItem("a1a1a1a1a1a1a1a1");
 const B = makeItem("b2b2b2b2b2b2b2b2");
@@ -103,6 +104,109 @@ describe("setLiked", () => {
     expect((await articleRecord(A.id))?.keep).toBe(false);
     // The text itself stays until pruning would normally drop it.
     expect(await s.getArticleHtml(A.id)).toBe(bodyFor(A.id, "stored"));
+  });
+});
+
+/** Holds the first `put` into the `liked` store until released (as in hidden.test.ts). */
+function holdFirstLikedPut(): { release: () => void } {
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  let held = false;
+  vi.doMock("./db", async (importOriginal) => {
+    const real = await importOriginal<typeof import("./db")>();
+    const wrap = (db: object): unknown =>
+      new Proxy(db, {
+        get(target, prop) {
+          const value: unknown = Reflect.get(target, prop, target);
+          if (typeof value !== "function") return value;
+          const fn = value as (...args: unknown[]) => unknown;
+          if (prop !== "put") return fn.bind(target);
+          return async (store: unknown, ...rest: unknown[]) => {
+            if (store === "liked" && !held) {
+              held = true;
+              await gate;
+            }
+            return fn.call(target, store, ...rest);
+          };
+        },
+      });
+    return { ...real, openFeedbackDb: () => real.openFeedbackDb().then(wrap) };
+  });
+  return { release };
+}
+
+// #254: the like event is written to the outbox inside the tap, and the phone's like state lands
+// in the order tapped without the caller chaining.
+describe("setLiked and a page that closes straight after the tap", () => {
+  afterEach(() => {
+    vi.doUnmock("./db");
+  });
+
+  it("writes the like to the outbox synchronously, inside the call", async () => {
+    installRouter({ online: false });
+    const storage = installStorage();
+    const { liked } = await load();
+
+    const done = liked.setLiked(A, true);
+    expect(outboxEntries(storage)).toEqual([
+      expect.objectContaining({ article_id: A.id, event: "like", value: 1 }),
+    ]);
+    await done;
+  });
+
+  it("Like then Unlike tapped quickly ends not liked, with like 1 then like 0 queued in order", async () => {
+    installRouter({ online: false });
+    installStorage();
+    // The Like's `liked` write resolves late, so a wrong order would end liked (REVIEW.md).
+    const hold = holdFirstLikedPut();
+    const { s, liked } = await load();
+
+    const first = liked.setLiked(A, true);
+    const second = liked.setLiked(A, false);
+    // Time for the Unlike's delete to land first, if nothing orders it after the Like's write.
+    await settle();
+    hold.release();
+    await Promise.all([first, second]);
+    await settle();
+
+    expect(await liked.isLiked(A)).toBe(false);
+    const queued = likeEvents(await queuedEvents(s));
+    expect(queued.map((e) => e.value)).toEqual([1, 0]);
+    expect(Date.parse(String(queued[1]!.created_at))).toBeGreaterThanOrEqual(
+      Date.parse(String(queued[0]!.created_at)),
+    );
+  });
+
+  it("with localStorage throwing on every call, a like is still queued and posted", async () => {
+    const router = installRouter({ online: true });
+    installStorage(throwingStorage());
+    const { s, liked } = await load();
+
+    await liked.setLiked(A, true);
+
+    await vi.waitFor(() =>
+      expect(likeEvents(feedbackPosts(router))).toEqual([
+        expect.objectContaining({ article_id: A.id, event: "like", value: 1 }),
+      ]),
+    );
+    await vi.waitFor(async () => expect(await s.queuedCount()).toBe(0));
+    expect(await liked.isLiked(A)).toBe(true);
+  });
+
+  it("unliking a story re-keyed since the like drops the keep mark on both ids' text", async () => {
+    installRouter({ online: false });
+    const { s, liked } = await load();
+    const rekeyed = makeItem("f6f6f6f6f6f6f6f6", { story_id: A.story_id! });
+    await s.putArticleHtml(A.id, bodyFor(A.id, "stored"));
+    await liked.setLiked(A, true);
+    // A later feed gives the story a new id; the reader stores its text kept, as it is liked.
+    await s.putArticleHtml(rekeyed.id, bodyFor(rekeyed.id, "stored"), { keep: true });
+
+    await liked.setLiked(rekeyed, false);
+
+    expect(await liked.isLiked(rekeyed)).toBe(false);
+    expect((await articleRecord(A.id))?.keep).toBe(false);
+    expect((await articleRecord(rekeyed.id))?.keep).toBe(false);
   });
 });
 

@@ -7,7 +7,9 @@ import {
   makeItem,
   queuedEvents,
   type Stores,
+  settle,
 } from "../../test/test-env";
+import { installStorage, outboxEntries } from "./test-env";
 
 const A = makeItem("a1a1a1a1a1a1a1a1", { story_id: "story-invented-a" });
 const B = makeItem("b2b2b2b2b2b2b2b2", { source_id: "invented-other", domain: "other.example.test" });
@@ -84,7 +86,7 @@ describe("muteSource, unmuteSource and listMuted", () => {
     for (const item of later) expect(await hidden.isHidden(item)).toBe(true);
     expect(await hidden.isHidden(B)).toBe(false);
 
-    await hidden.unmuteSource(A.source_id);
+    await hidden.unmuteSource(A);
     for (const item of [A, ...later]) expect(await hidden.isHidden(item)).toBe(false);
     expect(await hidden.listMuted()).toEqual([]);
     const queued = await queuedEvents(s);
@@ -98,8 +100,9 @@ describe("muteSource, unmuteSource and listMuted", () => {
     const { s, hidden } = await load();
 
     await hidden.muteSource(A);
-    // Only the source id is known to Settings; the item is long gone from the feed.
-    await hidden.unmuteSource(A.source_id);
+    // Settings passes the stored item (#254), which is long gone from the feed.
+    const [stored] = await hidden.listMuted();
+    await hidden.unmuteSource(stored!);
 
     const last = (await queuedEvents(s)).at(-1)!;
     expect(last).toMatchObject({ article_id: A.id, event: "mute_source", value: 0 });
@@ -129,7 +132,7 @@ describe("subscribeHidden", () => {
     await hidden.muteSource(A);
     await vi.waitFor(() => expect(listener).toHaveBeenCalled());
     const afterMute = listener.mock.calls.length;
-    await hidden.unmuteSource(A.source_id);
+    await hidden.unmuteSource(A);
     await vi.waitFor(() => expect(listener.mock.calls.length).toBeGreaterThan(afterMute));
 
     unsubscribe();
@@ -137,6 +140,108 @@ describe("subscribeHidden", () => {
     await hidden.muteSource(B);
     await new Promise((r) => setTimeout(r, 20));
     expect(listener.mock.calls.length).toBe(before);
+  });
+});
+
+/**
+ * Holds the first `put` into `storeName` until released, so a write that should come after it
+ * can be seen landing first (REVIEW.md: "a step that resolves later").
+ */
+function holdFirstPut(storeName: string): { release: () => void } {
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  let held = false;
+  vi.doMock("./db", async (importOriginal) => {
+    const real = await importOriginal<typeof import("./db")>();
+    const wrapped = new WeakMap<object, unknown>();
+    const wrap = (db: object): unknown => {
+      if (!wrapped.has(db)) {
+        const proxy = new Proxy(db, {
+          get(target, prop) {
+            const value: unknown = Reflect.get(target, prop, target);
+            if (typeof value !== "function") return value;
+            const fn = value as (...args: unknown[]) => unknown;
+            if (prop !== "put") return fn.bind(target);
+            return async (store: unknown, ...rest: unknown[]) => {
+              if (store === storeName && !held) {
+                held = true;
+                await gate;
+              }
+              return fn.call(target, store, ...rest);
+            };
+          },
+        });
+        wrapped.set(db, proxy);
+      }
+      return wrapped.get(db);
+    };
+    return { ...real, openFeedbackDb: () => real.openFeedbackDb().then(wrap) };
+  });
+  return { release };
+}
+
+// #254: each change writes its event to the outbox inside the call, and the phone's state writes
+// keep their order inside the module, so callers don't chain.
+describe("a page that closes straight after the tap", () => {
+  beforeEach(() => {
+    installStorage();
+  });
+
+  afterEach(() => {
+    vi.doUnmock("./db");
+  });
+
+  it.each([
+    ["dismissStory", "dismiss", 1],
+    ["undoDismiss", "dismiss", 0],
+    ["muteSource", "mute_source", 1],
+    ["unmuteSource", "mute_source", 0],
+  ] as const)("%s writes its event to the outbox synchronously", async (fn, event, value) => {
+    const { hidden } = await load();
+    if (value === 0) {
+      await (event === "dismiss" ? hidden.dismissStory(A) : hidden.muteSource(A));
+      await settle();
+    }
+    localStorage.clear();
+
+    const done = hidden[fn](A);
+    expect(outboxEntries()).toEqual([expect.objectContaining({ article_id: A.id, event, value })]);
+    await done;
+  });
+
+  it("Undo tapped at once after a Dismiss whose store write resolves late leaves the story shown", async () => {
+    const hold = holdFirstPut("dismissed");
+    const { s, hidden } = await load();
+
+    const dismissing = hidden.dismissStory(A);
+    const undoing = hidden.undoDismiss(A);
+    // Time for the Undo's delete to land first, if nothing orders it after the dismiss's write.
+    await settle();
+    hold.release();
+    await Promise.all([dismissing, undoing]);
+    await settle();
+
+    expect(await hidden.isHidden(A)).toBe(false);
+    const queued = await queuedEvents(s);
+    expect(queued.map((e) => [e.event, e.value])).toEqual([
+      ["dismiss", 1],
+      ["dismiss", 0],
+    ]);
+  });
+
+  it("unmuteSource takes the stored item: its id is the event's article_id, its source the key", async () => {
+    const { s, hidden } = await load();
+    await hidden.muteSource(A);
+    const sameSource = makeItem("d9d9d9d9d9d9d9d9", { story_id: "story-invented-d" });
+
+    await hidden.unmuteSource(A);
+
+    expect(await hidden.isHidden(sameSource)).toBe(false);
+    expect((await queuedEvents(s)).at(-1)).toMatchObject({
+      article_id: A.id,
+      event: "mute_source",
+      value: 0,
+    });
   });
 });
 
@@ -151,7 +256,7 @@ describe("the queue is the only way out", () => {
     await hidden.dismissStory(A);
     await hidden.undoDismiss(A);
     await hidden.muteSource(B);
-    await hidden.unmuteSource(B.source_id);
+    await hidden.unmuteSource(B);
 
     const calls = enqueueFeedback.mock.calls as unknown[][];
     expect(calls.map((c) => [c[0], c[1], c[2] ?? null])).toEqual([

@@ -44,8 +44,6 @@ export function FeedItemCard({ item }: { item: FeedItem }) {
   const [view, setView] = useState<View>("pending");
   const [seen, setSeen] = useState(false);
   const checks = useRef(0);
-  // The action an Undo must follow, so its store write can't land before the action's.
-  const acting = useRef<Promise<void>>(Promise.resolve());
 
   useEffect(() => {
     const check = () => {
@@ -82,8 +80,8 @@ export function FeedItemCard({ item }: { item: FeedItem }) {
 
   const act = (kind: "dismissed" | "muted") => {
     setView(kind);
+    // Inside the tap, as a full page load may follow at once; hidden.ts keeps the writes in order.
     const done = kind === "dismissed" ? dismissStory(item) : muteSource(item);
-    acting.current = done.catch(() => {});
     done.catch((err: unknown) =>
       console.error(`could not record ${kind}`, { article_id: item.id, err }),
     );
@@ -91,9 +89,7 @@ export function FeedItemCard({ item }: { item: FeedItem }) {
 
   const undo = () => {
     const kind = view;
-    const done = acting.current.then(() =>
-      kind === "muted" ? unmuteSource(item.source_id) : undoDismiss(item),
-    );
+    const done = kind === "muted" ? unmuteSource(item) : undoDismiss(item);
     setView("shown");
     done.catch((err: unknown) => console.error("could not undo", { article_id: item.id, err }));
   };

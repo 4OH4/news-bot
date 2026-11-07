@@ -1,6 +1,17 @@
 import { IDBDatabase as FakeIDBDatabase } from "fake-indexeddb";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { answerBy, fakeLocation, installFakeApi, loadFeedback, settle, type Answer } from "./test-env";
+import {
+  answerBy,
+  fakeLocation,
+  installFakeApi,
+  installStorage,
+  loadFeedback,
+  OUTBOX_PREFIX,
+  outboxEntries,
+  settle,
+  throwingStorage,
+  type Answer,
+} from "./test-env";
 
 const A = "a0a0a0a0a0a0a0a1";
 const B = "b0b0b0b0b0b0b0b2";
@@ -57,6 +68,58 @@ describe("enqueueFeedback", () => {
     const event = await f.enqueueFeedback(A, "like", 1);
     await vi.waitFor(() => expect(api.posts.map((p) => p.id)).toEqual([event.id]));
     await vi.waitFor(async () => expect(await f.queuedCount()).toBe(0));
+  });
+});
+
+// #254: the outbox entry is the copy that survives a page closing straight after the tap.
+describe("enqueueFeedback and the outbox", () => {
+  it("writes the outbox entry before its first await, and removes it once the queue has the event", async () => {
+    const f = await loadFeedback();
+    const storage = installStorage();
+    installFakeApi("offline");
+
+    const pending = f.enqueueFeedback(A, "like", 1);
+    // Read synchronously, in the same turn as the call: nothing has been awaited yet.
+    const entries = outboxEntries(storage);
+    expect(entries).toEqual([
+      expect.objectContaining({ article_id: A, event: "like", value: 1 }),
+    ]);
+
+    const event = await pending;
+    expect(entries[0]).toEqual(event);
+    expect(storage.getItem(`${OUTBOX_PREFIX}${event.id}`)).toBeNull();
+    expect(await f.queuedCount()).toBe(1);
+  });
+
+  it("keeps the outbox entry when the queue write fails", async () => {
+    const f = await loadFeedback();
+    const storage = installStorage();
+    installFakeApi("offline");
+    vi.stubGlobal("indexedDB", {
+      open() {
+        throw new DOMException("invented: no database", "UnknownError");
+      },
+    });
+
+    await expect(f.enqueueFeedback(A, "dismiss", 1)).rejects.toBeDefined();
+
+    expect(outboxEntries(storage)).toEqual([
+      expect.objectContaining({ article_id: A, event: "dismiss", value: 1 }),
+    ]);
+  });
+
+  it("with localStorage throwing on every call, still queues and posts the event, and logs", async () => {
+    const f = await loadFeedback();
+    installStorage(throwingStorage());
+    const api = installFakeApi(204);
+
+    const event = await f.enqueueFeedback(A, "like", 1);
+
+    await vi.waitFor(() =>
+      expect(api.posts.filter((p) => p.id === event.id).map((p) => p.body)).toEqual([event]),
+    );
+    await vi.waitFor(async () => expect(await f.queuedCount()).toBe(0));
+    expect(logged.some((spy) => spy.mock.calls.length > 0)).toBe(true);
   });
 });
 

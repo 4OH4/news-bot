@@ -15,6 +15,7 @@ import {
   settle,
   type Stores,
 } from "../../test/test-env";
+import { outboxEntries } from "../feedback/test-env";
 
 const GONE = makeItem("a0b1c2d3e4f5a6b7", {
   title: "Invented story about rooftop beehives",
@@ -77,6 +78,21 @@ describe("SettingsScreen", () => {
     expect(await hidden.isHidden(later)).toBe(false);
     const last = (await queuedEvents(s)).at(-1)!;
     expect(last).toMatchObject({ article_id: GONE.id, event: "mute_source", value: 0 });
+  });
+
+  // #254: a full page load can follow the tap at once.
+  it("Unmute writes mute_source 0 with the stored item's id to the outbox inside the tap", async () => {
+    await loadWithMutes();
+    await showSettings();
+    await vi.waitFor(() => expect(unmuteButtonFor(root, GONE.domain)).toBeDefined());
+    await settle();
+    localStorage.clear();
+
+    unmuteButtonFor(root, GONE.domain)!.click();
+
+    expect(outboxEntries()).toEqual([
+      expect.objectContaining({ article_id: GONE.id, event: "mute_source", value: 0 }),
+    ]);
   });
 
   it("with queued feedback, Sign out shows #184's warning and clears nothing before a choice", async () => {

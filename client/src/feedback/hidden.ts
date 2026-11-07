@@ -4,7 +4,7 @@
  * kept by `storyKey`, so it stays hidden when a later feed re-keys it.
  */
 import { storyKey, type FeedItem } from "../feed/types";
-import { openFeedbackDb, type StoredFeedItem } from "./db";
+import { openFeedbackDb, type FeedbackDb, type StoredFeedItem } from "./db";
 import { enqueueFeedback } from "./queue";
 
 const listeners = new Set<() => void>();
@@ -23,40 +23,49 @@ function stored(item: FeedItem): StoredFeedItem {
   return item as unknown as StoredFeedItem;
 }
 
-export async function dismissStory(item: FeedItem): Promise<void> {
-  await enqueueFeedback(item.id, "dismiss", 1);
-  const db = await openFeedbackDb();
-  const at = new Date().toISOString();
-  await db.put("dismissed", { key: storyKey(item), item: stored(item), at });
-  changed();
+/** The `dismissed` and `muted` writes, in the order tapped, so an Undo can't land first. */
+let stateWrites: Promise<void> = Promise.resolve();
+
+/**
+ * Queues the event synchronously, so every change below must be called inside the tap, then
+ * chains `write`. The state write doesn't wait for the queue write: they are separate stores.
+ */
+function record(
+  item: FeedItem,
+  event: "dismiss" | "mute_source",
+  value: number,
+  write: (db: FeedbackDb) => Promise<unknown>,
+): Promise<void> {
+  const queued = enqueueFeedback(item.id, event, value);
+  const state = stateWrites.then(async () => {
+    await write(await openFeedbackDb());
+    changed();
+  });
+  stateWrites = state.catch(() => {});
+  return Promise.all([queued, state]).then(() => undefined);
+}
+
+export function dismissStory(item: FeedItem): Promise<void> {
+  const row = { key: storyKey(item), item: stored(item), at: new Date().toISOString() };
+  return record(item, "dismiss", 1, (db) => db.put("dismissed", row));
 }
 
 /** Shows the story again; the server takes the later `dismiss` 0 (a new event id) as the undo. */
-export async function undoDismiss(item: FeedItem): Promise<void> {
-  await enqueueFeedback(item.id, "dismiss", 0);
-  await (await openFeedbackDb()).delete("dismissed", storyKey(item));
-  changed();
+export function undoDismiss(item: FeedItem): Promise<void> {
+  return record(item, "dismiss", 0, (db) => db.delete("dismissed", storyKey(item)));
 }
 
-export async function muteSource(item: FeedItem): Promise<void> {
-  await enqueueFeedback(item.id, "mute_source", 1);
-  const db = await openFeedbackDb();
-  const at = new Date().toISOString();
-  await db.put("muted", { source_id: item.source_id, item: stored(item), at });
-  changed();
+export function muteSource(item: FeedItem): Promise<void> {
+  const row = { source_id: item.source_id, item: stored(item), at: new Date().toISOString() };
+  return record(item, "mute_source", 1, (db) => db.put("muted", row));
 }
 
 /**
- * Unmutes a source. The undo event carries the stored item's id, because the event needs an
- * `article_id` and that item may have left the feed long ago.
+ * Unmutes the source of `item`, the item it was muted from. The undo event carries that item's
+ * id, because the event needs an `article_id` and the item may have left the feed long ago.
  */
-export async function unmuteSource(sourceId: string): Promise<void> {
-  const db = await openFeedbackDb();
-  const row = await db.get("muted", sourceId);
-  if (!row) return;
-  await enqueueFeedback(row.item.id, "mute_source", 0);
-  await db.delete("muted", sourceId);
-  changed();
+export function unmuteSource(item: FeedItem): Promise<void> {
+  return record(item, "mute_source", 0, (db) => db.delete("muted", item.source_id));
 }
 
 export async function isHidden(item: FeedItem): Promise<boolean> {
