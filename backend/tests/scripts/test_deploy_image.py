@@ -124,3 +124,89 @@ def test_alert_title_covers_the_job_and_the_service() -> None:
     assert "Job" in title and "service" in title
     # The exact-title lookup reads the same variable, so the two can't drift.
     assert 'select(.title == \\"${TITLE}\\")' in alert["steps"][0]["run"]
+
+
+# --- Base images pinned by digest, client env files kept out of the context (#241) ---
+
+DIGEST = re.compile(r"@sha256:[0-9a-f]{64}(?=\s|$)")
+
+
+def image_references(dockerfile: str) -> list[str]:
+    """Every external image a build pulls: FROM, COPY --from=<image> and the default ARG."""
+    stage_names = {name.lower() for name in stages(dockerfile)}
+    references: list[str] = []
+    for raw in dockerfile.splitlines():
+        line = raw.strip()
+        from_match = re.match(r"FROM\s+(?:--\S+\s+)*(\S+)", line, re.IGNORECASE)
+        if from_match:
+            references.append(from_match.group(1))
+        copy_match = re.match(r"(?:COPY|RUN)\s+.*?--(?:from|mount=\S*from)=(\S+?)[\s,]", line + " ")
+        if copy_match and copy_match.group(1).lower() not in stage_names:
+            references.append(copy_match.group(1))
+        arg_match = re.match(r"ARG\s+\w*IMAGE=(\S+)", line)
+        if arg_match:
+            references.append(arg_match.group(1))
+    return references
+
+
+def test_every_external_image_reference_has_a_digest() -> None:
+    references = [r for r in image_references(DOCKERFILE) if not r.startswith("${")]
+    # Python default ARG, the uv copy and the node stage are all external.
+    assert any(r.startswith("python:") for r in references)
+    assert any("astral-sh/uv" in r for r in references)
+    assert any(r.startswith("node:") for r in references)
+    for reference in references:
+        assert re.search(r"@sha256:[0-9a-f]{64}$", reference), reference
+
+
+def test_python_image_default_is_pinned_and_keeps_its_tag_in_a_comment() -> None:
+    lines = DOCKERFILE.splitlines()
+    index = next(i for i, line in enumerate(lines) if line.startswith("ARG PYTHON_IMAGE="))
+    assert DIGEST.search(lines[index]), lines[index]
+    assert "python:3.12-slim-bookworm" in lines[index - 1] and lines[index - 1].startswith("#")
+
+
+def test_uv_image_is_pinned_and_keeps_its_tag_in_a_comment() -> None:
+    lines = DOCKERFILE.splitlines()
+    index = next(i for i, line in enumerate(lines) if "astral-sh/uv" in line and "COPY" in line)
+    assert DIGEST.search(lines[index]), lines[index]
+    assert lines[index - 1].startswith("#") and "uv:0.13.0" in lines[index - 1]
+
+
+def test_dockerfile_syntax_directive_is_pinned_by_digest() -> None:
+    first = DOCKERFILE.splitlines()[0]
+    assert re.fullmatch(r"# syntax=docker/dockerfile:1@sha256:[0-9a-f]{64}", first), first
+    # The tag it was resolved from stays readable.
+    assert "docker/dockerfile:1" in first
+
+
+def dockerignore_excludes(path: str) -> bool:
+    """Whether the build context drops `path`: the last matching pattern wins."""
+    from fnmatch import fnmatchcase
+
+    excluded = True  # the leading `*` excludes everything not re-included
+    for raw in DOCKERIGNORE.splitlines():
+        pattern = raw.strip()
+        if not pattern or pattern.startswith("#"):
+            continue
+        negate = pattern.startswith("!")
+        pattern = pattern.lstrip("!").rstrip("/")
+        directory_hit = path.startswith(pattern + "/")
+        if fnmatchcase(path, pattern) or directory_hit:
+            excluded = not negate
+    return excluded
+
+
+def test_client_env_files_are_not_sent_to_the_build_context() -> None:
+    for name in ("client/.env", "client/.env.local", "client/.env.production.local"):
+        assert dockerignore_excludes(name), name
+    # The helper must not simply exclude everything: client sources still go in.
+    assert not dockerignore_excludes("client/package.json")
+    assert not dockerignore_excludes("client/src/main.tsx")
+
+
+def test_dockerignore_lists_client_env_pattern_after_the_client_allow() -> None:
+    lines = [line.strip() for line in DOCKERIGNORE.splitlines()]
+    assert "client/.env*" in lines
+    assert lines.index("client/.env*") > lines.index("!client/")
+    assert not any(line.startswith("!") and ".env" in line for line in lines)
