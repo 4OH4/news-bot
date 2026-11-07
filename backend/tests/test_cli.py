@@ -339,7 +339,8 @@ def _served_client(calls: list[dict[str, object]]) -> TestClient:
     assert len(calls) == 1, calls
     app = calls[0]["app"]
     assert isinstance(app, FastAPI), f"serve should pass the app object, got {app!r}"
-    return TestClient(app, raise_server_exceptions=False)
+    # Addressed as localhost: local mode refuses other Host headers (#230).
+    return TestClient(app, base_url="http://localhost:8080", raise_server_exceptions=False)
 
 
 def test_serve_refuses_to_start_without_an_owner_email(
