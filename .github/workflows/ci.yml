@@ -57,6 +57,29 @@ jobs:
       - name: Test
         run: make test
 
+  # No path filter, so the merge gate always sees it (scripts/tier.py CONDITIONAL_CHECKS).
+  # It runs the same pinned-image targets as a developer; Docker is preinstalled on the runner.
+  client:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install dependencies
+        run: make client-install
+
+      - name: Lint
+        run: make client-lint
+
+      - name: Unit tests
+        run: make client-test
+
+      - name: Build
+        run: make client-build
+
+      - name: End-to-end tests
+        run: make client-e2e
+
   docker:
     runs-on: ubuntu-latest
     timeout-minutes: 15

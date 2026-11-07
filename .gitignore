@@ -238,3 +238,10 @@ infra/**/.terraform/
 *.tfvars
 !*.tfvars.example
 tfplan
+
+# Client (PWA): dependencies, build output, Playwright output
+client/node_modules/
+client/dist/
+client/.e2e/
+client/test-results/
+client/playwright-report/
