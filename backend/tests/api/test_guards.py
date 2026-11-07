@@ -8,12 +8,14 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
+from newsfeed.models import VerifiedIdentity
 from tests.api.support import (
     RecordingBlobStore,
     auth,
     client_for,
     make_app,
 )
+from tests.fakes import FakeTokenVerifier
 
 
 @pytest.mark.parametrize("owner", ["", "   "])
@@ -77,3 +79,36 @@ def test_the_client_route_refuses_what_resolves_outside_the_client_dir(
     with pytest.raises(HTTPException) as raised:
         _client_response(client_dir.resolve(), path)
     assert raised.value.status_code == 404
+
+
+# The Kelvin sign (U+212A) casefolds and lower-cases to an ASCII "k", so a lookalike
+# address must not match an owner address containing "k". Addresses are invented.
+_K_OWNER = "kim@example.com"
+
+
+@pytest.mark.parametrize(
+    "lookalike", ["\u212aim@example.com", "kim@example.co\u0271", "KIM@EXAMPLE.CO\u1e3e"]
+)
+def test_a_non_ascii_lookalike_of_the_owner_is_403(
+    blobs: RecordingBlobStore, lookalike: str
+) -> None:
+    verifier = FakeTokenVerifier({"t": VerifiedIdentity(email=lookalike, email_verified=True)})
+    client = client_for(make_app(blobs, verifier, owner_email=_K_OWNER))
+
+    response = client.get("/api/feed", headers=auth("t"))
+
+    assert response.status_code == 403
+    assert blobs.reads == []
+
+
+def test_the_owner_in_upper_case_still_matches(blobs: RecordingBlobStore) -> None:
+    identity = VerifiedIdentity(email="KIM@Example.COM", email_verified=True)
+    client = client_for(make_app(blobs, FakeTokenVerifier({"t": identity}), owner_email=_K_OWNER))
+
+    assert client.get("/api/feed", headers=auth("t")).status_code == 200
+
+
+@pytest.mark.parametrize("owner", ["\u212aim@example.com", "kim@ex\u00e4mple.com"])
+def test_the_app_refuses_a_non_ascii_owner_email(owner: str) -> None:
+    with pytest.raises(ValueError):
+        make_app(owner_email=owner)
