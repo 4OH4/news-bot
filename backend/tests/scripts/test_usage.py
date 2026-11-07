@@ -35,9 +35,25 @@ def load(name: str) -> ModuleType:
 usage = load("usage")
 
 
-def lines(payload: Any) -> list[str]:
+def all_lines(payload: Any) -> list[str]:
     result: list[str] = usage.read_limits(lambda: TOKEN, lambda token: payload)
     return result
+
+
+def lines(payload: Any) -> list[str]:
+    """The report without the `parallel:` line, which has its own tests below."""
+    return [line for line in all_lines(payload) if not line.startswith("parallel:")]
+
+
+def parallel(five: float, week: float = 10.0) -> str:
+    """The `parallel:` line for the given usage percentages."""
+    payload = {
+        "five_hour": {**REPLY["five_hour"], "utilization": five},
+        "seven_day": {**REPLY["seven_day"], "utilization": week},
+    }
+    found = [line for line in all_lines(payload) if line.startswith("parallel:")]
+    assert len(found) == 1, found
+    return found[0]
 
 
 @pytest.fixture(autouse=True)
@@ -116,7 +132,7 @@ def test_a_failed_request_never_shows_the_token_and_exits_zero(
     assert exit_info.value.code == 0
     out = capsys.readouterr().out
     assert TOKEN not in out
-    assert out == "usage unavailable (OSError)\n"
+    assert out == "usage unavailable (OSError)\nparallel: 3\n"
 
 
 def test_missing_credentials_mean_unavailable(tmp_path: Path) -> None:
@@ -124,7 +140,7 @@ def test_missing_credentials_mean_unavailable(tmp_path: Path) -> None:
         raise AssertionError("must not make a request with no token")
 
     result = usage.read_limits(lambda: usage.read_token(tmp_path / "none.json"), fetcher)
-    assert result == ["usage unavailable (FileNotFoundError)"]
+    assert result == ["usage unavailable (FileNotFoundError)", "parallel: 3"]
 
 
 def test_reads_the_token_from_the_credentials_file(tmp_path: Path) -> None:
@@ -167,3 +183,77 @@ def test_nothing_is_written_to_disk(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     monkeypatch.chdir(tmp_path)
     lines(REPLY)
     assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize(
+    ("five", "week", "expected"),
+    [
+        (0.0, 0.0, "parallel: 10"),
+        (40.0, 10.0, "parallel: 10"),
+        (50.0, 10.0, "parallel: 10"),
+        (50.1, 10.0, "parallel: 5"),
+        (60.0, 10.0, "parallel: 5"),
+        (89.9, 10.0, "parallel: 5"),
+        (90.0, 10.0, "parallel: 0"),
+        (92.0, 10.0, "parallel: 0"),
+        (100.0, 10.0, "parallel: 0"),
+        (10.0, 90.0, "parallel: 0"),
+        (10.0, 91.0, "parallel: 0"),
+    ],
+)
+def test_parallel_limit_follows_five_hour_usage(five: float, week: float, expected: str) -> None:
+    assert parallel(five, week) == expected
+
+
+def test_low_usage_prints_parallel_10_and_ok() -> None:
+    payload = {
+        "five_hour": {**REPLY["five_hour"], "utilization": 40.0},
+        "seven_day": {**REPLY["seven_day"], "utilization": 10.0},
+    }
+    result = all_lines(payload)
+    assert "parallel: 10" in result
+    assert any(line.startswith("ok:") for line in result)
+    assert not any(line.startswith("pause:") for line in result)
+
+
+def test_high_usage_prints_parallel_0_and_pause() -> None:
+    result = all_lines(
+        {
+            "five_hour": {**REPLY["five_hour"], "utilization": 92.0},
+            "seven_day": {**REPLY["seven_day"], "utilization": 10.0},
+        }
+    )
+    assert "parallel: 0" in result
+    assert any(line.startswith("pause:") for line in result)
+
+
+def test_a_weekly_limit_of_91_pauses_even_with_low_five_hour_use() -> None:
+    result = all_lines(
+        {
+            "five_hour": {**REPLY["five_hour"], "utilization": 5.0},
+            "seven_day": {**REPLY["seven_day"], "utilization": 91.0},
+        }
+    )
+    assert "parallel: 0" in result
+    assert any(line.startswith("pause:") for line in result)
+
+
+def test_unreadable_usage_keeps_the_old_limit_of_3() -> None:
+    result = all_lines({})
+    assert result[0].startswith("usage unavailable (")
+    assert "parallel: 3" in result
+
+
+def test_unreadable_usage_prints_parallel_3_and_exits_zero(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def fail(token: str) -> Any:
+        raise OSError("down")
+
+    monkeypatch.setattr(usage, "read_limits", partial(usage.read_limits, lambda: TOKEN, fail))
+    with pytest.raises(SystemExit) as exit_info:
+        usage.main()
+    assert exit_info.value.code == 0
+    out = capsys.readouterr().out.splitlines()
+    assert out[0] == "usage unavailable (OSError)"
+    assert "parallel: 3" in out

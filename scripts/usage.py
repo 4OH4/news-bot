@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Print how much of the 5-hour and weekly usage limits is used, and when each resets.
+"""Print how much of the 5-hour and weekly usage limits is used, and when each resets,
+then `parallel: <n>`, the number of issues allowed in progress at once.
 
   python3 scripts/usage.py
 
@@ -8,7 +9,7 @@ the endpoint behind Claude Code's own /usage view, using the local login token. 
 token only ever goes in the request header: it is never printed or saved, and no
 response is cached.
 
-The endpoint is undocumented, so a failed lookup prints "usage unavailable" and exits 0:
+The endpoint is undocumented, so a failed lookup prints "usage unavailable" followed by "parallel: 3" and exits 0:
 if usage can't be read, work continues as normal.
 
 Requirements: Python 3.10+ (standard library only).
@@ -29,6 +30,13 @@ USAGE_URL = "https://api.anthropic.com/api/oauth/usage"
 CREDENTIALS = Path.home() / ".claude" / ".credentials.json"
 TIMEOUT = 10
 PAUSE_AT = 90.0
+# Issues allowed in progress at once: many while the 5-hour window has room, fewer as it
+# fills, none near the limit. UNREADABLE_PARALLEL is the old fixed limit, used when usage
+# can't be read.
+LOW_USAGE_AT = 50.0
+PARALLEL_LOW = 10
+PARALLEL_HIGH = 5
+UNREADABLE_PARALLEL = 3
 LIMITS = (("5-hour", "five_hour"), ("weekly", "seven_day"))
 
 
@@ -78,6 +86,14 @@ def parse_usage(payload: dict[str, Any]) -> list[Limit]:
     ]
 
 
+def parallel_limit(limits: list[Limit]) -> int:
+    """How many issues may be in progress at once, from the 5-hour use (weekly only pauses)."""
+    if any(lim.percent >= PAUSE_AT for lim in limits):
+        return 0
+    five_hour = next(lim.percent for lim in limits if lim.name == "5-hour")
+    return PARALLEL_LOW if five_hour <= LOW_USAGE_AT else PARALLEL_HIGH
+
+
 def report(limits: list[Limit]) -> list[str]:
     lines = [f"{lim.name}: {lim.percent:.0f}% used, resets {lim.resets_at}" for lim in limits]
     reached = [lim.name for lim in limits if lim.percent >= PAUSE_AT]
@@ -85,6 +101,7 @@ def report(limits: list[Limit]) -> list[str]:
         lines.append(f"pause: {' and '.join(reached)} at or above {PAUSE_AT:.0f}%")
     else:
         lines.append(f"ok: both limits below {PAUSE_AT:.0f}%")
+    lines.append(f"parallel: {parallel_limit(limits)}")
     return lines
 
 
@@ -97,7 +114,7 @@ def read_limits(
     except Exception as exc:  # noqa: BLE001
         # Only the type: the text of an HTTP or parsing error could echo a header or the
         # credentials file. Any failure here must leave work running, not stop it.
-        return [f"usage unavailable ({type(exc).__name__})"]
+        return [f"usage unavailable ({type(exc).__name__})", f"parallel: {UNREADABLE_PARALLEL}"]
 
 
 def main() -> None:

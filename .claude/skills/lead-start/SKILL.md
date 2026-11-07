@@ -52,11 +52,11 @@ Call the architect back whenever a design problem emerges, and it updates the fi
 
 ## 4. Run a batch
 
-Group the Ready issues into a batch of about 5 to 8, in dependency order, with no two in progress touching the same files. Run `python3 scripts/board.py promote` first. A large epic takes several batches. Only one delivery manager runs at a time.
+Group the Ready issues into a batch of about 5 to 8 issues and about 2 hours of work, in dependency order, with no two in progress touching the same files. Run `python3 scripts/board.py promote` first. A large epic takes several batches. Only one delivery manager runs at a time. A batch is fixed when it starts: do not add issues to a running delivery manager. Issues that become Ready mid-batch wait for the next batch, and you start the next delivery manager as soon as the current one reports.
 
 If `usage.py` prints `pause:`, don't start a batch: go to "Usage pauses" below.
 
-Add the batch's issues and the start time of the last status check (`SINCE`) to the handoff note, then start `subagent_type: delivery-manager` with `isolation: worktree` and `run_in_background: true`, using the task message below. Use `model: opus` only if Sonnet has fallen short on an earlier batch. The delivery manager is isolated, so the harness refuses its git commands against another agent's worktree. It frees a test author's worktree with plain `git worktree remove <path>`, which refuses a dirty tree, and takes the SHA from the test author's report. If that's refused it sends you the path: you aren't isolated, so look in that worktree and decide. Then wait for messages from it:
+Add the batch's issues and the start time of the last status check (`SINCE`) to the handoff note, then start `subagent_type: delivery-manager` with `isolation: worktree` and `run_in_background: true`, using the task message below. Use `model: opus` only if Sonnet has fallen short on an earlier batch. The delivery manager is isolated, so the harness refuses its git commands against another agent's worktree. It frees a test author's worktree with plain `git worktree remove <path>`, which refuses a dirty tree, and takes the SHA from the test author's report. If that's refused it sends you the path: you aren't isolated, so look in that worktree and decide. If you start a one-off worker or reviewer while the batch runs, `SendMessage` the delivery manager so it counts towards the `parallel:` limit. Then wait for messages from it:
 
 - **Usage unavailable:** pacing is off, because the delivery manager can't see either limit. Run `python3 scripts/usage.py` yourself, watch usage until it's readable again, and mention it in your report to the human.
 - **Design problem:** decide it, or call in the architect.
