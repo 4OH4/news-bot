@@ -7,6 +7,8 @@ description: End a lead development session for news-bot cleanly. Accounts for a
 
 ## 1. Account for agents
 
+First delete the recurring status check (`CronList`, then `CronDelete`) so that it can't fire during the finish. Delete any usage-reset check too, unless the handoff records a pause it serves.
+
 List any delivery manager or architect still running. For each one, either:
 - wait for it to report, then handle the report as in `/lead-start`; or
 - if the user is leaving now, note it as still running. Its worktrees will be kept and listed next session, and a new delivery manager can pick up from the board.
@@ -37,7 +39,7 @@ Update the `lead-handoff` memory file, replacing its contents. Use absolute date
 - what the last batch merged and what is parked, and the merge queue (cards in "Human review") with what each merge unlocks;
 - what is In progress, in Agent review or kept back, and why;
 - any usage pause: which limit and when it resets. A scheduled check dies with the session, so the next `/lead-start` picks the work up;
-- the time of the last status check, in UTC, which the next session uses as `SINCE`;
+- the start time of the last status check, in UTC, which the next session uses as `SINCE`;
 - the next steps, including the next batch and any decision waiting on the user.
 
 Don't copy information the board, git history or the Phase Log already holds. Record only what the next session needs to act.
@@ -49,11 +51,9 @@ Tell the user, briefly:
 - anything only they can do;
 - how to resume: start a new conversation in this folder with `/lead-start`.
 
-Whatever started this finish, delete the recurring status check (`CronList`, then `CronDelete`) so that nothing fires after the session ends. Delete any usage-reset check too, unless the handoff records a pause it serves.
-
 If the three quiet status checks in `/lead-start` started this finish, no agents are running and the human isn't watching. Don't wait for or ask them anything. Open the report with a banner that can't be missed when they come back:
 
 ```
-## ✅ Lead session finished at <HH:MM, date> (idle since <HH:MM>, after three quiet checks)
+## ✅ Lead session finished at <HH:MM, date> (first quiet check at <HH:MM>)
 Nothing more can be done until you review. Start a new conversation in this folder with /lead-start to resume.
 ```

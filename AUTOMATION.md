@@ -126,6 +126,7 @@ The lead is accountable for delivering the phase. It:
 - groups Ready issues into batches and runs them one at a time, with a delivery manager for each;
 - reviews each batch report;
 - handles usage pauses (§11);
+- checks GitHub every 15 minutes while its session is open, to notice merges and comments;
 - runs `make eval` when a delivery manager asks, because subagents can't run it;
 - keeps the Phase Log (§4) and the cost-of-failure statement (§6), and writes the milestone report.
 
@@ -374,7 +375,7 @@ Permission prompts are counted only when an agent reports them. Usage per issue,
 ## 11. Operating limits
 
 - **Parallelism:** up to 3 issues in progress, each using one test author and then one worker. Reviewers, the architect and the delivery manager don't count. No two in-progress issues touch the same files, and only one delivery manager runs at a time.
-- **Sessions:** while its session is open the lead checks GitHub at least every 15 minutes (a recurring status check), so a merge or a comment is noticed without the human prompting. It finishes after three quiet checks in a row, about 45 minutes, because restarting is cheaper than reloading a cold session. A usage pause doesn't count as idle.
+- **Sessions:** while its session is open the lead checks GitHub at least every 15 minutes (a recurring status check), so a merge or a comment is noticed without the human prompting. It finishes after three quiet checks in a row, 30 to 45 minutes, because restarting is cheaper than reloading a cold session. A usage pause doesn't count as idle: a 5-hour pause keeps the checks but starts no new work, and a weekly pause deletes the check, leaving the allowance to the owner.
 - **Context checkpoint (not fully resolved, see §16):** the lead can't clear or compact its own context, and stopping would end unattended work, so it lets automatic compaction happen and makes sure little depends on the summary. At each batch close it runs `python3 scripts/lead.py context`. At 150k tokens or more, or after three batches if that can't be read, it curates the Phase Log, rewrites the handoff note, tells the human they can restart to save usage, and starts the next batch. A batch costs about 55k tokens, so compaction may come mid-batch. Agents keep running through it, and a `SessionStart` hook sends the lead back to its handoff note, the Phase Log and its open work. The lead also records each batch in the handoff note as it starts. Agents don't depend on the lead's memory: a delivery manager with an unanswered request sends it again.
 - **GitHub API:** 5,000 GraphQL points an hour are shared across every agent, so prefer REST in loops.
 - **Worktrees:** each agent works in its own, under `.claude/worktrees/`.
@@ -620,7 +621,7 @@ A hook tells you when your context has just been compacted. Agents keep running 
 
 1. Read the handoff note and the Phase Log.
 2. Run `ListAgents`, and don't start a second delivery manager if one is running.
-3. Run `CronList`. If the handoff records a usage pause and its check is gone, schedule it again.
+3. Run `CronList`. If the status check is gone (and no weekly pause is under way), create it again. If the handoff records a usage pause and its check is gone, schedule that again too.
 4. Check the open PRs for anything waiting on you, such as an "Evaluation scores" comment that was requested and is missing.
 
 If the handoff is out of date, trust the board and GitHub.
