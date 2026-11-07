@@ -9,7 +9,7 @@ the endpoint behind Claude Code's own /usage view, using the local login token. 
 token only ever goes in the request header: it is never printed or saved, and no
 response is cached.
 
-The endpoint is undocumented, so a failed lookup prints "usage unavailable" and exits 0:
+The endpoint is undocumented, so a failed lookup prints "usage unavailable" followed by "parallel: 3" and exits 0:
 if usage can't be read, work continues as normal.
 
 Requirements: Python 3.10+ (standard library only).

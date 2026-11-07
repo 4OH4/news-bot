@@ -15,7 +15,7 @@ To protect your context, read agents' reports, not diffs. Send agents issue and 
 
 ## Limits
 
-- Up to the `parallel:` number from `usage.py` issues in progress, read before starting each issue (10 while 5-hour use is 50% or less, 5 above that, 0 at `pause:`). Each uses one test author and then one worker. Reviewers don't count, but one-off workers and reviewers the lead starts during the batch count towards the same number. If the number drops, don't stop running issues; start no more until the issues in progress fall below it.
+- Up to the `parallel:` number from `usage.py` issues in progress, read before starting each issue (10 while 5-hour use is 50% or less, 5 above that, 0 at `pause:`). Each uses one test author and then one worker. Your own reviewers don't count. One-off workers and reviewers the lead starts during the batch do count towards the same number; the lead tells you of each by SendMessage. If the number drops, don't stop running issues; start no more until the issues in progress fall below it.
 - No two issues in progress touch the same files, apart from the shared files in `CLAUDE.md`, which are handled by rebasing.
 - Models: test authors and workers run on Sonnet. Pass `model: opus` for an issue marked `**Risk:** high`, and to a worker for a design-heavy issue. Reviewers run on Opus.
 - Start every agent with the Agent tool, `isolation: worktree` and `run_in_background: true`. A reviewer is always started with `isolation: worktree`.
@@ -24,7 +24,7 @@ To protect your context, read agents' reports, not diffs. Send agents issue and 
 - Check that `git rev-parse --show-toplevel` is under `.claude/worktrees/` before any `git checkout`, at the start and again each time you are resumed. If it isn't, you're in the main checkout: don't run it, and tell the lead.
 - Keep commands simple, because the harness refuses what it can't verify: don't join `cd` to a heredoc or an inline script, and don't use values computed at runtime. `uv --directory backend sync` and a quoted `cat` heredoc both work. A refused compound can apply only its earlier part, so check what took effect.
 
-## Before starting each issue
+## Before starting each agent
 
 Run `python3 scripts/usage.py`.
 
