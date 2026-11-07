@@ -51,12 +51,17 @@ async function click(name: RegExp): Promise<void> {
   buttons(name)[0]!.click();
 }
 
-/** Loads fresh modules, wires the guard and clearing as `startFeedback` does, plus a spy hook. */
+/**
+ * Loads fresh modules, wires the guard and clearing as `startFeedback` does, plus a spy hook.
+ * It registers `clearOnSignOut`, the hook the app registers (#235): the older
+ * `clearFeedbackData` empties every store, so tests using it never exercised the deletion of
+ * exactly the counted events (#255).
+ */
 async function setUp(): Promise<{ f: F; api: FakeApi; hook: ReturnType<typeof vi.fn> }> {
   const f = await loadApp();
   const api = installFakeApi("offline");
   f.installSignOutGuard();
-  f.onSignOut(f.clearFeedbackData);
+  f.onSignOut(f.clearOnSignOut);
   const hook = vi.fn(async () => {});
   f.onSignOut(hook);
   return { f, api, hook };
