@@ -74,5 +74,7 @@ client-test: ## Vitest unit tests for the client
 client-build: ## Production build of the client into client/dist
 	$(CLIENT_DOCKER) $(CLIENT_NODE_IMAGE) npm run build
 
+# No -p flag: the preview server is private to the container's network namespace, so
+# parallel runs in different worktrees cannot collide on the port.
 client-e2e: ## Playwright tests against the production build
 	$(CLIENT_DOCKER) --ipc=host $(CLIENT_PLAYWRIGHT_IMAGE) npm run e2e
