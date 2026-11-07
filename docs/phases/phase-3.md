@@ -79,7 +79,7 @@ The milestone report will carry the exact URL. On the Android phone:
 There is one line of work, with one demo, so epics would add nothing. The revision in #215 removed every link that wasn't needed, so up to seven issues can run at once instead of two or three (#213 allows ten). The client builds and tests against a mocked API, using the contract written below, so no client issue waits for a backend issue. Feedback (#184) was too big for one PR and is now three independent issues.
 
 ```
-API     #211 (#175 part 2, PR #212) ──► #176 feedback API ◄── #215 (this PR)
+API     #211 (merged, PR #212) ──► #176 feedback API ◄── #215 (this PR)
 Infra   #175 (part 3, newsfeed serve) ──► #179 human setup ◄── #178 image, deploy (Ready)
 Report  #185 report (Ready)
 Client  #181 feed list (in progress) ─┬─► #182 reader ─────────┐
@@ -96,8 +96,8 @@ Client  #181 feed list (in progress) ─┬─► #182 reader ──────
 | #172 `BlobStore.ref_for`, `TokenVerifier` | - | | | merged (PR #198) |
 | #173 `story_id` | - | | | merged (PR #197) |
 | #174 scaffold, `make client-*`, CI | - | C | | merged |
-| #175 read API, static client, `IapJwtVerifier`, `newsfeed serve` | #172, #174 | B | High | in progress, three PRs: verifier merged (PR #208), routes #211 (PR #212), `newsfeed serve` next |
-| #176 feedback API, saved copies | #211, #215 | A | High | waits for #211 |
+| #175 read API, static client, `IapJwtVerifier`, `newsfeed serve` | #172, #174 | B | High | in progress, three PRs: verifier merged (PR #208), routes #211 merged (PR #212), `newsfeed serve` next |
+| #176 feedback API, saved copies | #211, #215 | A | High | Ready once this PR merges (#211 merged, PR #212) |
 | #177 Terraform | - | C | High | merged |
 | #178 client in the image, deploy the service | #174, #177 | C | High | **Ready now** |
 | #179 human setup | #175, #177, #178 | `needs-human` | | waits |
@@ -111,7 +111,7 @@ Client  #181 feed list (in progress) ─┬─► #182 reader ──────
 | #217 open, dismiss, mute, Settings | #181, #184 | A | | waits |
 
 **Links removed, and why.**
-- #176 needed #211's app, auth dependency and router, not `newsfeed serve`, so it waits for #211 rather than all of #175.
+- #176 needed #211's app, auth dependency and router, not `newsfeed serve`, so it waited for #211 (merged, PR #212) rather than all of #175.
 - #178 builds the client into the image and adds a deploy step that stays skipped until #179 sets `GCP_API_SERVICE`. It runs no API code, and #179 still waits for #175, so the first time `newsfeed serve` meets `/app/client` is #179's first deploy. The in-container `GET /` check became a check that `/app/client` holds the build.
 - #185 reads stored `Feedback` rows through `Repository.list_feedback`, which is on `main`. Its end-to-end test now starts at the real SQLite repository; #176's test covers `POST /api/feedback` to the same repository.
 - #183 no longer edits the reader. Its prefetch takes the fetcher as an argument, and #216 wires it and adds the reader's store-first read.
@@ -122,7 +122,7 @@ Client  #181 feed list (in progress) ─┬─► #182 reader ──────
 - #183 and #217 → #181: `Feed`, `fetchFeed`, `FeedScreen` and `FeedItemCard` are #181's.
 - #216 → #182, #183, #184: it joins the reader, the article store and the queue, and edits `ReaderScreen.tsx` and `useFeed.ts`, so it comes after both.
 
-**Batches.** Now: #178 and #185 beside #181, #211 and #175 part 3, then #184 once this PR merges. After #211: #176. After #181 (and #184, for #217): #182, #183 and #217 together. Last: #216. #179 follows #175 and #178.
+**Batches.** Now: #178 and #185 beside #181 and #175 part 3, then #176 and #184 once this PR merges (#211 is merged). After #181 (and #184, for #217): #182, #183 and #217 together. Last: #216. #179 follows #175 and #178.
 
 ## API contract for mocks
 
@@ -135,10 +135,10 @@ Client tests stub `/api/**` with Playwright's `page.route` or a fake `fetch`, so
 | `POST /api/feedback` | 204; 403 without `X-Requested-With`; 415 without JSON; 422 for an invalid body; 503 on a storage failure | #176: every entry in `docs/feedback.example.json` gets 204 | #184: `buildEvent` output has the example's keys and formats |
 | Any route | 401 when IAP or our check refuses the session, 403 for another account, 503 when the check can't be made | #175 | #180 (merged) |
 
-A drift that these tests miss, such as a renamed route, shows on the phone as a failed refresh or an error screen, which is cheap. A feedback event the server rejects with 422 moves to the phone's `rejected` store and isn't deleted (#184), so a drift in the feedback body can't lose an event.
+A drift that these tests miss, such as a renamed route, shows on the phone as a failed refresh or an error screen, which is cheap. A feedback event the server rejects with 422 moves to the phone's `rejected` store. It is kept there and not re-sent, and #184's sign-out guard counts it with the queue, so only a discard the owner chose deletes it; a drift in the feedback body can't lose an event.
 
 **Shared files while client issues run together.** Each issue owns its directories, as listed in its scope. The overlaps that remain are additions only, resolved on rebase as `CLAUDE.md` describes for shared files:
-- `client/src/main.tsx` and `client/src/App.tsx`: #184 and #183 each add one start-up call, and #217 and #216 each add one route and header link. Add lines; don't restructure the router.
+- `client/src/main.tsx` and `client/src/App.tsx`: #184 and #183 each add one start-up call, #182 replaces the `/article/<id>` route, and #217 and #216 each add one route and a link in an app-level header. `App.tsx` has no header today (the only one is in `FeedScreen.tsx`, which #183 rewrites), so whichever of #216 and #217 merges first adds the header in `App.tsx` and the other reuses it. Add lines; don't restructure the router.
 - `client/package.json` and `client/package-lock.json`: #182 (DOMPurify), #183 and #184 (`idb`, `fake-indexeddb`). On a conflict, take `main`'s files and re-run `make client-add` for your own packages, never hand-editing the lockfile.
 - Each issue's e2e tests go in their own new spec file.
 
