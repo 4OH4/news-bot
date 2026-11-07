@@ -879,8 +879,8 @@ def queue_stage(
 ) -> tuple[str, datetime]:
     """A PR's stage and when it entered it, using the merge gate's own functions.
 
-    The list endpoint omits `mergeable_state`, so `merge_view` fetches the full PR, and is
-    called only if the gate is reached.
+    The list endpoint omits `mergeable_state`, so `merge_view` fetches the full PR (once
+    per PR, for the conflict check and the gate).
     """
     head = pr["head"]["sha"]
     since = [parse_time(commits[-1]["commit"]["committer"]["date"])] if commits else []

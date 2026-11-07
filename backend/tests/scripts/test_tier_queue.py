@@ -372,6 +372,41 @@ def test_review_naming_no_sha_posted_before_the_head_commit_is_needs_review(
     assert stage_of(monkeypatch, capsys, rec) == "needs-review"
 
 
+def test_feat_commit_after_the_named_commit_is_not_covered_even_if_resolved(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    mid = "2222222bbbb"
+    rec = Recorded(
+        body=RESOLVED_BODY,
+        comments=[review(OLD, 50)],
+        commits=[commit(OLD, 60), commit(mid, 40, "feat: more"), commit(HEAD_SHA, 20, "fix: x")],
+    )
+    assert stage_of(monkeypatch, capsys, rec) == "needs-review"
+
+
+def test_tier_c_delivery_review_naming_an_older_sha_is_not_awaiting_owner(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    rec = Recorded(filename="scripts/x.py", comments=[review(HEAD_SHA), delivery(OLD)])
+    assert stage_of(monkeypatch, capsys, rec) == "ready-for-delivery-review"
+
+
+def test_tier_c_draft_with_a_delivery_review_still_needs_marking_ready(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    rec = Recorded(
+        filename="scripts/x.py", draft=True, comments=[review(HEAD_SHA), delivery(HEAD_SHA)]
+    )
+    assert stage_of(monkeypatch, capsys, rec) == "ready-for-delivery-review"
+
+
+def test_review_without_a_checks_done_line_is_needs_review(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    bare = {**unnamed_review(30), "body": "## Independent review\nNo defects."}
+    assert stage_of(monkeypatch, capsys, Recorded(comments=[bare])) == "needs-review"
+
+
 def test_conflicting_pr_is_rework(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

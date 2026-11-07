@@ -19,7 +19,7 @@ Before anything else, run `python3 scripts/tier.py queue` (add `--json` if easie
 
 - finish every `ready-for-delivery-review` PR: the Delivery review (step 7 below), then merge or mark ready (step 8);
 - finish every `ready-to-merge` PR (step 8);
-- make sure every `ci-failing` and `rework` PR has a worker (step 3 or 5), and every `needs-review` PR has a reviewer (step 4).
+- make sure every `ci-failing` and `rework` PR has a worker (step 3 or 5), except a PR whose open item is a **Needs human:** one, which stays with the lead (step 5), and every `needs-review` PR has a reviewer (step 4).
 
 Only then start new test authors or workers. `held` and `awaiting-owner` PRs need nothing from you. Interim hand-backs include the count of PRs at each stage.
 
