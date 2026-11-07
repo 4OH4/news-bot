@@ -184,7 +184,7 @@ test("no font or other asset is loaded from another host except article images",
   await open(page, NORMAL);
   await expect(page.getByText("First invented paragraph")).toBeVisible();
   hosts.delete("images.example.com");
-  expect([...hosts]).toEqual(["localhost:4173"]);
+  expect([...hosts]).toEqual([`localhost:${process.env.E2E_PORT ?? 4173}`]);
 });
 
 test("returning to the list restores the scroll position", async ({ page }) => {
