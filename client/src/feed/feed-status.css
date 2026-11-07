@@ -1,0 +1,5 @@
+.updated {
+  margin: 0 0 var(--space-2, 0.5rem);
+  font-size: 0.85rem;
+  opacity: 0.75;
+}
