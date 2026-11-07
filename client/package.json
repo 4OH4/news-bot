@@ -12,6 +12,7 @@
     "e2e": "playwright test"
   },
   "dependencies": {
+    "idb": "^8.0.4",
     "preact": "^10.25.4"
   },
   "devDependencies": {
@@ -20,6 +21,8 @@
     "@preact/preset-vite": "^2.10.6",
     "@types/node": "^24.19.2",
     "eslint": "^9.39.5",
+    "fake-indexeddb": "^6.2.7",
+    "happy-dom": "^21.0.4",
     "typescript": "~5.7.2",
     "typescript-eslint": "^8.72.1",
     "vite": "^8.3.6",
