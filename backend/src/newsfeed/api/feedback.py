@@ -13,6 +13,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from starlette.concurrency import run_in_threadpool
 
 from newsfeed.logging import get_logger
 from newsfeed.models import Feedback, FeedbackEvent, UtcDatetime
@@ -29,7 +30,8 @@ log = get_logger(__name__)
 class FeedbackRequest(BaseModel):
     """One event as the client posts it (see ``docs/feedback.example.json``)."""
 
-    model_config = ConfigDict(extra="forbid")
+    # Strict: a string "1", a bool or an epoch number is a client bug, not a value.
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     # ``$`` in pydantic's regex engine matches only at the end of the string,
     # so a trailing newline is rejected (the tests pin this).
@@ -67,7 +69,7 @@ def feedback_router(blobs: BlobStore, repository: Repository) -> APIRouter:
             created_at=parsed.created_at,
         )
         try:
-            repository.save_feedback(feedback)
+            await run_in_threadpool(repository.save_feedback, feedback)
         except Exception as exc:
             log.warning(
                 "feedback not stored",
@@ -81,7 +83,8 @@ def feedback_router(blobs: BlobStore, repository: Repository) -> APIRouter:
                 status.HTTP_503_SERVICE_UNAVAILABLE, "Could not store the event; try again"
             ) from None
         if feedback.event is FeedbackEvent.LIKE and feedback.value != 0:
-            _keep_copy(blobs, feedback.article_id)
+            # The blob calls are sync I/O: keep them off the event loop.
+            await run_in_threadpool(_keep_copy, blobs, feedback.article_id)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     return router
