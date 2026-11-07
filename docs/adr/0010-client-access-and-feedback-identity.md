@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-11-07
-- **Related:** #171, #196 (decision and spike results); #172 and #173 (merged: the additions recorded here); `docs/phases/phase-3.md`; `PROJECT_PLAN.md` §5.2, §5.4; amends [ADR-0005](0005-content-retention.md) decision 6; [ADR-0006](0006-feed-json-schema.md); [ADR-0007](0007-agent-infrastructure-scope.md); [ADR-0009](0009-reader-client-stack.md).
+- **Related:** #171, #196 (decision and spike results); #172 and #173 (merged: the additions recorded here); `docs/phases/phase-3.md`; `PROJECT_PLAN.md` §5.2, §5.4; amends [ADR-0005](0005-content-retention.md) decision 6; [ADR-0006](0006-feed-json-schema.md); [ADR-0007](0007-agent-infrastructure-scope.md); [ADR-0009](0009-reader-client-stack.md); [ADR-0011](0011-render-sanitised-article-html-on-the-app-origin.md) (third-party article HTML on this origin).
 
 ## Context
 

@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-11-07
-- **Related:** #171; `docs/phases/phase-3.md` ("Framework", "Offline", "Build and deploy"); `PROJECT_PLAN.md` §5.2 and §11; [ADR-0010](0010-client-access-and-feedback-identity.md) (one origin for client and API).
+- **Related:** #171; `docs/phases/phase-3.md` ("Framework", "Offline", "Build and deploy"); `PROJECT_PLAN.md` §5.2 and §11; [ADR-0010](0010-client-access-and-feedback-identity.md) (one origin for client and API); [ADR-0011](0011-render-sanitised-article-html-on-the-app-origin.md) (article HTML on the app origin, under this CSP).
 
 ## Context
 

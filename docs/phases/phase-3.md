@@ -149,6 +149,7 @@ A drift that these tests miss, such as a renamed route, shows on the phone as a 
 - `docs/feed.schema.json`: additive `story_id`, `schema_version` stays 1 (#173, merged).
 - `docs/feedback.example.json` (new, #215): three valid `POST /api/feedback` bodies, the shared fixture that #176's pytest test and #184's Vitest test both read. It documents #176's request spec and changes no model.
 - ADR-0009: reader client stack. ADR-0010: client access through IAP and feedback identity, which also amends ADR-0005 decision 6. (ADR-0008 was taken by the development-scope decision.)
+- ADR-0011 ([docs/adr/0011](../adr/0011-render-sanitised-article-html-on-the-app-origin.md)): the reader shows sanitised third-party article HTML on the app origin, with the guards, the residual risk the owner accepted and when to revisit it (#229).
 
 ## Check against later phases
 
