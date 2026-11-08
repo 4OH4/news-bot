@@ -56,7 +56,7 @@ function choose(r: HTMLInputElement): void {
 describe("SettingsScreen theme", () => {
   it("has a Theme group of three radio buttons above Account", async () => {
     await showSettings();
-    expect(root.querySelectorAll('input[type="radio"]')).toHaveLength(3);
+    expect(root.querySelectorAll('[role="radiogroup"][aria-label="Theme"] input[type="radio"]')).toHaveLength(3);
     for (const name of [/follow system/i, /light/i, /dark/i]) expect(radio(name)).toBeDefined();
     const text = root.textContent ?? "";
     expect(text.indexOf("Theme")).toBeGreaterThan(-1);

@@ -35,7 +35,7 @@ main {
 }
 
 .top h1 {
-  font-size: 1.4rem;
+  font-size: var(--fs-headline);
   margin: 0;
 }
 
@@ -52,11 +52,13 @@ button {
 }
 
 .card {
-  margin: var(--space) 0;
-  padding: var(--space);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
+  margin: 0;
+  padding: var(--space) 0;
+  border-bottom: 1px solid var(--divider);
+}
+
+.card:last-child {
+  border-bottom: none;
 }
 
 .card-image {
@@ -72,16 +74,47 @@ button {
 }
 
 .card-title {
-  font-size: 1.1rem;
+  font-family: var(--font-headline);
+  font-weight: 700;
+  font-size: var(--fs-headline);
+  line-height: var(--lh-tight);
   margin: 0.5rem 0 0.25rem;
+}
+
+.card-title a {
+  color: var(--headline);
+  text-decoration: none;
+}
+
+.card-title a:hover {
+  text-decoration: underline;
+}
+
+.card-title a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .card-meta,
 .card-flags,
 .footer {
   margin: 0.25rem 0;
-  font-size: 0.85rem;
+  font-size: var(--fs-meta);
   color: var(--muted);
+}
+
+.card-meta {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.card-meta a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.card-meta a:hover {
+  text-decoration: underline;
 }
 
 .card-flags span + span::before {
@@ -90,6 +123,14 @@ button {
 
 .card-summary {
   margin: 0.4rem 0;
+  font-family: var(--font-body);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  color: var(--text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .footer {

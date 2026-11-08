@@ -8,9 +8,11 @@ import "./liked/liked.css";
 import { ReaderScreen } from "./reader/ReaderScreen";
 import { restoreListScroll, saveListScroll } from "./reader/scroll";
 import { applyStoredTheme } from "./reader/theme";
+import { applyStoredFontSize } from "./settings/fontSize";
 import { SettingsScreen } from "./settings/SettingsScreen";
 
 applyStoredTheme();
+applyStoredFontSize();
 
 function Screen({ path }: { path: string }) {
   if (path.startsWith("/article/")) return <ReaderScreen />;

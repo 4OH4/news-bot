@@ -11,6 +11,19 @@
   --notice-bg: #fff3cd;
   --notice-text: #222222;
   --space: 12px;
+  --headline: #15171a;
+  --text-secondary: #4a5260;
+  --accent: #3b5b8c;
+  --divider: #e2e5ea;
+  --font-headline: ui-serif, "Iowan Old Style", Charter, Georgia, "Noto Serif", serif;
+  --font-body: system-ui, sans-serif;
+  --fs-meta: 0.8125rem;
+  --fs-body: 0.9375rem;
+  --fs-headline: 1.1875rem;
+  --fs-reader-body: 1.0625rem;
+  --fs-reader-title: 1.75rem;
+  --lh-tight: 1.25;
+  --lh-body: 1.5;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -23,6 +36,10 @@
     --border: #343941;
     --notice-bg: #4a3d12;
     --notice-text: #f5ecc8;
+    --headline: #f0f2f4;
+    --text-secondary: #b4bac3;
+    --accent: #9db4dc;
+    --divider: #2a2e35;
   }
 }
 
@@ -36,8 +53,26 @@
   --border: #343941;
   --notice-bg: #4a3d12;
   --notice-text: #f5ecc8;
+  --headline: #f0f2f4;
+  --text-secondary: #b4bac3;
+  --accent: #9db4dc;
+  --divider: #2a2e35;
 }
 
 :root[data-theme="light"] {
   color-scheme: light;
+}
+
+/* Text size (Settings): a root font size that every rem value follows. Percentages keep the
+   phone's own font setting in effect. Regular has no attribute. */
+:root[data-font-size="small"] {
+  font-size: 87.5%;
+}
+
+:root[data-font-size="large"] {
+  font-size: 112.5%;
+}
+
+:root[data-font-size="xl"] {
+  font-size: 125%;
 }
