@@ -104,7 +104,10 @@ def totalhits(query: str, tries: int = 4) -> int:
 
 
 def calibrate(root: Path, out_dir: Path) -> Path:
-    counts = max((root / "raw" / "wiki-cites").glob("host-counts-*.tsv.gz"))
+    found = list((root / "raw" / "wiki-cites").glob("host-counts-*.tsv.gz"))
+    if not found:
+        raise SystemExit(f"no raw/wiki-cites/host-counts-*.tsv.gz under {root}: run count_wiki_cites.sh first")
+    counts = max(found)
     links = dict.fromkeys(CALIBRATION_DOMAINS, 0)
     with gzip.open(counts, "rt", encoding="utf-8", errors="replace") as fh:
         for line in fh:
@@ -127,6 +130,8 @@ def main() -> int:
     ap.add_argument("--root", type=Path, default=ROOT)
     ap.add_argument("--calibrate", action="store_true", help="measure links per citing article instead")
     a = ap.parse_args()
+    if not (a.root / "catalogue.yaml").exists():
+        raise SystemExit(f"no catalogue.yaml under {a.root}: check --root or NEWSFEED_RESEARCH_DIR")
     out_dir = a.root / "raw" / "wiki-agency"
     out_dir.mkdir(parents=True, exist_ok=True)
     if a.calibrate:

@@ -246,7 +246,9 @@ def load_overrides(root: Path) -> dict:
 
     Schema (all keys optional):
       merge: [{ids: [keep-id, other-id, ...], note: "..."}]   # fuse entries; first id is kept
-      set: {entry-id: {"location.country": "IN", "english_edition": "partial", note: "..."}}
+      set: {entry-id: {"location.country": "IN", "english_edition": "partial", note: "...",
+                       expect_name: "..."}}   # skipped, with a warning, if the id names another outlet
+    Merges are applied before enrichment shards, field corrections after them (corrections win).
       shared_domains: [...]     # added to SHARED_DOMAINS
       no_link_domains: [...]    # added to NO_LINK_DOMAINS
     """
@@ -263,7 +265,7 @@ def load_overrides(root: Path) -> dict:
     return out
 
 
-def apply_overrides(entries: list[dict], ov: dict) -> list[dict]:
+def apply_override_merges(entries: list[dict], ov: dict) -> list[dict]:
     by_id = {e["id"]: e for e in entries}
     for m in ov["merge"]:
         ids = [i for i in m["ids"] if i in by_id]
@@ -281,6 +283,12 @@ def apply_overrides(entries: list[dict], ov: dict) -> list[dict]:
         for i in ids[1:]:
             del by_id[i]
         by_id[keep["id"]] = merged
+    return list(by_id.values())
+
+
+def apply_override_sets(entries: list[dict], ov: dict) -> None:
+    """Field corrections, applied last so they win over enrichment shards."""
+    by_id = {e["id"]: e for e in entries}
     for eid, fields, fname in ov["set"]:
         e = by_id.get(eid)
         if e is None:
@@ -293,7 +301,7 @@ def apply_overrides(entries: list[dict], ov: dict) -> list[dict]:
             print(f"warning: override set ({fname}): {eid} is '{e['name']}', not '{expect}'; skipped",
                   file=sys.stderr)
             continue
-        unknown = [k for k in fields if k.split(".")[0] not in SETTABLE]
+        unknown = [k for k in fields if k.split(".")[0] not in SETTABLE or k in DERIVED]
         if unknown:
             print(f"warning: override set ({fname}): {eid}: fields not in the catalogue, ignored: {unknown}",
                   file=sys.stderr)
@@ -305,13 +313,13 @@ def apply_overrides(entries: list[dict], ov: dict) -> list[dict]:
             tgt[parts[-1]] = value
         e["_notes"].append(f"override ({fname}): {', '.join(f'{k}={v}' for k, v in fields.items())}"
                            + (f". {note}" if note else ""))
-    return list(by_id.values())
 
 
 # Entry fields an override or enrichment shard may set (anything else isn't written out).
 SETTABLE = {"name", "aliases", "domains", "kind", "languages", "english_edition", "location", "topics",
             "ownership", "independence", "country_press_freedom", "coverage", "our_status", "flags"}
 RESEARCHED = ("ownership", "independence", "country_press_freedom", "coverage")
+DERIVED = {"location.region", "location.subregion"}  # recomputed from the country on every merge
 
 
 def name_matches(e: dict, name: str) -> bool:
@@ -331,7 +339,7 @@ def apply_enrichment(entries: list[dict], shard_dir: Path) -> None:
             r = dict(r)
             eid, name, note = r.pop("id", None), r.pop("name", None), r.pop("note", "")
             e = by_id.get(eid)
-            if e is None or (name and not name_matches(e, name)):
+            if e is None or not name or not name_matches(e, name):
                 print(f"warning: {p.name}: {eid} ({name}) not found or renamed; skipped", file=sys.stderr)
                 continue
             unknown = [k for k in r if k not in SETTABLE]
@@ -741,13 +749,16 @@ def main(argv=None) -> int:
         used.add(eid)
         e["id"] = eid
 
-    # ---- hand corrections (overrides.yaml and shards/override-*.yaml), then enrichment
-    entries = apply_overrides(entries, overrides)
-    apply_enrichment(entries, root / "shards")
+    # The id map is built from this run's assignment, before overrides fuse entries: a merged
+    # entry's domains would otherwise re-key to the kept id and let it be claimed next run.
     new_map = dict(id_map)
     for e in entries:
         new_map.update({k: e["id"] for k in id_keys(e)})
-    (root / "ids.yaml").write_text(yaml.safe_dump(dict(sorted(new_map.items())), width=200), encoding="utf-8")
+
+    # ---- hand corrections: merges, then enrichment shards, then field corrections
+    entries = apply_override_merges(entries, overrides)
+    apply_enrichment(entries, root / "shards")
+    apply_override_sets(entries, overrides)
 
     # ---- region derivation
     for e in entries:
@@ -810,7 +821,10 @@ def main(argv=None) -> int:
             st["note"] = NOTED[next(d for d in e["domains"] if d in NOTED)]
         researched = e.get("our_status")  # from an enrichment shard or override: newer than the lists
         if researched:
-            st = {**st, **researched} if st["status"] != "in-use" else {**researched, **st}
+            st = {**st, **researched}
+            if any(d in cfg_ids for d in e["domains"]):  # config/sources.yaml stays in-use
+                st["status"], st["note"] = "in-use", "config/sources.yaml: " + ", ".join(
+                    sorted(cfg_ids.feeds_for(e["domains"])))
         e["our_status"] = st
 
     # ---- ranked entries
@@ -993,6 +1007,7 @@ def main(argv=None) -> int:
         "regions": {k: v for k, v in sorted(regions.items())},
         "entries": out_entries,
     }
+    (root / "ids.yaml").write_text(yaml.safe_dump(dict(sorted(new_map.items())), width=200), encoding="utf-8")
     (root / "catalogue.yaml").write_text(
         yaml.safe_dump(cat, sort_keys=False, allow_unicode=True, width=120), encoding="utf-8")
     cols = ["rank", "id", "name", "country", "region", "reach", "trust", "authority", "combined",
