@@ -177,6 +177,18 @@ def test_extract_url_prints_metadata_and_stores_nothing(env: Path) -> None:
     assert not (env / "newsfeed.db").exists()
 
 
+def test_extract_url_fetches_the_url_without_tracking_parameters(
+    env: Path, fetcher: FakeFetcher
+) -> None:
+    plain = "https://news.example.com/story-123"
+    fetcher.add_file(plain, "extract/news_article.html")
+
+    result = runner.invoke(cli.app, ["extract", "--url", f"{plain}?ref=rss"])
+
+    assert result.exit_code == 0, result.output
+    assert fetcher.fetched_urls() == [plain]
+
+
 def test_extract_url_save_stores_the_article(env: Path) -> None:
     url = "https://news.example.com/2026/10/bridge?utm_source=rss"
 
