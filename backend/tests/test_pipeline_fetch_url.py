@@ -16,7 +16,7 @@ import pytest
 from newsfeed.adapters.localfs_blobstore import LocalBlobStore
 from newsfeed.adapters.sqlite_repository import SqliteRepository
 from newsfeed.config import DomainParamRules, UrlParamsConfig, load_url_params
-from newsfeed.ingest.canonical import normalise_url
+from newsfeed.ingest.canonical import normalise_url, strip_tracking_params
 from newsfeed.models import Article, ExtractionResult, ExtractionStatus
 from newsfeed.pipeline import RunTally, extract_pending, extract_saved_url
 from newsfeed.wiring import Services, build_ingesters
@@ -119,6 +119,51 @@ def test_extract_keeps_content_parameters_in_the_fetch_url(
     extract_pending(_services(tmp_path, repository, fetcher), RunTally())
 
     assert fetcher.fetched_urls() == [url]
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://news.example.com/story-123/",  # trailing slash is part of the address
+        "https://news.example.com/story?b=2&a=1",  # query order as written
+        "https://News.Example.com/Story%2fX?q=a%20b",  # case and escapes as written
+    ],
+)
+def test_extract_fetches_non_tracker_urls_exactly_as_given(
+    tmp_path: Path, repository: SqliteRepository, url: str
+) -> None:
+    fetcher = FakeFetcher({url: PAGE})
+    _store(repository, url)
+
+    extract_pending(_services(tmp_path, repository, fetcher), RunTally())
+
+    assert fetcher.fetched_urls() == [url]
+
+
+def test_extract_keeps_the_rest_of_the_link_when_stripping_trackers(
+    tmp_path: Path, repository: SqliteRepository
+) -> None:
+    raw = "https://news.example.com/story/?z=1&utm_source=rss&a=2&ref=rss"
+    fetch = "https://news.example.com/story/?z=1&a=2"
+    fetcher = FakeFetcher({fetch: PAGE})
+    _store(repository, raw)
+
+    extract_pending(_services(tmp_path, repository, fetcher), RunTally())
+
+    assert fetcher.fetched_urls() == [fetch]
+
+
+def test_strip_tracking_params_leaves_non_http_and_relative_urls_alone() -> None:
+    assert strip_tracking_params("mailto:a@example.com?utm_source=x") == (
+        "mailto:a@example.com?utm_source=x"
+    )
+    assert strip_tracking_params("/relative?utm_source=x") == "/relative?utm_source=x"
+
+
+def test_strip_tracking_params_honours_keep() -> None:
+    rules = UrlParamsConfig(domains={"example.com": DomainParamRules(keep=frozenset({"ref"}))})
+    url = "https://example.com/a?ref=main&utm_source=x"
+    assert strip_tracking_params(url, rules=rules) == "https://example.com/a?ref=main"
 
 
 def test_extract_saved_url_fetches_the_stripped_url(

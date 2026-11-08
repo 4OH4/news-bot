@@ -34,7 +34,12 @@ from newsfeed.config import UrlParamsConfig
 from newsfeed.extract.chain import ExtractorChain
 from newsfeed.extract.overrides import Mode, url_domain
 from newsfeed.extract.retry import should_retry
-from newsfeed.ingest.canonical import canonical_from_html, normalise_url, with_canonical_url
+from newsfeed.ingest.canonical import (
+    canonical_from_html,
+    normalise_url,
+    strip_tracking_params,
+    with_canonical_url,
+)
 from newsfeed.ingest.dedupe import dedupe
 from newsfeed.logging import get_logger
 from newsfeed.metrics import ExtractionRecord, FeedRecord, reason_category, summarise_run
@@ -1034,16 +1039,13 @@ def extract_pending(
 
 
 def _fetch_url(url: str, rules: UrlParamsConfig | None) -> str:
-    """The URL to fetch for ``url``: its tracker-stripped form.
+    """The URL to fetch for ``url``: the link with its tracking parameters removed.
 
     Some publishers add a tracker to every feed link and then refuse exactly
-    those URLs in robots.txt, so the page is fetched at the canonical form.
-    Falls back to ``url`` if it can't be normalised; the fetcher then reports it.
+    those URLs in robots.txt. Only the trackers go; the rest of the link is
+    fetched as written (``normalise_url`` is a dedupe key and would change it).
     """
-    try:
-        return normalise_url(url, rules=rules)
-    except ValueError:
-        return url
+    return strip_tracking_params(url, rules=rules)
 
 
 def inspect_url(

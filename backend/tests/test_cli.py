@@ -187,6 +187,21 @@ def test_extract_url_fetches_the_url_without_tracking_parameters(
     assert fetcher.fetched_urls() == [plain]
 
 
+def test_extract_url_applies_the_per_domain_url_params_rules(
+    env: Path, fetcher: FakeFetcher
+) -> None:
+    (env.parent / "config" / "url_params.yaml").write_text(
+        "domains:\n  example.org:\n    strip: [traffic_source]\n"
+    )
+    plain = "https://www.example.org/news/a"
+    fetcher.add_file(plain, "extract/news_article.html")
+
+    result = runner.invoke(cli.app, ["extract", "--url", f"{plain}?traffic_source=rss"])
+
+    assert result.exit_code == 0, result.output
+    assert fetcher.fetched_urls() == [plain]
+
+
 def test_extract_url_save_stores_the_article(env: Path) -> None:
     url = "https://news.example.com/2026/10/bridge?utm_source=rss"
 

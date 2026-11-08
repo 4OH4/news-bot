@@ -39,6 +39,7 @@ __all__ = [
     "TRACKING_PREFIXES",
     "canonical_from_html",
     "normalise_url",
+    "strip_tracking_params",
     "with_canonical_url",
 ]
 
@@ -199,6 +200,30 @@ def normalise_url(
         params = [(k, v) for k, v in params if not _is_amp_flag(k, v)]
     query = urlencode(sorted(params), quote_via=quote_plus, errors=_QUERY_ERRORS)
     return urlunsplit((scheme, netloc, path, query, ""))
+
+
+def strip_tracking_params(url: str, *, rules: UrlParamsConfig | None = None) -> str:
+    """Return ``url`` with only its tracking query parameters removed.
+
+    The same parameters ``normalise_url`` drops (global lists plus the
+    per-domain ``rules``, honouring ``keep``), but nothing else changes: the
+    path, trailing slash, parameter order, escapes and AMP form are left as
+    given. That is the URL to *fetch*: ``normalise_url`` builds a dedupe key
+    and would alter URLs the server serves as written. A URL that isn't
+    absolute http(s) is returned unchanged.
+    """
+    parts = urlsplit(url.strip())
+    scheme = parts.scheme.lower()
+    if scheme not in _DEFAULT_PORTS or not parts.hostname or not parts.query:
+        return url.strip()
+    domain_rules = _rules_for_host(rules, _normalise_netloc(scheme, parts))
+    kept: list[str] = []
+    for piece in parts.query.split("&"):
+        pairs = parse_qsl(piece, keep_blank_values=True, errors=_QUERY_ERRORS)
+        if pairs and _is_tracking_param(pairs[0][0], domain_rules):
+            continue
+        kept.append(piece)
+    return urlunsplit(parts._replace(query="&".join(kept)))
 
 
 def _normalise_netloc(scheme: str, parts: SplitResult) -> str:
