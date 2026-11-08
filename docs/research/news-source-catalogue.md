@@ -1,6 +1,6 @@
 # News source catalogue: research protocol
 
-**Status:** agreed protocol, research not started. **Written:** 2026-11-08.
+**Status:** pool harvested and ranked; full enrichment not started. **Written:** 2026-11-08. **Updated:** 2026-11-08 with the lessons from the harvest (see the change log).
 
 **Where things live.** This protocol is committed to the repo. The catalogue and the raw data it is built from are kept **outside** the repo, in `~/.newsfeed/research/news-sources/` (see "Where the results go"). They are never committed, the same arrangement as the evaluation snapshots in `~/.newsfeed/eval-fixtures`.
 
@@ -15,9 +15,14 @@ Publishers come first. Blogs, newsletters and aggregators may get their own cata
 ## Scope
 
 - **Publishers that do original news reporting:** newspapers, broadcasters, wire services, digital-native newsrooms and news magazines. Aggregators and content farms can enter the candidate pool, but they are recorded as `kind: aggregator` and left out of the ranking (see "Ranked entries").
-- **One entry per editorial brand, not per domain.** BBC News is one entry covering `bbc.co.uk` and `bbc.com`. Signals measured per domain are added up across an entry's domains, and the method is noted. A brand that shares a domain with others (BBC Sport, a Guardian section) isn't split out. Each masthead in a chain (for example the local papers owned by Reach plc) is its own entry, with the chain in `ownership.owner`. Brands that the Digital News Report counts as TV or radio only are linked to their online entry where one exists, and their offline reach is kept as a separate signal.
-- **Specialist news publishers count** if they are significant news outlets in their own right, such as the FT, Bloomberg, Politico or Nature News. `topics` records the subject. Trade press (industry newsletters and trade magazines) is out of scope.
-- **English language.** A publisher that is mainly in another language is included if it has a significant English edition: its own English section or feed with new articles every day. Examples are DW, France 24, NHK World, Le Monde in English, El País English edition or Al Jazeera English. The `languages` and `english_edition` fields record how much is in English. A publisher with no English edition is out of scope for now. If it appears in a candidate source anyway, it is still recorded with `english_edition: none`, so no data is lost.
+- **One entry per editorial brand, not per domain.** BBC News is one entry covering `bbc.co.uk` and `bbc.com`. A brand that shares a domain with others (BBC Sport, BBC World Service, a Guardian section) isn't split out. Each masthead in a chain (for example the local papers owned by Reach plc) is its own entry, with the chain in `ownership.owner`. Brands that the Digital News Report counts as TV or radio only are linked to their online entry where one exists, and their offline reach is kept as a separate signal. The Digital News Report often lists several channels of one broadcaster; channels that share the broadcaster's domain are part of its entry, and each channel's offline reach is kept as its own row.
+  - **Signals measured per domain** are combined across an entry's domains as the measure allows: counts (Wikipedia links) are summed over every host under the entry's domains; ranks (Tranco, Chrome UX Report) can't be added, so the best rank is used. The method is noted on each value.
+  - **Infrastructure domains** (CDN, image and DNS hosts such as `bbci.co.uk` or `nyt.com`) go in the brand's `domains`, so bulk lookups find them.
+  - **Shared domains** host several unrelated brands or are shared infrastructure (`google.com`, `yahoo.com`, `go.com`, `indiatimes.com`, `sky.com`, `substack.com` and similar). They never join two records into one brand. A value measured on one is credited to every entry that lists it, with a note, and Wikipedia links under a shared domain count only through a more specific host (`news.sky.com`).
+  - **Separately branded English sister titles** with their own newsroom (Hürriyet Daily News beside Hürriyet) are their own entries. An English section or translated edition of the same title (Folha in English) belongs to the parent entry.
+- **Specialist news publishers count** if they are significant news outlets in their own right, such as the FT, Bloomberg, Politico or Nature News. `topics` records the subject. Trade press (industry newsletters and trade magazines) is out of scope; the major entertainment trade titles (Variety, Deadline, The Hollywood Reporter) are treated as specialist news.
+- **Topic groups.** Each entry gets a `topic_group` derived from `topics`: `news` (general, politics, world, local), `specialist` (tech, science, business, health, climate and other news specialisms) or `soft` (entertainment, celebrity, gaming, sport, lifestyle, culture, music, travel, food). An entry is `soft` only if every topic it has is soft. Soft outlets such as People, IGN or ESPN are kept and scored like any other, but ranked separately (see "Ranked entries"), because their large audiences would otherwise fill the top of a list meant for news (owner's decision).
+- **English language.** A publisher that is mainly in another language is included if it has a significant English edition: its own English section or feed with new articles every day. Examples are DW, France 24, NHK World, Le Monde in English, El País English edition or Al Jazeera English. A section of translated articles counts if it is updated daily; weekday-only updating counts too. The `languages` and `english_edition` fields record how much is in English. A publisher with no English edition is out of scope for now. If it appears in a candidate source anyway, it is still recorded with `english_edition: none`, so no data is lost. Because a wrong `none` drops an outlet from the ranking without trace, the strongest `none` entries (by combined score) get a light check before enrichment.
 - **No data is dropped.** Every candidate stays in the catalogue with all the data we collected for it. Being unreliable, deprecated, an aggregator or state-controlled is recorded as a flag or a field, never by removing the entry. The "top 100" and any other shortlist are views of the catalogue, not separate lists.
 
 ## Building the candidate pool
@@ -31,14 +36,17 @@ Candidates come from the union of these sources. Each one is recorded in the Sou
 | `wiki-cites` | English Wikipedia `externallinks` table from the Wikimedia database dumps, counted by domain once for the whole pool | How often English Wikipedia links to the domain |
 | `tranco` | Tranco list (dated snapshot) | Research-grade popularity rank per domain |
 | `crux` | Chrome UX Report popularity rank, from the published monthly top lists (zakird/crux-top-lists on GitHub), not BigQuery, so no GCP project or bill is involved | Rank band per origin (top 1k, 10k, 100k …) |
+| `wiki-agency` | English Wikipedia search API: articles crediting a wire in a citation's `agency=` field | How often Wikipedia relies on a wire's copy, which mostly reaches it through client sites rather than the wire's own domain |
 | `similarweb` | Similarweb public rankings and figures, including those Press Gazette republishes | Monthly visits and country rank |
-| `press-gazette` | Press Gazette top-50 news websites (UK and US, monthly) | Ranked visits, with month-to-month changes |
-| `mediacloud` | Media Cloud source collections by country | Lists of national and local outlets per country, and inbound link counts |
-| `gdelt` | GDELT source volumes | How many articles each domain publishes, and how often other outlets reprint or cite it |
+| `press-gazette` | Press Gazette top-50 news websites (monthly): UK, US and global English-language lists | Ranked audiences, with month-to-month changes. The UK list is Ipsos iris (`ipsos-iris`); the US and global lists are Similarweb visits (US-only traffic in the US list, worldwide in the global list) |
+| `ipsos-iris` | Ipsos iris, the UK industry audience measurement, as republished by Press Gazette | Unduplicated UK monthly audience across a brand's sites and apps |
+| `mediacloud` | Media Cloud source collections by country | Lists of national and local outlets per country, and inbound link counts. The API needs an account key, so it isn't used yet |
+| `gdelt` | GDELT Global Knowledge Graph, 12 months, queried on BigQuery (public dataset `gdelt-bq.gdeltv2.gkg_partitioned`) | How many distinct outlets link to each domain from article bodies, how many name each organisation, and how many articles each domain publishes |
 | `state-media-monitor` | State Media Monitor (Media and Journalism Research Center) | Classification of state-funded and state-controlled media by editorial independence |
 | `mom` | Media Ownership Monitor (RSF and partners) | Who owns which outlets, country by country |
 | `rsf` | RSF World Press Freedom Index (latest year) | Press freedom score per country |
-| `online-pop` | World Bank / ITU: internet users by country (latest year) | Online population per country, to turn Digital News Report percentages into estimated audiences |
+| `online-pop` | World Bank / ITU: internet users by country (latest year) | Online population per country, to turn Digital News Report percentages into estimated audiences. Taiwan isn't covered |
+| `m49` | UN Statistics Division: standard country or area codes (M49) | The country table the regions are derived from. Taiwan and Kosovo aren't in it and are added by hand |
 | `pew` / `ofcom` | Pew Research (US) and Ofcom News Consumption survey (UK) | Reach by brand from national surveys |
 
 Other sources (national press councils, audit bureaus such as ABC in the UK, prize records) can be added if they fill a gap. Each one gets a row in the Sources table.
@@ -47,15 +55,17 @@ Other sources (national press councils, audit bureaus such as ABC in the UK, pri
 
 The catalogue holds two kinds of data, and they cost very different amounts to collect, so they are collected to different depths.
 
-- **The pool: every candidate, with no cap.** Each entry gets the data that can be looked up in bulk by domain: the Wikipedia rating, Tranco and Chrome UX Report ranks, Wikipedia citation counts, any reach figure already in a harvested table (Digital News Report, Press Gazette, published Similarweb lists), and a combined score and rank. This costs almost nothing per entry, so nothing is left out to save effort. Expected size: roughly 400 to 700 entries.
-- **Full enrichment: the ranked top, plus outlets added to fill regional gaps.** These entries also get the fields that need research or judgement for each outlet: ownership, independence, coverage (from a headline sample), Digital News Report reach and trust looked up for the outlet's country, and our feed status. Expected size: roughly 250 to 350 entries.
+- **The pool: every candidate, with no cap.** Each entry gets the data that can be looked up in bulk by domain: the Wikipedia rating, Tranco and Chrome UX Report ranks, Wikipedia citation counts, GDELT counts, any reach figure already in a harvested table (Digital News Report, Press Gazette, published Similarweb lists), and a combined score and rank. This costs almost nothing per entry, so nothing is left out to save effort. The first harvest gave about 1,650 entries, of which about 580 are ranked: the seeds bring in many brands with no English edition, which stay in the pool unranked.
+- **Full enrichment: the ranked top, plus outlets added to fill regional gaps and the wire batch.** These entries also get the fields that need research or judgement for each outlet: ownership, independence, coverage (from a headline sample), Digital News Report reach and trust looked up for the outlet's country, and our feed status. Expected size: roughly 230 to 350 entries.
 
 ### Harvesting the pool
 
 - **Seeds** (sources that name publishers and so add entries): Digital News Report brand lists, Wikipedia's reliable-sources list, Press Gazette's top 50s, and Tranco's top 10k domains filtered to news outlets. Tranco has no categories, so each of those domains has to be classified as a news outlet or not.
-- **Enrichment only** (looked up for entries already in the pool, but doesn't add them): Chrome UX Report, Wikipedia citation counts, GDELT and Media Cloud inbound links. Wikipedia citations come from one download of the `externallinks` dump rather than the API: big outlets have hundreds of thousands of links, and paging through those 500 at a time would take thousands of requests per domain.
+- **Enrichment only** (looked up for entries already in the pool, but doesn't add them): Chrome UX Report, Wikipedia citation counts, Wikipedia agency credits, GDELT and Media Cloud inbound links. Wikipedia citations come from one download of the `externallinks` dump rather than the API: big outlets have hundreds of thousands of links, and paging through those 500 at a time would take thousands of requests per domain. The dump is about 5 GB; links are counted per host in one streaming pass and only the counts are kept.
+- **Wikipedia agency credits** are collected for `kind: wire` entries only, one search per name variant (`insource:"agency=AFP"`), combined by inclusion and exclusion over AND queries so an article using two spellings counts once. The search's OR between `insource:` phrases returns fewer hits than either phrase alone, and its regex search times out with partial results, so neither is used.
+- **GDELT** comes from three queries over the last 12 months of the Global Knowledge Graph on BigQuery, reading only the columns they need (about 3% of the table): distinct source domains linking to each domain and host from article bodies (`PAGE_LINKS`, self-links excluded), distinct source domains naming each organisation, and articles per source domain. The owner runs them in a BigQuery sandbox project with no billing account, so nothing can be charged; each query is dry-run first and has a cap on bytes billed. Agents don't hold the credentials.
 - **Gap filling:** Media Cloud's country collections are too large to use as a seed (thousands of US local outlets). They are used only for the regional searches below.
-- **Similarweb:** taken only from what is published (Press Gazette, Similarweb's public top-site lists), never scraped. Many entries won't have a Similarweb figure, and the scoring already allows for missing signals.
+- **Similarweb and Ipsos iris:** taken only from what is published (Press Gazette, Similarweb's public top-site lists), never scraped. Both are recorded but not scored in the overall ranking (see "Scoring"); they are kept for a later look at UK sources.
 
 ### Working down the ranking
 
@@ -71,15 +81,20 @@ The catalogue holds two kinds of data, and they cost very different amounts to c
    | Middle East and Africa | 10 |
    | Latin America and Caribbean | 5 |
 
-   The major wire services (AP, Reuters, AFP) and international broadcasters (for example BBC World Service and Al Jazeera English) have no separate target. They count toward their location region, and the authority signal should rank them highly. If any of them don't rank near the top, check whether the scoring is wrong.
-3. **Regional gap filling.** If working down the ranking would mean enriching far down a list dominated by other regions just to reach one group's minimum, go straight to a targeted search for that group: its Digital News Report country pages, Media Cloud collections and national press lists. Add the best candidates to the pool, fully enrich them, and mark them `added_by: regional-quota` so the ranking can be read honestly. This is expected for Latin America and Caribbean, and possibly for Europe excluding the UK, because there are few significant English-language outlets there.
-4. **Check-in, not a hard stop.** If full enrichment passes about **400 entries** with any group still below its minimum, stop and report the gaps to the owner before going further.
+   International broadcasters (for example BBC World Service and Al Jazeera English) have no separate target. They count toward their location region and rank near the top on their own signals.
+3. **Regional gap filling.** If working down the ranking would mean enriching far down a list dominated by other regions just to reach one group's minimum, go straight to a targeted search for that group: its Digital News Report country pages, Media Cloud collections and national press lists. Add the best candidates to the pool, fully enrich them, and mark them `added_by: regional-quota` so the ranking can be read honestly. The group's minimum is then met by a regional batch rather than by working down to it. This was needed for Latin America and Caribbean, where the pool held only 2 ranked outlets; the search added 15, mostly Caribbean English-language papers.
+4. **Wire batch.** Wire services don't get a target either, but the ranking can't place most of them. Their copy reaches readers through client sites, so they have little consumer traffic and score low on reach whatever their authority. AP and Reuters rank near the top; AFP and Xinhua fall inside the ranked batches; the other major wires (UPI, The Canadian Press, PTI, AAP, PA Media, EFE, Kyodo, dpa) are enriched as one extra batch, whatever their rank. The list is editorial and lives in the batch plan. Treating reach as unmeasured for wires was tried and rejected: it drops AP and Reuters to around rank 65 and still leaves the smaller wires near 300.
+5. **Check-in, not a hard stop.** If full enrichment passes about **400 entries** with any group still below its minimum, stop and report the gaps to the owner before going further.
+
+The batch plan (`batches.yaml`) is generated from the ranking by a script, so it follows any re-rank: the ranked batches run down to the rank where the last ranked group reaches its minimum, then the regional batch, then the wire batch. Every outlet is in exactly one batch.
 
 Each entry records which level it reached in `detail: pool | full`.
 
 ### Ranked entries
 
-Every entry gets scores, but the ranking, the regional counts and shortlists such as the "top 100" use only **ranked entries**. These are entries that are not `kind: aggregator` and whose `english_edition` is not `none`. The other entries stay in the catalogue with all their data.
+Every entry gets scores, but the ranking, the regional counts and shortlists such as the "top 100" use only **ranked entries**. These are entries that are not `kind: aggregator`, whose `english_edition` is not `none`, and that aren't one of the Digital News Report's generic categories ("other regional newspapers", "commercial radio news"). Those categories aren't publishers: they are kept in the raw Digital News Report table and don't become entries. The other entries stay in the catalogue with all their data.
+
+Ranked entries in `topic_group: soft` get their own ranking, `soft_rank`. The main ranking (`rank`), the regional minimums and the batch plan use `news` and `specialist` entries only. Both rankings share the same scores and percentiles.
 
 ## Fields for each entry
 
@@ -111,27 +126,42 @@ Every entry gets scores, but the ranking, the regional counts and shortlists suc
     basis: feed-sample            # feed-sample | sections | editorial-judgement
     note: "Japan-centred, with a world desk"
   topics: [general]               # general | business | tech | science | politics | sport | culture …
+  topic_group: news               # derived from topics: news | specialist | soft; see "Scope"
+  aliases: []                     # other names the sources use for the brand
+  harvested_from: [dnr, rsp]      # which seeds named it
   signals:                        # raw values copied from the sources; one key per measure, each with its source key
     dnr_reach_online:             # one row per surveyed country the brand appears in
-      - {country: JP, value: null, source: dnr-2026}
+      - {country: JP, value: null, source: dnr-2026}    # split markets add segment: "French-speaking"
     dnr_reach_offline: []         # TV, radio and print reach, same shape
     dnr_trust:
-      - {country: JP, value: null, source: dnr-2026}
+      - {country: JP, value: null, source: dnr-2026, scale: "% trust among those who have heard of the brand"}
+    dnr_audience_est: {value: null, source: online-pop-wb-2026-11}   # derived: see "Scoring"
     rsp: {value: null, source: rsp-2026-11}       # the rating for its general news reporting; see "Scoring"
-    rsp_topics: []                # topic-specific ratings, e.g. {topic: "politics and science", value: generally-unreliable}
-    wiki_cites: {value: null, source: wiki-cites-2026-11}
-    tranco_rank: {value: null, source: tranco-2026-11-01}
-    crux_band: {value: null, source: crux-2026-10}
-    similarweb_visits: {value: null, source: similarweb-2026-10}
-    press_gazette_rank: {value: null, source: press-gazette-2026-10}
-    gdelt_inbound: {value: null, source: gdelt-2026-11}
-    mediacloud_inbound: {value: null, source: mediacloud-2026-11}
+    rsp_topics: []                # topic- or period-specific ratings, e.g. {topic: "politics and science", value: generally-unreliable}
+    wiki_cites: {value: null, source: wiki-cites-2026-11-01}
+    wiki_agency: {value: null, link_equivalent: null, source: wiki-agency-2026-11-08}   # wires only
+    tranco_rank: {value: null, source: tranco-2026-11-07, domain: null}
+    crux_band: {value: null, source: crux-2026-09, origin: null}
+    similarweb_visits:            # one row per Press Gazette market; recorded, not scored
+      - {value: null, source: similarweb-2026-09, via: press-gazette, market: US}
+    ipsos_iris_audience:          # UK only; recorded, not scored
+      - {value: null, source: ipsos-iris-2026-09, via: press-gazette, market: UK}
+    press_gazette_rank:           # one row per market: UK | US | global-en
+      - {value: null, source: press-gazette-2026-09, market: UK}
+    gdelt_inbound: {value: null, links: null, source: gdelt-2025-11-01_2026-10-31}   # distinct linking source domains
+    gdelt_mentions: {value: null, org: null, source: gdelt-2025-11-01_2026-10-31}    # wires only: distinct domains naming it
+    gdelt_volume: {value: null, source: gdelt-2025-11-01_2026-10-31}                 # articles in the window; not scored
+    mediacloud_inbound: {value: null, source: null}
   scores:                         # derived from the signals; see "Scoring"
     reach: null
     trust: null
+    trust_editors: null           # from the Wikipedia rating
+    trust_audience: null          # from Digital News Report trust, as a within-market percentile
     authority: null
     combined: null
     signals_available: 0
+  rank: null                      # main ranking (news and specialist); see "Ranked entries"
+  soft_rank: null                 # separate ranking for topic_group: soft
   flags: []                       # see "Flags"
   detail: full                    # pool (bulk signals only) | full (also researched fields); see "Two levels of detail"
   added_by: pool                  # pool | regional-quota | manual
@@ -195,7 +225,8 @@ The table starts from the UN M49 standard country groupings, which also give the
 | Russia | `europe` | M49: Eastern Europe. Russian coverage shows in `coverage.focus` |
 | Armenia, Azerbaijan, Georgia, Cyprus | `europe` | M49: Western Asia |
 | Central Asia (Kazakhstan, Kyrgyzstan, Tajikistan, Turkmenistan, Uzbekistan) | `asia` | M49: Central Asia |
-| Hong Kong, Taiwan, Palestine | their own ISO codes (`HK`, `TW`, `PS`) | Keeps the catalogue neutral without taking a position |
+| Hong Kong, Taiwan, Palestine | their own ISO codes (`HK`, `TW`, `PS`) | Keeps the catalogue neutral without taking a position. M49 has no Taiwan row, so it is added by hand (`asia`, Eastern Asia) |
+| Kosovo | `XK` (`europe`, Southern Europe) | Not in M49; added by hand |
 | Other African countries | `africa` | M49: Africa |
 | Other Asian countries | `asia` | M49: Asia |
 | Australia, New Zealand, Pacific islands | `oceania` | M49: Oceania |
@@ -219,18 +250,26 @@ Evidence comes from these sources, in this order: State Media Monitor's classifi
 
 ## Scoring
 
+Every measure is turned into a **percentile**: the share of entries with that measure that it beats, from 0 to 1, with ties sharing their mid-rank. Percentiles are computed over every entry in the pool that has the measure, ranked or not. A percentile depends only on order, so no log transform is needed.
+
 - **Reach** measures absolute audience, so large and small countries are compared on the same footing. The regional minimums are what protect small countries.
-  - Digital News Report percentages are turned into an estimated audience: the share of the country's online population, multiplied by that population (`online-pop`), and added up across the countries where the brand is surveyed. The raw percentages are kept.
-  - Each reach measure (estimated audience, Similarweb visits, Tranco rank, Chrome UX Report band) is converted to a percentile across the pool, on a log scale so the biggest outlets don't flatten everyone else. The reach score is the average of the percentiles the entry has.
-- **Trust:** the Digital News Report brand trust score where there is one, combined with the Wikipedia rating (generally reliable 1.0, no consensus 0.5, generally unreliable 0.1, deprecated or blacklisted 0).
+  - Digital News Report percentages are turned into an estimated audience (`dnr_audience_est`): the share of the country's online population, multiplied by that population (`online-pop`), and added up across the countries where the brand is surveyed. Where the survey splits a country into language markets (Belgium, Canada, Switzerland), each market's percentage is weighted by its approximate share of the population. The raw percentages are kept.
+  - The reach measures are the estimated audience, Tranco rank and Chrome UX Report band. The reach score is the average of the percentiles the entry has.
+  - **Similarweb visits and Ipsos iris audiences are recorded but not scored.** Both come only from top-50 lists, so a percentile among the listed entries puts the 50th, still a very large site, near 0 and pushes it down (with Similarweb scored, The Atlantic ranked 73rd; without it, 25th). Iris is also UK-only. Both are kept for a later look at UK sources.
+- **Trust** has two parts, kept separately in `scores` and averaged where both exist:
+  - `trust_editors`: the Wikipedia rating (generally reliable 1.0, no consensus 0.5, generally unreliable 0.1, deprecated or blacklisted 0).
+  - `trust_audience`: the Digital News Report brand trust score ("% trust among those who have heard of the brand") as a percentile among the brands the report lists for the same country and language market, averaged across the markets the brand appears in. Raw levels can't be compared across countries: in polarised markets every brand scores low (in the US, the Washington Post 37% and the New York Times 48%).
   - The Wikipedia rating used is the one for the outlet's **general news reporting**. Ratings that Wikipedia gives for one topic only (for example, a paper that is generally reliable but rated "no consensus" on one subject) are kept in `rsp_topics` and shown in the catalogue, but don't change the score.
   - Where Wikipedia splits the outlet's general news itself (for example, Fox News, which has separate ratings for politics and science and for its other news), use the rating that covers most of its news output, and explain the choice in a note.
-- **Authority:** the percentile of Wikipedia citation counts, combined with GDELT or Media Cloud inbound citations where available.
+  - Where Wikipedia rates an outlet differently over time (CNET, Forbes, Newsweek), use the current period's rating and keep the others in `rsp_topics` with the period as the topic.
+- **Authority:** the average of two percentiles, whichever exist:
+  - Wikipedia citations. For wires, the larger of links to the wire's own domain and its agency credits converted to links: credited articles × the median links per citing article, measured on large news domains (about 2.5).
+  - GDELT `gdelt_inbound`: distinct outlet domains linking to the entry, the largest across its domains. For wires, the number of distinct domains naming the wire is used when larger, but GDELT's organisation extraction rarely recognises wire names (it never records "AFP"), so this mainly helps AP, Reuters, Bloomberg and Xinhua.
 - **Combined:** 40% reach, 30% trust and 30% authority.
   - **Missing signals:** for ranking only, a missing reach, trust or authority score is filled with the pool's median for that score, so being unmeasured neither helps nor hurts. The catalogue still stores the score as unknown, and `signals_available` records how many were real. An entry scored on one real signal is less certain than one scored on three, and shortlists should show that.
 - **Reach for multi-language outlets** usually measures the whole brand rather than its English edition. Record that in a note, and don't adjust the number.
 
-The weights are a starting point. Changing them re-sorts the catalogue but never removes an entry.
+The weights are a starting point. Changing them re-sorts the catalogue but never removes an entry. The merge script takes the weights as options, and can also score Similarweb and Ipsos iris, or compute percentiles over ranked entries only, for comparison.
 
 ## Checking our coverage
 
@@ -253,17 +292,26 @@ Checks use the project's `HttpFetcher` only, so they respect robots.txt, per-hos
 ## Where the results go
 
 - `docs/research/news-source-catalogue.md` (in the repo): this protocol and its change log.
+- `docs/research/news-source-catalogue/` (in the repo): the scripts, which read and write only the research folder below (set `NEWSFEED_RESEARCH_DIR` to use another):
+  - `merge_score.py`: merges the shards, joins the bulk signals, scores and ranks, and writes `catalogue.yaml`, `ranked.csv` and `ranked-soft.csv`. Weights and the optional measures are options.
+  - `plan_batches.py`: writes `batches.yaml` from the ranking.
+  - `count_wiki_cites.sh`: counts links per host in the `externallinks` dump.
+  - `wiki_agency.py`: collects Wikipedia agency credits for wires.
+  - `gdelt_bq.sh` and `sql/`: the GDELT queries, which the owner runs in a BigQuery sandbox; the script dry-runs each query and asks before running.
 - `~/.newsfeed/research/news-sources/` (outside the repo, never committed), shared by the main checkout and every worktree:
   - `catalogue.yaml`: the merged catalogue, including the `regions:` table.
+  - `ranked.csv` and `ranked-soft.csv`: the main and soft rankings, one row per ranked entry with its scores.
+  - `batches.yaml`: the full-enrichment batch plan, generated from the ranking.
+  - `overrides.yaml`: hand corrections applied after every merge (merging duplicates, setting a field), so they survive re-runs. `catalogue.yaml` is never edited by hand.
   - `sources.md`: the Sources table (each dataset's key, publisher, edition, retrieval date and URL).
-  - `raw/`: downloaded datasets (Tranco list, CrUX list, counts from the `externallinks` dump, harvested Digital News Report tables), kept so that scores can be recomputed without downloading them again.
+  - `raw/`: downloaded datasets (Tranco list, CrUX list, counts from the `externallinks` dump, harvested Digital News Report tables, GDELT query results, Wikipedia agency counts), kept so that scores can be recomputed without downloading them again.
   - `shards/`: work in progress from individual agents (see "Splitting the work").
 
 ## Splitting the work
 
 The catalogue lives outside the repo, so research agents don't need git, branches or worktrees. They read this protocol and write to the shared folder. To keep parallel agents from overwriting each other:
 
-- **Each agent writes only its own shard**: `shards/<task>.yaml`, for example `shards/harvest-dnr.yaml` or `shards/enrich-batch-07.yaml`. Only one step, the merge, writes `catalogue.yaml`.
+- **Each agent writes only its own shard**: `shards/<task>.yaml`, for example `shards/harvest-dnr.yaml` or `shards/enrich-batch-07.yaml`. Only one step, the merge, writes `catalogue.yaml`. The merge reads entries from `harvest-*.yaml` (`added_by: pool`), `manual-*.yaml` (`added_by: manual`) and `regional-*.yaml` (`added_by: regional-quota`), and corrections from `override-*.yaml` (the same format as `overrides.yaml`), so a checking agent never edits another agent's file.
 - **Harvest first, in parallel by source:** one agent per seed source (Digital News Report, Wikipedia's list, Press Gazette, Tranco classification). The bulk lookups (Tranco, CrUX, Wikipedia citations) are one job, because they are scripted joins.
 - **Merge, remove duplicates and score:** one step, which assigns ids, applies the brand rule, derives regions and ranks entries.
 - **Full enrichment, in parallel by batch:** batches of about 20 to 30 entries from the ranking, assigned so that no two agents have the same outlet. Each batch does ownership, independence, coverage and the feed check for its entries.
@@ -273,8 +321,11 @@ The catalogue lives outside the repo, so research agents don't need git, branche
 ## Known biases
 
 - **Wikipedia appears twice.** Its reliability rating feeds trust, and its citation counts feed authority. English Wikipedia leans toward English-language and Western outlets, so that bias counts twice. This is accepted for now, and the regional minimums partly offset it.
-- **Survey coverage is uneven.** The Digital News Report surveys about 47 markets, so outlets elsewhere rely on web-traffic signals alone.
+- **Survey coverage is uneven.** The Digital News Report surveys 48 markets (2026 edition), so outlets elsewhere rely on web-traffic signals alone.
 - **Traffic isn't readership.** Tranco and Chrome UX Report measure visits from browsers, including bots and casual clicks, not readers. They are the fallback, not the main measure.
+- **Reach can't see wire services.** Their copy is read on client sites, so they score low on reach however much they are relied on. The wire batch covers the major ones; smaller national agencies stay low in the ranking.
+- **English editions borrow the whole brand's numbers.** An outlet whose English output is a translated section (Kompas, Folha, Il Sole 24 Ore) ranks on the reach and authority of the whole brand, so it ranks higher than its English output justifies. This is recorded, not adjusted.
+- **GDELT sees what it collects.** Its inbound links come from its own source list and from the roughly half of articles where it extracts body links, and its organisation names miss most wire services.
 
 ## Change log
 
@@ -287,3 +338,4 @@ The catalogue lives outside the repo, so research agents don't need git, branche
 | 2026-11-08 | Kept off git (local exclude). Consistency review: brand-vs-domain rule, "ranked entries" defined, Flags table, fuller signals block, coverage statuses `available` and `no-feed`, CrUX from published lists (no BigQuery), Wikipedia citations from the dump, blocked-publishers.md not updated by this work, known biases |
 | 2026-11-08 | Reach as estimated absolute audience, averaged across per-measure percentiles; missing scores filled with the pool median for ranking only; specialist news publishers in scope, trade press out; "significant English edition" defined; Wikipedia rating taken from general news reporting, topic ratings recorded but not scored (owner's decisions) |
 | 2026-11-08 | Protocol committed to the repo; catalogue, Sources table and raw data moved to `~/.newsfeed/research/news-sources/`, outside git; work split into per-agent shards with a single merge step |
+| 2026-11-08 | Lessons from the harvest stage (owner's decisions). Similarweb and Ipsos iris recorded but not scored (top-50 lists distort percentiles), kept for a UK study; Press Gazette's UK list is Ipsos iris, and its ranks are per market. Trust split into `trust_editors` and `trust_audience` (Digital News Report trust as a within-market percentile). Topic groups with a separate `soft_rank` for entertainment, sport and lifestyle outlets. GDELT added via a BigQuery sandbox (12 months: inbound links, organisation mentions, volume). Wikipedia agency credits for wires; wire batch, since reach can't place wires. Per-domain rule written out (counts summed, best rank for ranks), with shared and infrastructure domains; English sister titles as separate entries; Digital News Report language markets and generic categories; Taiwan and Kosovo added to the region table; time-period Wikipedia ratings; percentiles over the whole pool, no log transform; `overrides.yaml` and the shard naming for manual, regional and override files; generated batch plan; scripts committed beside this protocol |
