@@ -9,6 +9,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import math
 import re
 import statistics
 from collections import defaultdict
@@ -46,7 +47,10 @@ def parse_since(text: str, now: datetime | None = None) -> datetime:
     """Parse a duration (``90m``, ``24h``, ``7d``) or a date or datetime (UTC if naive)."""
     text = text.strip()
     if match := _DURATION.match(text):
-        return (now or datetime.now(UTC)) - timedelta(**{_UNITS[match[2]]: int(match[1])})
+        try:
+            return (now or datetime.now(UTC)) - timedelta(**{_UNITS[match[2]]: int(match[1])})
+        except OverflowError:
+            raise InspectError(f"--since {text!r} reaches back too far; use less") from None
     for fmt in _DATE_FORMATS:
         try:
             parsed = datetime.strptime(text, fmt)
@@ -104,6 +108,9 @@ def filter_articles(
     title_match: str | None = None,
 ) -> list[Article]:
     """Keep the articles matching every given filter (a repeated one matches any value)."""
+    for name, bound in (("--min-score", min_score), ("--max-score", max_score)):
+        if bound is not None and not math.isfinite(bound):
+            raise InspectError(f"{name} must be a finite number, got {bound}")
     if min_score is not None and max_score is not None and min_score > max_score:
         raise InspectError(f"--min-score {min_score} is above --max-score {max_score}")
     for status in statuses:

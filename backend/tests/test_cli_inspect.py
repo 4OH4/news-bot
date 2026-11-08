@@ -405,6 +405,9 @@ def test_malformed_duration_exits_2_and_explains_the_format(data_dir: Path) -> N
 @pytest.mark.parametrize(
     "args",
     [
+        ["articles", "--since", "99999999999d"],
+        ["articles", "--min-score", "nan"],
+        ["articles", "--max-score", "inf"],
         ["articles", "--sort", "nonsense"],
         ["articles", "--group-by", "nonsense"],
         ["articles", "--min-score", "3", "--max-score", "1"],
@@ -615,7 +618,8 @@ def _fake_bin(tmp_path: Path, project: str) -> tuple[Path, Path]:
     uv.write_text(
         "#!/bin/sh\n"
         f'echo "$@" > "{marker}"\n'
-        f'echo "storage=$NEWSFEED_STORAGE bucket=$NEWSFEED_GCS_BUCKET" >> "{marker}"\n'
+        'echo "storage=$NEWSFEED_STORAGE bucket=$NEWSFEED_GCS_BUCKET '
+        f'project=$NEWSFEED_GCP_PROJECT" >> "{marker}"\n'
     )
     for p in (gcloud, uv):
         p.chmod(p.stat().st_mode | stat.S_IEXEC)
@@ -658,6 +662,7 @@ def test_make_inspect_gcp_targets_the_live_store_of_the_configured_project(
     called = marker.read_text()
     assert "inspect articles --source bbc-news" in called
     assert "storage=gcp bucket=demo-proj-content" in called
+    assert "project=demo-proj" in called
 
 
 def test_make_inspect_runs_against_local_storage(tmp_path: Path) -> None:

@@ -402,7 +402,8 @@ check that `auth/impersonate_service_account` is set, then run
 owner confirms the type, agents must not use the Python cloud clients (for
 example `NEWSFEED_STORAGE=gcp newsfeed report`) or Terraform.
 
-To read stored articles and feedback in the live store, agents run the read-only
+Once the owner has confirmed the credentials type (above), agents read stored
+articles and feedback in the live store with the read-only
 `make inspect-gcp ARGS="articles --source <id> --since 24h"`.
 
 ### The risk

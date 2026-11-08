@@ -150,3 +150,28 @@ def test_render_formats_contain_exactly_the_columns() -> None:
     assert "k=0.25" in text
     with pytest.raises(q.InspectError, match="jsonl"):
         q.render(rows, ["id"], "xml")
+
+
+@pytest.mark.parametrize("text", ["99999999999d", "99999999999999999999h"])
+def test_parse_since_rejects_durations_too_large_for_a_date(text: str) -> None:
+    with pytest.raises(q.InspectError, match="too far"):
+        q.parse_since(text, NOW)
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf")])
+def test_score_bounds_must_be_finite(bad: float) -> None:
+    with pytest.raises(q.InspectError, match="finite"):
+        q.filter_articles([], min_score=bad)
+    with pytest.raises(q.InspectError, match="finite"):
+        q.filter_articles([], max_score=bad)
+
+
+def test_score_bounds_are_inclusive() -> None:
+    a = art("a", score=1.0)
+    assert q.filter_articles([a], min_score=1.0) == [a]
+    assert q.filter_articles([a], max_score=1.0) == [a]
+
+
+def test_domain_argument_ignores_www_and_case() -> None:
+    a = art("a", domain="example.com")
+    assert q.filter_articles([a], domains=["www.Example.com"]) == [a]
