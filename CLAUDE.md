@@ -22,6 +22,8 @@ make test         # pytest (unit tests, no network)
 make eval         # run extraction evaluation against saved fixtures
 make run          # run the full pipeline locally (SQLite + local filesystem)
 make docker       # build the backend Docker image
+make inspect ARGS="articles --since 7d --group-by source_id"   # read-only query, local store
+make inspect-gcp ARGS="articles --source bbc-news --since 24h" # same, live GCP store
 ```
 
 The CLI entry point is `newsfeed` (`backend/src/newsfeed/cli.py`). The uv project lives in `backend/`, so run these from `backend/`, or from the root with `uv run --project backend newsfeed ...`:
@@ -32,7 +34,10 @@ uv run newsfeed ingest         # single stage
 uv run newsfeed extract --url <url>   # debug extraction for one page
 uv run newsfeed preview        # static HTML preview of extracted articles
 uv run newsfeed eval
+uv run newsfeed inspect articles|feedback ...   # read-only: filter, sort, group stored records
 ```
+
+**Reading live data.** Agents read Cloud Logging, job executions and stored data as the impersonated development account (already configured locally through `CLOUDSDK_CONFIG`). Once the owner has confirmed the credentials type (see `infra/README.md`, "How agents use it"), use `make inspect-gcp` for stored articles and feedback. Never use `gcloud auth` to check access (it is denied); use `gcloud config get-value project`. Never paste article text from the live store into issues, PRs or commits.
 
 The client (`client/`, a Preact and Vite PWA) has no Node on this machine, so its commands run in pinned Docker images through `make`. Never run `npm` or `npx` directly:
 

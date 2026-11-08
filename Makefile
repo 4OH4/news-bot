@@ -26,7 +26,7 @@ CLIENT_DOCKER = docker run --rm --user $(shell id -u):$(shell id -g) \
 	-e HOME=/tmp -e npm_config_cache=/tmp/.npm -e CI=$(CI) \
 	-v $(CURDIR)/client:/work/client -v $(CURDIR)/docs:/work/docs:ro -w /work/client
 
-.PHONY: help setup lint fmt test eval run docker \
+.PHONY: help setup lint fmt test eval run inspect inspect-gcp docker \
 	client-install client-add client-audit client-lint client-test client-build client-e2e
 
 help: ## Show this help
@@ -56,6 +56,19 @@ eval: ## Run the extraction evaluation over saved snapshots (EVAL_ARGS="--domain
 run: ## Run the full pipeline locally
 	@mkdir -p "$(NEWSFEED_DATA_DIR)"
 	$(UV) run newsfeed run
+
+inspect: ## Query stored articles and feedback, read-only, local store (ARGS="articles --since 7d")
+	uv run --project $(BACKEND) newsfeed inspect $(ARGS)
+
+# Runs from backend/ so a root .env can't override the live-store settings.
+inspect-gcp: ## Same, against the live GCP store (ARGS="articles --source bbc-news")
+	@project="$$(gcloud config get-value project 2>/dev/null)"; \
+	if [ -z "$$project" ]; then \
+		echo "error: gcloud has no project set, so the agent gcloud configuration isn't set up (infra/README.md, 'How agents use it')" >&2; \
+		exit 1; \
+	fi; \
+	NEWSFEED_STORAGE=gcp NEWSFEED_GCP_PROJECT="$$project" NEWSFEED_GCS_BUCKET="$$project-content" \
+		$(UV) run newsfeed inspect $(ARGS)
 
 docker: ## Build the backend Docker image (context is the repo root)
 	docker build -f $(BACKEND)/Dockerfile -t newsfeed .

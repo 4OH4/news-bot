@@ -7,10 +7,12 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Annotated, NoReturn
+from typing import Annotated, Any, NoReturn
 
 import typer
+from pydantic import ValidationError
 
+from newsfeed import inspect as q
 from newsfeed.config import ConfigError, load_sources, load_url_params
 from newsfeed.eval.report import (
     build_report,
@@ -46,7 +48,7 @@ from newsfeed.pipeline import (
     inspect_url,
     run_pipeline,
 )
-from newsfeed.ports import Fetcher
+from newsfeed.ports import Fetcher, Repository
 from newsfeed.preview import PreviewDirError, generate_preview
 from newsfeed.rank.stage import DEFAULT_WINDOW_HOURS, load_rank_config
 from newsfeed.report import UnknownRunError, render_text
@@ -343,6 +345,101 @@ def report(
     except (ConfigError, UnknownRunError) as exc:
         _fail(str(exc))
     typer.echo(summary.model_dump_json(indent=2) if as_json else render_text(summary))
+
+
+inspect_app = typer.Typer(help="Read-only queries over stored articles and feedback.")
+app.add_typer(inspect_app, name="inspect", no_args_is_help=True)
+
+FormatOption = Annotated[str, typer.Option("--format", help=f"One of: {', '.join(q.FORMATS)}.")]
+LimitArg = Annotated[int, typer.Option("--limit", min=0, help="Rows to show; 0 means no limit.")]
+
+
+@contextmanager
+def _inspect_repository() -> Iterator[Repository]:
+    """Open the repository (never the blob store); invalid options exit 2, bad settings 1."""
+    try:
+        repository, _ = open_storage(load_settings())
+    except (ConfigError, ValidationError) as exc:  # a message, not a traceback
+        _fail(str(exc))
+    try:
+        yield repository
+    except q.InspectError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    finally:
+        close = getattr(repository, "close", None)  # Firestore's client needs none
+        if close is not None:
+            close()
+
+
+def _emit(rows: list[dict[str, Any]], columns: list[str], fmt: str, limit: int, noun: str) -> None:
+    shown = rows if limit == 0 else rows[:limit]
+    typer.echo(q.render(shown, columns, fmt))
+    if fmt == "text":
+        typer.echo(f"\n{len(shown)} of {len(rows)} matching {noun} shown")
+
+
+@inspect_app.command("articles")
+def inspect_articles(
+    since: Annotated[str, typer.Option(help="Fetched at or after: 24h, 7d, a date")] = "24h",
+    source: Annotated[list[str] | None, typer.Option(metavar="ID")] = None,
+    domain: Annotated[list[str] | None, typer.Option(metavar="HOST")] = None,
+    status: Annotated[list[str] | None, typer.Option()] = None,
+    min_score: Annotated[float | None, typer.Option()] = None,
+    max_score: Annotated[float | None, typer.Option()] = None,
+    has: Annotated[list[str] | None, typer.Option(help="Breakdown key (KEY: = prefix).")] = None,
+    lacks: Annotated[list[str] | None, typer.Option(help="Breakdown key absent.")] = None,
+    title_match: Annotated[str | None, typer.Option(metavar="REGEX")] = None,
+    fields: Annotated[str | None, typer.Option(help=f"From: {','.join(q.ARTICLE_FIELDS)}")] = None,
+    sort: Annotated[str, typer.Option(help="Any listed field.")] = "score",
+    limit: LimitArg = 50,
+    group_by: Annotated[str | None, typer.Option(help="source_id domain status method ...")] = None,
+    fmt: FormatOption = "text",
+) -> None:
+    """List stored articles, or group them with counts and statistics."""
+    with _inspect_repository() as repository:
+        since_at = q.parse_since(since)
+        columns = q.parse_fields(fields, q.ARTICLE_FIELDS, q.DEFAULT_ARTICLE_FIELDS)
+        q.check_choice("--sort", sort, q.ARTICLE_FIELDS)
+        q.check_choice("--format", fmt, q.FORMATS)
+        if group_by is not None:
+            q.check_choice("--group-by", group_by, q.ARTICLE_GROUP_KEYS)
+        matches = q.query_articles(
+            repository,
+            since=since_at,
+            sources=source or (),
+            domains=domain or (),
+            statuses=status or (),
+            min_score=min_score,
+            max_score=max_score,
+            has=has or (),
+            lacks=lacks or (),
+            title_match=title_match,
+        )
+    if group_by is None:
+        _emit(q.list_article_rows(matches, columns, sort), columns, fmt, limit, "articles")
+    else:
+        typer.echo(q.render(q.group_articles(matches, group_by), q.group_columns(group_by), fmt))
+
+
+@inspect_app.command("feedback")
+def inspect_feedback(
+    since: Annotated[str, typer.Option(help="Created at or after: 24h, 7d, a date")] = "7d",
+    event: Annotated[list[str] | None, typer.Option()] = None,
+    limit: LimitArg = 50,
+    group_by: Annotated[str | None, typer.Option(help="One of: event, source_id.")] = None,
+    fmt: FormatOption = "text",
+) -> None:
+    """List feedback events, newest first, or count them per event or source."""
+    with _inspect_repository() as repository:
+        since_at = q.parse_since(since)
+        q.check_choice("--format", fmt, q.FORMATS)
+        if group_by is not None:
+            q.check_choice("--group-by", group_by, q.FEEDBACK_GROUP_KEYS)
+        rows = q.query_feedback(repository, since=since_at, events=event or ())
+    if group_by is None:
+        _emit(rows, q.FEEDBACK_FIELDS, fmt, limit, "events")
+    else:
+        typer.echo(q.render(q.group_feedback(rows, group_by), [group_by, "count"], fmt))
 
 
 @app.command()
