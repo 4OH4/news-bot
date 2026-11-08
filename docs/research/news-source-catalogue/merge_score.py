@@ -1068,7 +1068,7 @@ def to_entry(e: dict) -> dict:
 CONFIG_PUBLISHERS = {
     "bbc-news": "bbc.co.uk", "bbc-future": "bbc.com", "guardian-world": "theguardian.com",
     "guardian-longread": "theguardian.com", "independent-uk": "independent.co.uk",
-    "inews": "inews.co.uk", "dw-news": "dw.com", "business-insider": "businessinsider.com",
+    "inews": "inews.co.uk", "dw-news": "dw.com", "al-jazeera-english": "aljazeera.com", "business-insider": "businessinsider.com",
     "ars-technica": "arstechnica.com", "the-verge": "theverge.com", "wired": "wired.com",
     "lwn": "lwn.net", "404media": "404media.co", "mit-tech-review": "technologyreview.com",
     "nature-news": "nature.com", "quanta": "quantamagazine.org", "phys-org": "phys.org",
@@ -1122,8 +1122,6 @@ BLOCKED_DOMAINS = {  # docs/blocked-publishers.md "Blocked" table, publisher -> 
     "Wall Street Journal": ["wsj.com"],
 }
 NOTED = {
-    "aljazeera.com": "docs/blocked-publishers.md lists it as recoverable, needs a decision (robots.txt and stated terms)",
-    "aljazeera.net": "docs/blocked-publishers.md lists aljazeera.com as recoverable, needs a decision",
     "cnn.com": "docs/blocked-publishers.md: not added (stale world feed, pages over 5 MB cap)",
     "washingtonpost.com": "docs/blocked-publishers.md: not added (HTTP 502 on feed, 2026-10-17)",
     "spectator.co.uk": "docs/blocked-publishers.md: not added (feed URL 404)",
