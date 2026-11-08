@@ -11,7 +11,7 @@ inclusion-exclusion over AND queries (an article using two spellings counts once
     python3 -I docs/research/news-source-catalogue/wiki_agency.py   # reads catalogue.yaml, writes raw/wiki-agency/
 
 Output: raw/wiki-agency/agency-credits-<date>.csv  (id, name, query, articles)
-Polite: one request a second, generic User-Agent.
+Polite: one request a second, User-Agent naming the project (Wikimedia API etiquette; robots.txt's /w/ rule targets crawlers, accepted by the owner).
 """
 
 from __future__ import annotations
