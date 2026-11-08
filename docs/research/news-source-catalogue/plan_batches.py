@@ -21,6 +21,7 @@ import argparse
 import csv
 import datetime as dt
 import os
+import sys
 from pathlib import Path
 
 import yaml
@@ -73,6 +74,9 @@ def main() -> int:
                     "note": "regional-quota additions and pool entries in the region below the cut",
                     "entries": latam})
     by_id = {r["id"]: r for r in rows}
+    for w in WIRES:
+        if w not in by_id:
+            print(f"warning: wire {w} is not in the main ranking (renamed or unranked?)", file=sys.stderr)
     wires = [w for w in WIRES if w in by_id and int(by_id[w]["rank"]) > cut and w not in latam]
     batches.append({"batch": f"enrich-batch-{n + 1:02d}", "kind": "wires",
                     "note": "major wires the ranking can't place: reach measures consumer traffic",

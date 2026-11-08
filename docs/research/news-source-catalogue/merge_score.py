@@ -11,7 +11,8 @@ weights with flags, e.g.:
 
 Needs PyYAML (system python3, or `uv run --project backend python ...`).
 Inputs (under the research root: $NEWSFEED_RESEARCH_DIR, default ~/.newsfeed/research/news-sources):
-  shards/harvest-*.yaml            seed harvests
+  shards/harvest-*.yaml            seed harvests (also manual-*, regional-*, override-*, enrich-*)
+  overrides.yaml, ids.yaml         hand corrections; the id map that keeps ids stable
   raw/tranco/*.csv(.zip)           full Tranco list (rank,domain)
   raw/crux/crux-global-*.csv.gz    CrUX top list (origin,rank band)
   raw/wiki-cites/host-counts-*.tsv.gz   link counts per host from the externallinks dump
@@ -287,6 +288,16 @@ def apply_overrides(entries: list[dict], ov: dict) -> list[dict]:
             continue
         fields = dict(fields)
         note = fields.pop("note", "")
+        expect = fields.pop("expect_name", None)
+        if expect and not name_matches(e, expect):
+            print(f"warning: override set ({fname}): {eid} is '{e['name']}', not '{expect}'; skipped",
+                  file=sys.stderr)
+            continue
+        unknown = [k for k in fields if k.split(".")[0] not in SETTABLE]
+        if unknown:
+            print(f"warning: override set ({fname}): {eid}: fields not in the catalogue, ignored: {unknown}",
+                  file=sys.stderr)
+            fields = {k: v for k, v in fields.items() if k not in unknown}
         for path, value in fields.items():
             tgt, parts = e, path.split(".")
             for k in parts[:-1]:
@@ -295,6 +306,56 @@ def apply_overrides(entries: list[dict], ov: dict) -> list[dict]:
         e["_notes"].append(f"override ({fname}): {', '.join(f'{k}={v}' for k, v in fields.items())}"
                            + (f". {note}" if note else ""))
     return list(by_id.values())
+
+
+# Entry fields an override or enrichment shard may set (anything else isn't written out).
+SETTABLE = {"name", "aliases", "domains", "kind", "languages", "english_edition", "location", "topics",
+            "ownership", "independence", "country_press_freedom", "coverage", "our_status", "flags"}
+RESEARCHED = ("ownership", "independence", "country_press_freedom", "coverage")
+
+
+def name_matches(e: dict, name: str) -> bool:
+    return norm_name(name) in {norm_name(n) for n in [e["name"], *e["aliases"]]}
+
+
+def apply_enrichment(entries: list[dict], shard_dir: Path) -> None:
+    """Carry researched fields from shards/enrich-*.yaml onto entries (full enrichment).
+
+    Shard format: {batch: enrich-batch-01, entries: [{id, name, <SETTABLE fields>, note}]}.
+    `name` guards against an id that now points at another outlet: a mismatch is skipped.
+    """
+    by_id = {e["id"]: e for e in entries}
+    for p in sorted(shard_dir.glob("enrich-*.yaml")):
+        doc = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+        for r in doc.get("entries") or []:
+            r = dict(r)
+            eid, name, note = r.pop("id", None), r.pop("name", None), r.pop("note", "")
+            e = by_id.get(eid)
+            if e is None or (name and not name_matches(e, name)):
+                print(f"warning: {p.name}: {eid} ({name}) not found or renamed; skipped", file=sys.stderr)
+                continue
+            unknown = [k for k in r if k not in SETTABLE]
+            if unknown:
+                print(f"warning: {p.name}: {eid}: fields not in the catalogue, ignored: {unknown}",
+                      file=sys.stderr)
+            for k in SETTABLE & r.keys():
+                if k == "location":
+                    e["location"].update({x: y for x, y in r[k].items() if x not in ("region", "subregion")})
+                else:
+                    e[k] = r[k]
+            e["detail"] = "full"
+            e["_notes"].append(f"enriched ({p.name})" + (f": {note}" if note else ""))
+
+
+def load_id_map(root: Path) -> dict[str, str]:
+    p = root / "ids.yaml"
+    return (yaml.safe_load(p.read_text(encoding="utf-8")) or {}) if p.exists() else {}
+
+
+def id_keys(e: dict) -> list[str]:
+    """Keys that identify an entry across merges: its domains, else its name and country."""
+    keys = [d for d in e["domains"] if d not in SHARED_DOMAINS]
+    return keys or [f"{norm_name(e['name'] or '')}|{e['location']['country'] or ''}"]
 
 
 def mode(vals):
@@ -459,7 +520,7 @@ def load_online_pop(raw: Path):
 # tags, so they're normalised first.
 TOPIC_ALIASES = {"games": "gaming", "technology": "tech", "sports": "sport", "celebrities": "celebrity"}
 SOFT_TOPICS = {"entertainment", "celebrity", "gaming", "sport", "lifestyle", "culture", "music",
-               "travel", "food", "royalty", "adult-industry", "consumer", "fashion"}
+               "travel", "food", "royalty", "adult-industry", "fashion"}
 NEWS_TOPICS = {"general", "politics", "world", "local", "regional", "investigations", "current-affairs"}
 
 
@@ -655,13 +716,24 @@ def main(argv=None) -> int:
     regions = build_regions(raw / "m49" / "m49.csv")
 
     # ---- ids: config/sources.yaml ids where the publisher matches, else slugs
+    # Ids persist in ids.yaml (domain, or name|country, -> id), so an entry keeps its id
+    # across re-merges and overrides or enrichment shards keyed by id stay on the same outlet.
     cfg_ids = config_id_map(a.repo)
+    id_map = load_id_map(root)
     used = set()
-    for e in sorted(entries, key=lambda e: (-len(e["harvested_from"]), e["name"] or "")):
+    order = sorted(entries, key=lambda e: (-len(e["harvested_from"]), e["name"] or ""))
+    for e in order:  # pass 1: config ids, then ids from earlier merges
         cid = next((cfg_ids[d] for d in e["domains"] if d in cfg_ids), None)
-        base = cid or slug(e["name"] or (e["domains"][0] if e["domains"] else "unnamed"))
+        prior = next((id_map[k] for k in id_keys(e) if id_map.get(k) and id_map[k] not in used), None)
+        if (cid or prior) and (cid or prior) not in used:
+            e["id"] = cid or prior
+            used.add(e["id"])
+    for e in order:  # pass 2: new entries get a slug
+        if "id" in e:
+            continue
+        base = slug(e["name"] or (e["domains"][0] if e["domains"] else "unnamed"))
         i, eid = 2, base
-        if eid in used and not cid:
+        if eid in used:
             c = (e["location"]["country"] or "").lower()
             eid = f"{base}-{c}" if c else base
         while eid in used:
@@ -669,8 +741,13 @@ def main(argv=None) -> int:
         used.add(eid)
         e["id"] = eid
 
-    # ---- hand corrections (overrides.yaml and shards/override-*.yaml)
+    # ---- hand corrections (overrides.yaml and shards/override-*.yaml), then enrichment
     entries = apply_overrides(entries, overrides)
+    apply_enrichment(entries, root / "shards")
+    new_map = dict(id_map)
+    for e in entries:
+        new_map.update({k: e["id"] for k in id_keys(e)})
+    (root / "ids.yaml").write_text(yaml.safe_dump(dict(sorted(new_map.items())), width=200), encoding="utf-8")
 
     # ---- region derivation
     for e in entries:
@@ -731,6 +808,9 @@ def main(argv=None) -> int:
             st["note"] = "docs/blocked-publishers.md: " + blocked[next(d for d in e["domains"] if d in blocked)]
         elif any(d in NOTED for d in e["domains"]):
             st["note"] = NOTED[next(d for d in e["domains"] if d in NOTED)]
+        researched = e.get("our_status")  # from an enrichment shard or override: newer than the lists
+        if researched:
+            st = {**st, **researched} if st["status"] != "in-use" else {**researched, **st}
         e["our_status"] = st
 
     # ---- ranked entries
@@ -748,22 +828,26 @@ def main(argv=None) -> int:
     missing_pop = set()
     for i in pool_idx:
         s = entries[i]["signals"]
-        rows = s.get("dnr_reach_online") or []
+        # A brand can have several rows for one market (a broadcaster's channels sharing its
+        # domain); their audiences overlap, so the largest row stands for the market.
+        per_market: dict[tuple, float] = {}
+        for row in s.get("dnr_reach_online") or []:
+            if row.get("value") is not None:
+                k = ((row.get("country") or "").upper(), row.get("segment"))
+                per_market[k] = max(per_market.get(k, 0.0), float(row["value"]))
         aud, ok = 0.0, False
-        for row in rows:
-            c, v = (row.get("country") or "").upper(), row.get("value")
-            if v is None:
-                continue
+        for (c, seg), v in per_market.items():
             if c in online_pop:
-                aud += v / 100 * online_pop[c][0] * segment_share(c, row.get("segment"))
+                aud += v / 100 * online_pop[c][0] * segment_share(c, seg)
                 ok = True
             else:
                 missing_pop.add(c)
         if ok:
             audience[i] = aud
             s["dnr_audience_est"] = {"value": round(aud), "source": pop_key,
-                                     "method": "sum over surveyed countries (and language segments, weighted by "
-                                               "population share) of % weekly online reach x internet users"}
+                                     "method": "sum over surveyed markets (largest row per market; language segments "
+                                               "weighted by population share) of % weekly online reach x "
+                                               "internet users"}
         vis = [r.get("value") for r in as_list(s.get("similarweb_visits")) if r.get("value")]
         if vis:
             sw[i] = max(vis)
@@ -788,11 +872,12 @@ def main(argv=None) -> int:
     # lists for the same country (and language segment), averaged across countries. Raw DNR
     # levels differ by market (polarised markets score every brand low), so they aren't
     # comparable across countries; the raw rows stay in signals.dnr_trust.
-    by_market: dict[tuple, dict[int, float]] = defaultdict(dict)
+    rows_by_market: dict[tuple, dict[int, list[float]]] = defaultdict(lambda: defaultdict(list))
     for i in pool_idx:
         for r in entries[i]["signals"].get("dnr_trust") or []:
             if r.get("value") is not None:
-                by_market[((r.get("country") or "").upper(), r.get("segment"))][i] = float(r["value"])
+                rows_by_market[((r.get("country") or "").upper(), r.get("segment"))][i].append(float(r["value"]))
+    by_market = {m: {i: statistics.mean(v) for i, v in d.items()} for m, d in rows_by_market.items()}
     aud_rows: dict[int, list[float]] = defaultdict(list)
     for vals in by_market.values():
         for i, p in percentiles(vals).items():
@@ -930,9 +1015,9 @@ def main(argv=None) -> int:
 
 
 def to_entry(e: dict) -> dict:
-    flags = []
+    flags = list(e.get("flags") or [])
     rv = (e["signals"].get("rsp") or {}).get("value")
-    if rv in ("deprecated", "blacklisted"):
+    if rv in ("deprecated", "blacklisted") and "rsp-deprecated" not in flags:
         flags.append("rsp-deprecated")
     sig = {k: e["signals"].get(k) for k in SIGNAL_KEYS}
     for k in SIGNAL_KEYS:
@@ -951,10 +1036,11 @@ def to_entry(e: dict) -> dict:
     return {
         "id": e["id"], "name": e["name"], "aliases": e["aliases"], "domains": e["domains"],
         "kind": e["kind"], "languages": e["languages"], "english_edition": e["english_edition"],
-        "location": e["location"], "topics": e["topics"], "signals": sig,
+        "location": e["location"], "topics": e["topics"],
+        **{k: e.get(k) for k in RESEARCHED}, "signals": sig,
         "topic_group": e.get("topic_group"), "scores": e["scores"], "rank": e.get("rank"),
         "soft_rank": e.get("soft_rank"), "ranked": e["ranked"], "flags": flags,
-        "detail": "pool", "added_by": e["added_by"], "harvested_from": e["harvested_from"],
+        "detail": e.get("detail", "pool"), "added_by": e["added_by"], "harvested_from": e["harvested_from"],
         "our_status": e["our_status"], "note": note,
     }
 
