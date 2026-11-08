@@ -69,9 +69,10 @@ def test_has_prefix_and_exact_matching() -> None:
     assert q.filter_articles([a, b], lacks=["demote:"]) == [b]
 
 
-def test_sort_rows_puts_blanks_last_and_breaks_ties_by_id() -> None:
-    rows = [{"id": "b", "score": 1.0}, {"id": "n", "score": None}, {"id": "a", "score": 1.0}]
-    assert [r["id"] for r in q.sort_rows(rows, "score")] == ["a", "b", "n"]
+def test_rows_sort_blanks_last_and_break_ties_by_id() -> None:
+    items = [art("b", score=1.0), art("n"), art("a", score=1.0)]
+    rows = q.list_article_rows(items, ["score"], "score")
+    assert [r["id"] for r in rows] == [*sorted([items[0].id, items[2].id]), items[1].id]
 
 
 def test_group_by_domain_matches_the_issue_example() -> None:

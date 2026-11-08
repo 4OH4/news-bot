@@ -1,10 +1,7 @@
-"""Read-only queries over stored articles and feedback (``newsfeed inspect``).
+"""Read-only, generic queries over stored articles and feedback (``newsfeed inspect``).
 
-Everything here is generic: it filters, sorts, groups and renders records by
-their fields and knows nothing about particular sources, topics or domains.
-The functions take records or a ``Repository`` and return rows (plain dicts);
-rendering is separate. Only ``list_articles``, ``get_article`` and
-``list_feedback`` are called, and no body text is read from the ``BlobStore``.
+Functions take records or a ``Repository`` and return rows (dicts); rendering is separate.
+Only ``list_articles``, ``get_article`` and ``list_feedback`` are called, never the BlobStore.
 """
 
 from __future__ import annotations
@@ -20,39 +17,25 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from newsfeed.extract.overrides import normalise_domain, url_domain
-from newsfeed.models import Article, ExtractionStatus, Feedback, FeedbackEvent
+from newsfeed.models import Article, ExtractionStatus, FeedbackEvent
 from newsfeed.ports import Repository
 
-ARTICLE_FIELDS = (
-    "id",
-    "source_id",
-    "domain",
-    "title",
-    "url",
-    "published_at",
-    "fetched_at",
-    "score",
-    "status",
-    "method",
-    "error_type",
-    "error",
-    "word_count",
-    "attempts",
-    "breakdown",
-    "summary",
+_words = str.split  # field lists written as words, one line each
+ARTICLE_FIELDS = _words(
+    "id source_id domain title url published_at fetched_at score status method error_type "
+    "error word_count attempts breakdown summary"
 )
-DEFAULT_ARTICLE_FIELDS = ("score", "published_at", "source_id", "status", "word_count", "title")
-ARTICLE_GROUP_KEYS = ("source_id", "domain", "status", "method", "error_type", "breakdown")
-FEEDBACK_FIELDS = ("created_at", "event", "value", "article_id", "source_id", "title")
-FEEDBACK_GROUP_KEYS = ("event", "source_id")
-FORMATS = ("text", "jsonl", "csv")
+DEFAULT_ARTICLE_FIELDS = _words("score published_at source_id status word_count title")
+ARTICLE_GROUP_KEYS = _words("source_id domain status method error_type breakdown")
+FEEDBACK_FIELDS = _words("created_at event value article_id source_id title")
+FEEDBACK_GROUP_KEYS = ["event", "source_id"]
+FORMATS = ["text", "jsonl", "csv"]
 
-_NUMERIC_FIELDS = frozenset({"score", "word_count", "attempts", "value"})
-_DATE_FIELDS = frozenset({"published_at", "fetched_at", "created_at"})
+_ASCENDING = set(ARTICLE_FIELDS) - {"score", "published_at", "fetched_at", "word_count", "attempts"}
 _DURATION = re.compile(r"^(\d+)([mhd])$")
-_DURATION_UNITS = {"m": "minutes", "h": "hours", "d": "days"}
+_UNITS = {"m": "minutes", "h": "hours", "d": "days"}
 _DATE_FORMATS = ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S%z")
-_STATUSES = tuple(s.value for s in ExtractionStatus)
+_STATUSES = [s.value for s in ExtractionStatus]
 
 
 class InspectError(ValueError):
@@ -61,13 +44,12 @@ class InspectError(ValueError):
 
 def parse_since(text: str, now: datetime | None = None) -> datetime:
     """Parse a duration (``90m``, ``24h``, ``7d``) or a date or datetime (UTC if naive)."""
-    now = now or datetime.now(UTC)
-    match = _DURATION.match(text.strip())
-    if match:
-        return now - timedelta(**{_DURATION_UNITS[match.group(2)]: int(match.group(1))})
+    text = text.strip()
+    if match := _DURATION.match(text):
+        return (now or datetime.now(UTC)) - timedelta(**{_UNITS[match[2]]: int(match[1])})
     for fmt in _DATE_FORMATS:
         try:
-            parsed = datetime.strptime(text.strip(), fmt)
+            parsed = datetime.strptime(text, fmt)
         except ValueError:
             continue
         return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
@@ -86,47 +68,27 @@ def check_choice(option: str, value: str, choices: Sequence[str]) -> str:
 
 def parse_fields(text: str | None, valid: Sequence[str], default: Sequence[str]) -> list[str]:
     """Split a comma-separated field list, rejecting unknown names."""
-    if text is None:
-        return list(default)
-    names = [n.strip() for n in text.split(",") if n.strip()]
-    if not names:
-        raise InspectError(f"--fields is empty: choose from {', '.join(valid)}")
-    for name in names:
-        check_choice("--fields", name, valid)
-    return names
-
-
-# --- articles ----------------------------------------------------------------
+    names = [n.strip() for n in text.split(",") if n.strip()] if text is not None else default
+    return [check_choice("--fields", n, valid) for n in names] or list(default)
 
 
 def article_value(article: Article, field: str) -> Any:
     """The value of one listing field of ``article`` (never the body text)."""
-    extraction = article.extraction
     match field:
         case "domain":
             return url_domain(article.canonical_url)
         case "status":
-            return extraction.status.value
-        case "method":
-            return extraction.method
-        case "error_type":
-            return extraction.error_type
-        case "error":
-            return extraction.error
-        case "word_count":
-            return extraction.word_count
-        case "attempts":
-            return extraction.attempts
+            return article.extraction.status.value
         case "breakdown":
             return dict(article.score_breakdown)
+        case "method" | "error_type" | "error" | "word_count" | "attempts":
+            return getattr(article.extraction, field)
         case _:
             return getattr(article, field)
 
 
 def _has_key(breakdown: dict[str, float], key: str) -> bool:
-    if key.endswith(":"):
-        return any(k.startswith(key) for k in breakdown)
-    return key in breakdown
+    return any(k.startswith(key) for k in breakdown) if key.endswith(":") else key in breakdown
 
 
 def filter_articles(
@@ -146,92 +108,53 @@ def filter_articles(
         raise InspectError(f"--min-score {min_score} is above --max-score {max_score}")
     for status in statuses:
         check_choice("--status", status, _STATUSES)
-    pattern = None
-    if title_match is not None:
-        try:
-            pattern = re.compile(title_match, re.IGNORECASE)
-        except re.error as exc:
-            raise InspectError(f"invalid --title-match regex: {exc}") from exc
-    wanted_domains = {normalise_domain(d) for d in domains}
+    try:
+        pattern = re.compile(title_match, re.IGNORECASE) if title_match is not None else None
+    except re.error as exc:
+        raise InspectError(f"invalid --title-match regex: {exc}") from exc
+    wanted = {normalise_domain(d) for d in domains}
+    scored = min_score is not None or max_score is not None
 
     def keep(a: Article) -> bool:
-        if sources and a.source_id not in sources:
-            return False
-        if wanted_domains and url_domain(a.canonical_url) not in wanted_domains:
-            return False
-        if statuses and a.extraction.status.value not in statuses:
-            return False
-        if min_score is not None or max_score is not None:
-            if a.score is None:
-                return False
-            if min_score is not None and a.score < min_score:
-                return False
-            if max_score is not None and a.score > max_score:
-                return False
-        if any(not _has_key(a.score_breakdown, k) for k in has):
-            return False
-        if any(_has_key(a.score_breakdown, k) for k in lacks):
-            return False
-        return not (pattern is not None and not pattern.search(a.title))
+        s = a.score
+        return (
+            (not sources or a.source_id in sources)
+            and (not wanted or url_domain(a.canonical_url) in wanted)
+            and (not statuses or a.extraction.status.value in statuses)
+            and (not scored or s is not None)
+            and (min_score is None or (s is not None and s >= min_score))
+            and (max_score is None or (s is not None and s <= max_score))
+            and all(_has_key(a.score_breakdown, k) for k in has)
+            and not any(_has_key(a.score_breakdown, k) for k in lacks)
+            and (pattern is None or bool(pattern.search(a.title)))
+        )
 
     return [a for a in articles if keep(a)]
 
 
-def sort_rows(rows: list[dict[str, Any]], field: str) -> list[dict[str, Any]]:
-    """Order by ``field``: numbers and dates descending, text ascending, blanks last.
-
-    Ties are broken by ``id`` (or ``article_id``/``created_at`` order for feedback) so
-    the output is stable.
-    """
-    descending = field in _NUMERIC_FIELDS or field in _DATE_FIELDS
-    tie = "id" if rows and "id" in rows[0] else None
-    ordered = sorted(rows, key=lambda r: str(r[tie])) if tie else list(rows)
-
-    def sort_key(row: dict[str, Any]) -> Any:
-        value = row[field]
-        return str(value) if isinstance(value, dict) else value
-
-    present = [r for r in ordered if r[field] is not None]
-    blank = [r for r in ordered if r[field] is None]
-    present.sort(key=sort_key, reverse=descending)
-    return present + blank
+def query_articles(
+    repo: Repository, *, since: datetime, statuses: Sequence[str] = (), **filters: Any
+) -> list[Article]:
+    """Read articles fetched since ``since`` and apply the in-memory filters."""
+    one = len(statuses) == 1 and statuses[0] in _STATUSES
+    found = repo.list_articles(status=ExtractionStatus(statuses[0]) if one else None, since=since)
+    return filter_articles(found, statuses=statuses, **filters)
 
 
 def list_article_rows(
     articles: Sequence[Article], fields: Sequence[str], sort: str
 ) -> list[dict[str, Any]]:
-    """One row per article holding the sort field, ``id`` and the chosen fields."""
-    wanted = {*fields, sort, "id"}
-    return sort_rows([{f: article_value(a, f) for f in wanted} for a in articles], sort)
+    """Rows holding ``id``, the sort field and the chosen fields.
 
-
-def _stats(values: list[float]) -> tuple[float | None, float | None]:
-    if not values:
-        return None, None
-    return statistics.fmean(values), statistics.median(values)
-
-
-def group_articles(articles: Sequence[Article], key: str) -> list[dict[str, Any]]:
-    """One row per group: count, count per status, median words, mean and median score."""
-    groups: dict[Any, list[Article]] = defaultdict(list)
-    for a in articles:
-        if key == "breakdown":
-            for k in a.score_breakdown:
-                groups[k].append(a)
-        else:
-            groups[article_value(a, key)].append(a)
-    out = []
-    for group_key, members in groups.items():
-        row: dict[str, Any] = {key: group_key, "count": len(members)}
-        for status in _STATUSES:
-            row[status] = sum(1 for a in members if a.extraction.status.value == status)
-        row["word_count_median"] = statistics.median(a.extraction.word_count for a in members)
-        row["score_mean"], row["score_median"] = _stats(
-            [a.score for a in members if a.score is not None]
-        )
-        out.append(row)
-    out.sort(key=lambda r: (-r["count"], str(r[key] if r[key] is not None else "")))
-    return out
+    Ordered by ``sort``: numbers and dates descending, text ascending, blanks last,
+    ties broken by ``id``.
+    """
+    rows = [{f: article_value(a, f) for f in {*fields, sort, "id"}} for a in articles]
+    rows.sort(key=lambda r: r["id"])
+    present = [r for r in rows if r[sort] is not None]
+    by = (lambda r: str(r[sort])) if sort == "breakdown" else (lambda r: r[sort])
+    present.sort(key=by, reverse=sort not in _ASCENDING)
+    return present + [r for r in rows if r[sort] is None]
 
 
 def group_columns(key: str) -> list[str]:
@@ -239,22 +162,29 @@ def group_columns(key: str) -> list[str]:
     return [key, "count", *_STATUSES, "word_count_median", "score_mean", "score_median"]
 
 
-def query_articles(
-    repo: Repository,
-    *,
-    since: datetime,
-    statuses: Sequence[str] = (),
-    **filters: Any,
-) -> list[Article]:
-    """Read articles fetched since ``since`` and apply the in-memory filters."""
-    for status in statuses:
-        check_choice("--status", status, _STATUSES)
-    only = ExtractionStatus(statuses[0]) if len(statuses) == 1 else None
-    found = repo.list_articles(status=only, since=since)
-    return filter_articles(found, statuses=statuses, **filters)
+def group_articles(articles: Sequence[Article], key: str) -> list[dict[str, Any]]:
+    """One row per group: count, count per status, median words, mean and median score."""
+    groups: dict[Any, list[Article]] = defaultdict(list)
+    for a in articles:
+        for k in a.score_breakdown if key == "breakdown" else [article_value(a, key)]:
+            groups[k].append(a)
+    out = []
+    for name, members in groups.items():
+        scores = [a.score for a in members if a.score is not None]
+        out.append(
+            {key: name, "count": len(members)}
+            | {s: sum(a.extraction.status.value == s for a in members) for s in _STATUSES}
+            | {
+                "word_count_median": statistics.median(a.extraction.word_count for a in members),
+                "score_mean": statistics.fmean(scores) if scores else None,
+                "score_median": statistics.median(scores) if scores else None,
+            }
+        )
+    return _largest_first(out, key)
 
 
-# --- feedback ----------------------------------------------------------------
+def _largest_first(rows: list[dict[str, Any]], key: str) -> list[dict[str, Any]]:
+    return sorted(rows, key=lambda r: (-r["count"], str(r[key] if r[key] is not None else "")))
 
 
 def query_feedback(
@@ -263,28 +193,20 @@ def query_feedback(
     """Feedback rows newest first, each joined with its article's source and title."""
     for event in events:
         check_choice("--event", event, [e.value for e in FeedbackEvent])
-    items: list[Feedback] = [
-        f for f in repo.list_feedback(since=since) if not events or f.event.value in events
+    items = [f for f in repo.list_feedback(since=since) if not events or f.event in events]
+    items.sort(key=lambda f: (f.created_at, f.id), reverse=True)
+    articles = {i.article_id: repo.get_article(i.article_id) for i in items}
+    return [
+        {
+            "created_at": f.created_at,
+            "event": f.event.value,
+            "value": f.value,
+            "article_id": f.article_id,
+            "source_id": a.source_id if (a := articles[f.article_id]) else None,
+            "title": a.title if a else None,
+        }
+        for f in items
     ]
-    items.sort(key=lambda f: f.id)
-    items.sort(key=lambda f: f.created_at, reverse=True)
-    cache: dict[str, Article | None] = {}
-    rows = []
-    for f in items:
-        if f.article_id not in cache:
-            cache[f.article_id] = repo.get_article(f.article_id)
-        article = cache[f.article_id]
-        rows.append(
-            {
-                "created_at": f.created_at,
-                "event": f.event.value,
-                "value": f.value,
-                "article_id": f.article_id,
-                "source_id": article.source_id if article else None,
-                "title": article.title if article else None,
-            }
-        )
-    return rows
 
 
 def group_feedback(rows: Sequence[dict[str, Any]], key: str) -> list[dict[str, Any]]:
@@ -292,12 +214,7 @@ def group_feedback(rows: Sequence[dict[str, Any]], key: str) -> list[dict[str, A
     counts: dict[Any, int] = defaultdict(int)
     for row in rows:
         counts[row[key]] += 1
-    out = [{key: k, "count": n} for k, n in counts.items()]
-    out.sort(key=lambda r: (-r["count"], str(r[key] if r[key] is not None else "")))
-    return out
-
-
-# --- rendering ---------------------------------------------------------------
+    return _largest_first([{key: k, "count": n} for k, n in counts.items()], key)
 
 
 def _plain(value: Any) -> str:
@@ -313,27 +230,20 @@ def _plain(value: Any) -> str:
     return " ".join(str(value).split())
 
 
-def _json_default(value: Any) -> Any:
-    if isinstance(value, datetime):
-        return value.isoformat()
-    raise TypeError(f"not JSON serialisable: {type(value).__name__}")
-
-
 def render(rows: Sequence[dict[str, Any]], columns: Sequence[str], fmt: str) -> str:
     """Render ``rows`` with exactly ``columns`` as an aligned table, JSON lines or CSV."""
     check_choice("--format", fmt, FORMATS)
     if fmt == "jsonl":
-        lines = [json.dumps({c: r[c] for c in columns}, default=_json_default) for r in rows]
-        return "\n".join(lines)
-    cells = [[_plain(r[c]) for c in columns] for r in rows]
+        as_json = lambda v: v.isoformat() if isinstance(v, datetime) else str(v)  # noqa: E731
+        return "\n".join(json.dumps({c: r[c] for c in columns}, default=as_json) for r in rows)
+    table = [list(columns), *([_plain(r[c]) for c in columns] for r in rows)]
     if fmt == "csv":
         buffer = io.StringIO()
-        writer = csv.writer(buffer, lineterminator="\n")
-        writer.writerow(columns)
-        writer.writerows(cells)
+        csv.writer(buffer, lineterminator="\n").writerows(table)
         return buffer.getvalue().rstrip("\n")
-    widths = [max([len(c), *(len(row[i]) for row in cells)]) for i, c in enumerate(columns)]
-    table = [list(columns), *cells]
-    return "\n".join(
-        "  ".join(t.ljust(w) for t, w in zip(row, widths, strict=True)).rstrip() for row in table
-    )
+    widths = [max(len(row[i]) for row in table) for i in range(len(columns))]
+
+    def pad(row: list[str]) -> str:
+        return "  ".join(t.ljust(w) for t, w in zip(row, widths, strict=True)).rstrip()
+
+    return "\n".join(pad(r) for r in table)
