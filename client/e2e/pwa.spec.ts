@@ -41,7 +41,8 @@ test("the shell shows offline after one visit", async ({ page, context }) => {
   await controlled(page);
   await context.setOffline(true);
   await page.reload();
-  await expect(page.locator("#status")).toHaveText("The app is running.");
+  await expect(page.getByRole("navigation", { name: "Sections" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Newsfeed" })).toBeVisible();
 });
 
 test("an API request fails offline instead of getting index.html", async ({ page, context }) => {

@@ -21,6 +21,34 @@ function Screen({ path }: { path: string }) {
   return <FeedScreen />;
 }
 
+const TABS = [
+  { href: "/", label: "Feed" },
+  { href: "/liked", label: "Liked" },
+  { href: "/settings", label: "Settings" },
+];
+
+/** The current section's href; trailing-slash variants count as the same screen, as in `Screen`. */
+function currentTab(path: string): string {
+  if (path === "/liked" || path === "/liked/") return "/liked";
+  if (path === "/settings" || path === "/settings/") return "/settings";
+  return "/";
+}
+
+function TabBar({ path }: { path: string }) {
+  const now = currentTab(path);
+  return (
+    <nav class="tab-bar" aria-label="Sections">
+      <div class="tab-bar-inner">
+        {TABS.map((t) => (
+          <a key={t.href} href={t.href} aria-current={t.href === now ? "page" : undefined}>
+            {t.label}
+          </a>
+        ))}
+      </div>
+    </nav>
+  );
+}
+
 export function App() {
   const status = useSessionStatus();
   const isArticle = location.pathname.startsWith("/article/");
@@ -41,22 +69,13 @@ export function App() {
         <NotAllowed />
       ) : (
         <>
-          {isArticle ? null : (
-            <header class="app-header">
-              <nav aria-label="Sections">
-                <a href="/">Feed</a>
-                <a href="/liked">Liked</a>
-                <a href="/settings">Settings</a>
-              </nav>
-            </header>
-          )}
           <Screen path={location.pathname} />
-          <footer class="footer">
-            <p id="status">The app is running.</p>
-            <p id="version" data-version={__APP_VERSION__}>
-              Build {__APP_VERSION__}
-            </p>
-          </footer>
+          {isArticle ? null : (
+            <>
+              <p id="version" data-version={__APP_VERSION__} hidden />
+              <TabBar path={location.pathname} />
+            </>
+          )}
         </>
       )}
     </>
