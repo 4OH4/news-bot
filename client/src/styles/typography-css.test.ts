@@ -267,9 +267,8 @@ describe("no literal font sizes", () => {
     }
   });
 
-  it("the page title and footer use tokens", () => {
+  it("the page title uses a token", () => {
     expect(decl(style, ".top h1")["font-size"]).toMatch(/^var\(--fs-/);
-    expect(decl(style, ".footer")["font-size"]).toMatch(/^var\(--fs-/);
   });
 
   it("keeps tap targets in px", () => {

@@ -106,13 +106,13 @@ test("a source muted on the feed is unmuted in Settings, and its story comes bac
   await choose(page, card(page, article), new RegExp(`mute ${article.domain}`, "i"));
   await expect(page.getByText(article.title)).toHaveCount(0);
 
-  await page.getByRole("banner").getByRole("link", { name: /settings/i }).click();
+  await page.getByRole("navigation", { name: "Sections" }).getByRole("link", { name: /settings/i }).click();
   await expect(page).toHaveURL(/\/settings$/);
   await expect(page.getByText(article.domain).first()).toBeVisible();
   await page.getByRole("button", { name: /unmute/i }).click();
   await expect(page.getByText(article.domain)).toHaveCount(0);
 
-  await page.getByRole("banner").getByRole("link", { name: /feed/i }).click();
+  await page.getByRole("navigation", { name: "Sections" }).getByRole("link", { name: /feed/i }).click();
   await expect(card(page, article)).toBeVisible();
   await expect
     .poll(() => events(posted, "mute_source"))
