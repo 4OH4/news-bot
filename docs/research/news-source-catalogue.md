@@ -182,7 +182,7 @@ Flags are short labels for facts that don't have their own field. Add new ones h
 |---|---|
 | `exile` | The newsroom works outside the country it mainly covers (see "Outlets in exile") |
 | `rsp-deprecated` | Wikipedia rates it deprecated or blacklisted (the rating itself is in `signals.rsp`) |
-| `paywall-hard` | Almost all articles are behind a subscription |
+| `paywall-hard` | Almost all articles are behind a subscription, or the article pages are refused to our fetcher, so the articles can't be read in the app (owner's decision: treated as effectively paywalled and not used as a source, not even as headline-only items) |
 | `feed-stale` | Its feed exists but hasn't been updated for weeks |
 | `defunct` | It has stopped publishing |
 | `merged` | It has merged into another entry, which `note` names |
@@ -355,3 +355,4 @@ The catalogue lives outside the repo, so research agents don't need git, branche
 | 2026-11-08 | Review fixes (#267 review). Enrichment shard format, and the merge carries researched fields across re-merges; stable ids (`ids.yaml`); overrides report fields the catalogue doesn't hold. Digital News Report: the largest reach row per market (a broadcaster's channels overlap), the mean of several trust rows. `consumer` is no longer a soft topic; topic lists written out in full. Wording: GDELT takes the largest count across domains and skips shared domains; Media Cloud awaits a key; BBC World Service is part of the BBC entry; ranked counts include the soft ranking. Also recorded from the harvest: translated sections updated on weekdays count, the light check of `none` entries, entertainment trade titles as specialist news |
 | 2026-11-08 | Full enrichment done (owner's decision on independence). `captured` needs a named source (State Media Monitor, Media Ownership Monitor, or documented ownership with a clear editorial effect); otherwise `contested`. State Media Monitor label mapping written out, including ISFM. Three ratings changed to `contested` as a result (Fox News, News18, Gulf News) |
 | 2026-11-08 | After enrichment (owner's decisions). An unconfirmed English edition is left blank rather than `none`. A brand carrying a combined entry's English output is split out (Sputnik, Agência Brasil), with the split steps written out. Al Jazeera rated `contested`. `feed_check.py` committed, the helper used for every enrichment feed check; one second feed candidate allowed after a 404 |
+| 2026-11-08 | `paywall-hard` also covers outlets whose feed is served but whose article pages are refused (NYT, The Atlantic, Sky News, Telegraph, MarketWatch and others): treated as effectively paywalled, never used as sources (owner's decision). Unknown feed URLs may be found by one homepage fetch for its feed autodiscovery link |
