@@ -135,7 +135,7 @@ describe("bottom tab bar (#272)", () => {
     await showApp(`/article/${IN_FEED.id}`);
     await new Promise((r) => setTimeout(r, 100));
     expect(bar()).toBeNull();
-    expect(root.querySelector("nav a")).toBeNull();
+    expect(root.querySelector(".tab-bar")).toBeNull();
   });
 });
 

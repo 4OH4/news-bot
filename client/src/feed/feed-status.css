@@ -1,5 +1,43 @@
+.top-title {
+  min-width: 0;
+}
+
 .updated {
-  margin: 0 0 var(--space-2, 0.5rem);
-  font-size: 0.85rem;
-  opacity: 0.75;
+  margin: 0;
+  font-size: var(--fs-meta);
+  color: var(--muted);
+}
+
+.refresh {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid var(--divider);
+  background: var(--bg);
+  color: var(--accent);
+}
+
+.refresh:disabled {
+  opacity: 0.6;
+}
+
+.refresh-icon.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .refresh-icon.spinning {
+    animation: none;
+  }
 }
