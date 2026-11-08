@@ -149,10 +149,17 @@ def write(tmp_path: Path, text: str) -> Path:
     return path
 
 
-def test_repo_url_params_file_is_valid_and_has_no_guessed_rules() -> None:
-    # Rules may only be added on evidence from real runs (#35); update this
-    # test alongside the first evidence-backed rule.
-    assert load_url_params(REPO_URL_PARAMS) == UrlParamsConfig()
+def test_repo_url_params_file_is_valid_and_has_only_evidence_backed_rules() -> None:
+    # Rules may only be added on evidence from real runs (#35); this list is
+    # the evidence-backed set, so a guessed rule fails here.
+    config = load_url_params(REPO_URL_PARAMS)
+    assert sorted(config.domains) == ["aljazeera.com"]  # #273: robots.txt refuses traffic_source
+
+
+def test_repo_rule_strips_the_al_jazeera_rss_tracker() -> None:
+    rules = load_url_params(REPO_URL_PARAMS)
+    url = "https://www.aljazeera.com/news/2026/11/8/x?traffic_source=rss"
+    assert normalise_url(url, rules=rules) == "https://www.aljazeera.com/news/2026/11/8/x"
 
 
 def test_loads_rules_and_lowercases_names(tmp_path: Path) -> None:

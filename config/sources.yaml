@@ -60,6 +60,11 @@ sources:
     url: https://inews.co.uk/feed
     tags: [news, uk]
 
+  - id: al-jazeera-english
+    type: rss
+    url: https://www.aljazeera.com/xml/rss/all.xml
+    tags: [news, world]
+
   - id: dw-news
     type: rss
     url: https://rss.dw.com/rdf/rss-en-all

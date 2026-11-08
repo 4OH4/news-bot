@@ -49,6 +49,7 @@ from tests.fakes import FakeExtractor, FakeFetcher, FakeResponse, FakeSourceInge
 FIXTURES = Path(__file__).parent / "fixtures"
 FEED_URL = "https://news.example.com/feed.xml"
 BRIDGE_URL = "https://news.example.com/2026/10/bridge?utm_source=rss"
+BRIDGE_FETCH_URL = "https://news.example.com/2026/10/bridge"  # BRIDGE_URL, tracker stripped
 BRIDGE_CANONICAL = "https://news.example.com/local/2025/03/marrowby-floating-bridge"
 HTML = {"content-type": "text/html; charset=utf-8"}
 
@@ -71,7 +72,7 @@ def _ok(text: str = "Invented body text.", **changes: object) -> ExtractionResul
 def _fetcher(*, etag: str | None = None) -> FakeFetcher:
     fetcher = FakeFetcher(fixtures_dir=FIXTURES)
     fetcher.add_file(FEED_URL, "feeds/pipeline_feed.xml", etag=etag)
-    fetcher.add_file(BRIDGE_URL, "extract/news_article.html")
+    fetcher.add_file(BRIDGE_FETCH_URL, "extract/news_article.html")
     fetcher.add_file("https://blog.example.org/2026/10/post", "extract/blog_post.html")
     fetcher.add(
         "https://news.example.com/files/report.pdf",
@@ -705,7 +706,7 @@ def test_extract_saved_url_stores_like_a_feed_article(
     tmp_path: Path, repository: SqliteRepository
 ) -> None:
     url = "https://x.example.com/a?utm_source=x"
-    fetcher = FakeFetcher({url: FakeResponse(b"<html></html>", headers=HTML)})
+    fetcher = FakeFetcher({"https://x.example.com/a": FakeResponse(b"<html></html>", headers=HTML)})
     services = _services(tmp_path, repository, fetcher, FakeExtractor(default=_ok()))
 
     article = extract_saved_url(services, url)
@@ -990,7 +991,7 @@ def test_without_the_stale_check_the_probe_refetches_the_page(
 
     assert stats.stage_counts[PipelineStage.INGEST]["new"] == 1
     assert stats.stage_counts[PipelineStage.EXTRACT]["merged"] == 1
-    assert [call.url for call in fetcher.calls[calls:]] == [FEED_URL, BRIDGE_URL]
+    assert [call.url for call in fetcher.calls[calls:]] == [FEED_URL, BRIDGE_FETCH_URL]
 
 
 def test_stale_entries_need_a_date_before_the_cutoff_and_a_source_read_before() -> None:

@@ -40,9 +40,7 @@ sources:
 def fetcher() -> FakeFetcher:
     fake = FakeFetcher(fixtures_dir=FIXTURES)
     fake.add_file(FEED_URL, "feeds/pipeline_feed.xml")
-    fake.add_file(
-        "https://news.example.com/2026/10/bridge?utm_source=rss", "extract/news_article.html"
-    )
+    fake.add_file("https://news.example.com/2026/10/bridge", "extract/news_article.html")
     fake.add_file("https://blog.example.org/2026/10/post", "extract/blog_post.html")
     return fake
 
