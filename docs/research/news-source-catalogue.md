@@ -1,6 +1,6 @@
 # News source catalogue: research protocol
 
-**Status:** pool harvested and ranked; full enrichment not started. **Written:** 2026-11-08. **Updated:** 2026-11-08 with the lessons from the harvest (see the change log).
+**Status:** pool harvested and ranked; full enrichment done (233 entries, every regional minimum met). **Written:** 2026-11-08. **Updated:** 2026-11-08 with the lessons from the harvest and from enrichment (see the change log).
 
 **Where things live.** This protocol is committed to the repo. The catalogue and the raw data it is built from are kept **outside** the repo, in `~/.newsfeed/research/news-sources/` (see "Where the results go"). They are never committed, the same arrangement as the evaluation snapshots in `~/.newsfeed/eval-fixtures`.
 
@@ -246,6 +246,16 @@ Examples: the BBC is public-service and independent. A privately owned paper bou
 
 Evidence comes from these sources, in this order: State Media Monitor's classification, which is mapped onto our ratings and the mapping recorded in a note; Media Ownership Monitor's ownership records; the editors' discussions behind Wikipedia's reliability ratings; and, where none of these covers the outlet, editorial judgement with a note. `country_press_freedom` (the RSF World Press Freedom Index score for the outlet's base country) is background for reading the independence rating.
 
+State Media Monitor's labels map onto our ratings like this:
+
+| State Media Monitor label | Rating |
+|---|---|
+| Independent Public Media; Independent State-Funded and State-Managed (ISFM) | `independent` |
+| Captured Public/State Managed (CaPu); Captured Private | `captured` |
+| State Controlled | `state-directed` |
+
+**`captured` or `contested`.** Both describe an outlet whose independence is in doubt, but they claim different things. `captured` is a finding that control exists, so it needs a named source behind it: a State Media Monitor or Media Ownership Monitor finding, or documented ownership with a clear editorial effect (for example, an owner forcing out a desk). When the case rests on reputation, a Wikipedia reliability rating or our own reading, the rating is `contested`, and the note gives the evidence each way. A reliability rating is about accuracy, not control, so on its own it never makes an outlet `captured`. Outlets with the same owner get the same rating unless a source distinguishes them.
+
 **None of these fields affects the scores.** Public-service, state-owned and captured outlets are ranked on reach, trust and authority like any other outlet. The fields are there so the catalogue can be read and filtered with this in mind.
 
 ## Scoring
@@ -342,3 +352,4 @@ The catalogue lives outside the repo, so research agents don't need git, branche
 | 2026-11-08 | Protocol committed to the repo; catalogue, Sources table and raw data moved to `~/.newsfeed/research/news-sources/`, outside git; work split into per-agent shards with a single merge step |
 | 2026-11-08 | Lessons from the harvest stage (owner's decisions). Similarweb and Ipsos iris recorded but not scored (top-50 lists distort percentiles), kept for a UK study; Press Gazette's UK list is Ipsos iris, and its ranks are per market. Trust split into `trust_editors` and `trust_audience` (Digital News Report trust as a within-market percentile). Topic groups with a separate `soft_rank` for entertainment, sport and lifestyle outlets. GDELT added via a BigQuery sandbox (12 months: inbound links, organisation mentions, volume). Wikipedia agency credits for wires; wire batch, since reach can't place wires. Per-domain rule written out (counts summed, best rank for ranks), with shared and infrastructure domains; English sister titles as separate entries; Digital News Report language markets and generic categories; Taiwan and Kosovo added to the region table; time-period Wikipedia ratings; percentiles over the whole pool, no log transform; `overrides.yaml` and the shard naming for manual, regional and override files; generated batch plan; scripts committed beside this protocol |
 | 2026-11-08 | Review fixes (#267 review). Enrichment shard format, and the merge carries researched fields across re-merges; stable ids (`ids.yaml`); overrides report fields the catalogue doesn't hold. Digital News Report: the largest reach row per market (a broadcaster's channels overlap), the mean of several trust rows. `consumer` is no longer a soft topic; topic lists written out in full. Wording: GDELT takes the largest count across domains and skips shared domains; Media Cloud awaits a key; BBC World Service is part of the BBC entry; ranked counts include the soft ranking. Also recorded from the harvest: translated sections updated on weekdays count, the light check of `none` entries, entertainment trade titles as specialist news |
+| 2026-11-08 | Full enrichment done (owner's decision on independence). `captured` needs a named source (State Media Monitor, Media Ownership Monitor, or documented ownership with a clear editorial effect); otherwise `contested`. State Media Monitor label mapping written out, including ISFM. Three ratings changed to `contested` as a result (Fox News, News18, Gulf News) |
