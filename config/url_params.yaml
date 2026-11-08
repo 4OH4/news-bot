@@ -26,4 +26,9 @@
 # by a tracker, or a merge caused by stripping a content parameter), and say
 # what the evidence was in the commit or PR. Don't add rules from guesses.
 
-domains: {}
+domains:
+  # Evidence (#273): aljazeera.com/robots.txt disallows URLs carrying
+  # traffic_source, and every link in its RSS feed ends ?traffic_source=rss; the
+  # same URLs without it are allowed and return HTTP 200.
+  aljazeera.com:
+    strip: [traffic_source]

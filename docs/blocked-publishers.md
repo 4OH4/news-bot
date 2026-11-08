@@ -32,15 +32,9 @@ This is a coverage limit of the project, not an extraction failure. It feeds int
 
 A feed that is served without its articles still gives us headlines and summaries. If you want them in the feed as "headline + link" items, that's a ranking/publish decision for later, not something to add now.
 
-## Recoverable: needs a decision
+## Resolved
 
-**Al Jazeera** (`aljazeera.com/xml/rss/all.xml`). #61 recorded it as blocked by robots.txt, but the re-check shows the block is narrower:
-- robots.txt disallows URLs carrying the `traffic_source` parameter, and every link in the feed ends `?traffic_source=rss`.
-- The same article URLs without that parameter are allowed and return HTTP 200.
-- A rule in `config/url_params.yaml` (`aljazeera.com: strip: [traffic_source]`) would canonicalise the links before fetching and make the source work.
-- However, the robots.txt header says the content is for "personal, non-commercial use" and that automated scraping needs prior written permission. This project is personal and non-commercial, but it fetches automatically.
-
-Recommendation: leave it out unless you decide the stated terms allow this use.
+**Al Jazeera** (`aljazeera.com/xml/rss/all.xml`) is in the feed (decided 2026-11-08, #273). #61 recorded it as blocked by robots.txt, but robots.txt only disallows URLs carrying `traffic_source`, and every feed link has `?traffic_source=rss`. The extract stage now fetches the tracker-stripped URL (`aljazeera.com: strip: [traffic_source]` in `config/url_params.yaml`), which robots.txt allows. The robots.txt header terms ("personal, non-commercial use", no automated scraping without permission) were considered: this project is personal and non-commercial.
 
 ## Not added for other reasons
 

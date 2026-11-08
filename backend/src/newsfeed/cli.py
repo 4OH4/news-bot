@@ -11,7 +11,7 @@ from typing import Annotated, NoReturn
 
 import typer
 
-from newsfeed.config import ConfigError, load_sources
+from newsfeed.config import ConfigError, load_sources, load_url_params
 from newsfeed.eval.report import (
     build_report,
     compare_reports,
@@ -259,7 +259,12 @@ def _extract_url(url: str, *, save: bool) -> None:
             typer.echo(f"saved article {article.id} ({article.extraction.status.value})")
             return
         with open_fetcher(settings) as fetcher:
-            result = inspect_url(fetcher, build_extractor(settings), url)
+            result = inspect_url(
+                fetcher,
+                build_extractor(settings),
+                url,
+                rules=load_url_params(settings.url_params_path),
+            )
     except ConfigError as exc:
         _fail(str(exc))
     except (PageUnavailableError, NotAnArticleError) as exc:

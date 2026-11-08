@@ -30,10 +30,16 @@ from datetime import UTC, datetime, timedelta
 from typing import TypedDict
 from urllib.parse import urlsplit
 
+from newsfeed.config import UrlParamsConfig
 from newsfeed.extract.chain import ExtractorChain
 from newsfeed.extract.overrides import Mode, url_domain
 from newsfeed.extract.retry import should_retry
-from newsfeed.ingest.canonical import canonical_from_html, normalise_url, with_canonical_url
+from newsfeed.ingest.canonical import (
+    canonical_from_html,
+    normalise_url,
+    strip_tracking_params,
+    with_canonical_url,
+)
 from newsfeed.ingest.dedupe import dedupe
 from newsfeed.logging import get_logger
 from newsfeed.metrics import ExtractionRecord, FeedRecord, reason_category, summarise_run
@@ -779,7 +785,7 @@ def _extract_article(run: _ExtractRun, article: Article) -> _Outcome:
         return _finish_skipped(run, article, reason, domain)
 
     try:
-        page = fetch_page(services.fetcher, article.url)
+        page = fetch_page(services.fetcher, _fetch_url(article.url, services.url_rules))
     except NotAnArticleError as exc:
         return _finish_skipped(run, article, str(exc), domain)
     except PageUnavailableError as exc:
@@ -1032,14 +1038,32 @@ def extract_pending(
 # --- Single URLs (debug) -----------------------------------------------------------
 
 
-def inspect_url(fetcher: Fetcher, extractor: Extractor, url: str) -> ExtractionResult:
+def _fetch_url(url: str, rules: UrlParamsConfig | None) -> str:
+    """The URL to fetch for ``url``: the link with its tracking parameters removed.
+
+    Some publishers add a tracker to every feed link and then refuse exactly
+    those URLs in robots.txt. Only the trackers go; the rest of the link is
+    fetched as written (``normalise_url`` is a dedupe key and would change it).
+    """
+    return strip_tracking_params(url, rules=rules)
+
+
+def inspect_url(
+    fetcher: Fetcher,
+    extractor: Extractor,
+    url: str,
+    *,
+    rules: UrlParamsConfig | None = None,
+) -> ExtractionResult:
     """Fetch and extract one page without storing anything.
+
+    The page is fetched at its tracker-stripped URL, as the pipeline does.
 
     Raises:
         PageUnavailableError: if the page can't be fetched.
         NotAnArticleError: if it isn't an HTML page.
     """
-    page = fetch_page(fetcher, url)
+    page = fetch_page(fetcher, _fetch_url(url, rules))
     return extractor.extract(page.html, page.final_url)
 
 
