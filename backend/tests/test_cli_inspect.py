@@ -12,6 +12,7 @@ import csv
 import io
 import json
 import os
+import re
 import stat
 import subprocess
 from datetime import UTC, datetime, timedelta
@@ -673,4 +674,6 @@ def test_make_help_lists_both_inspect_targets(tmp_path: Path) -> None:
 
     assert proc.returncode == 0
     assert "inspect-gcp" in proc.stdout
-    assert any(line.split()[:1] == ["inspect"] for line in proc.stdout.splitlines())
+    # `make help` colours the target name with an ANSI escape, so strip it before comparing.
+    plain = [re.sub(r"\x1b\[[0-9;]*m", "", line) for line in proc.stdout.splitlines()]
+    assert any(line.split()[:1] == ["inspect"] for line in plain)
