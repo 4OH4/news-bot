@@ -2,12 +2,20 @@ import { useEffect, useState } from "preact/hooks";
 import { signOut } from "../auth/signout";
 import type { FeedItem } from "../feed/types";
 import { setThemeChoice, themeChoice, type ThemeChoice } from "../reader/theme";
+import { fontSize, setFontSize, type FontSize } from "./fontSize";
 import { listMuted, subscribeHidden, unmuteSource } from "../feedback/hidden";
 
 const THEME_OPTIONS: [ThemeChoice, string][] = [
   ["system", "Follow system"],
   ["light", "Light"],
   ["dark", "Dark"],
+];
+
+const FONT_SIZE_OPTIONS: [FontSize, string][] = [
+  ["small", "Small"],
+  ["regular", "Regular"],
+  ["large", "Large"],
+  ["xl", "XL"],
 ];
 
 /**
@@ -17,6 +25,7 @@ const THEME_OPTIONS: [ThemeChoice, string][] = [
 export function SettingsScreen() {
   const [muted, setMuted] = useState<FeedItem[] | null>(null);
   const [theme, setTheme] = useState<ThemeChoice>(themeChoice);
+  const [size, setSize] = useState<FontSize>(fontSize);
 
   useEffect(() => {
     const load = () =>
@@ -70,6 +79,24 @@ export function SettingsScreen() {
               onChange={() => {
                 setThemeChoice(value);
                 setTheme(value);
+              }}
+            />{" "}
+            {label}
+          </label>
+        ))}
+      </div>
+      <h2>Text size</h2>
+      <div role="radiogroup" aria-label="Text size">
+        {FONT_SIZE_OPTIONS.map(([value, label]) => (
+          <label key={value}>
+            <input
+              type="radio"
+              name="font-size"
+              value={value}
+              checked={size === value}
+              onChange={() => {
+                setFontSize(value);
+                setSize(value);
               }}
             />{" "}
             {label}
