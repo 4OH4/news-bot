@@ -42,6 +42,23 @@ locals {
         { path = "id", order = "ASCENDING" },
       ]
     }
+    articles_by_source_and_fetched = {
+      collection = "articles"
+      fields = [
+        { path = "source_id", order = "ASCENDING" },
+        { path = "fetched_at", order = "DESCENDING" },
+        { path = "id", order = "ASCENDING" },
+      ]
+    }
+    articles_by_status_source_and_fetched = {
+      collection = "articles"
+      fields = [
+        { path = "extraction.status", order = "ASCENDING" },
+        { path = "source_id", order = "ASCENDING" },
+        { path = "fetched_at", order = "DESCENDING" },
+        { path = "id", order = "ASCENDING" },
+      ]
+    }
     feedback_by_created = {
       collection = "feedback"
       fields = [

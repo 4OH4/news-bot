@@ -7,11 +7,13 @@ fail before any request is made, using a client that records every call.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 
+from newsfeed.adapters import firestore_repository
 from newsfeed.adapters.firestore_repository import FirestoreRepository
 from newsfeed.models import Article, Feedback, FeedbackEvent, RunStats
 
@@ -81,3 +83,41 @@ def test_stored_documents_validate_back_and_queried_times_are_native() -> None:
 def test_aware_since_is_accepted() -> None:
     repo, _ = _repo()
     assert repo.list_feedback(datetime(2026, 10, 11, tzinfo=UTC)) == []
+
+
+def _article(n: int, minutes: int) -> Article:
+    url = f"https://example.com/story-{n}"
+    return Article(
+        canonical_url=url,
+        url=url,
+        source_id="s",
+        title=f"Invented headline {n}",
+        fetched_at=datetime(2026, 10, 11, 12, 0, tzinfo=UTC) + timedelta(minutes=minutes),
+    )
+
+
+def test_source_ids_string_and_empty_are_handled_before_any_query() -> None:
+    repo, client = _repo()
+    with pytest.raises(TypeError, match="source_ids"):
+        repo.list_articles(source_ids="a")  # type: ignore[arg-type]
+    assert repo.list_articles(source_ids=[]) == []
+    client.collection.return_value.where.assert_not_called()
+    client.collection.return_value.order_by.assert_not_called()
+
+
+def test_merge_newest_first_across_groups_cuts_to_limit_with_id_tiebreak() -> None:
+    merge = firestore_repository.merge_newest_first
+    group_1 = [_article(1, 5), _article(2, 3), _article(3, 1)]
+    group_2 = [_article(4, 9), _article(5, 5), _article(6, 0)]
+    merged = merge([group_1, group_2], limit=3)
+    tied = sorted([group_1[0], group_2[1]], key=lambda a: a.id)
+    assert [a.id for a in merged] == [group_2[0].id, *(a.id for a in tied)]
+    assert len(merge([group_1, group_2], limit=None)) == 6
+    assert merge([group_1, group_2], limit=0) == []
+
+
+def test_firestore_indexes_for_source_filter_are_in_terraform_and_docstring() -> None:
+    tf = Path(__file__).parents[3] / "infra" / "terraform" / "firestore.tf"
+    for name in ("articles_by_source_and_fetched", "articles_by_status_source_and_fetched"):
+        assert name in tf.read_text()
+        assert name in (firestore_repository.__doc__ or "")

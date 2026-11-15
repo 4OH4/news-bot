@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import mimetypes
 import threading
-from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -97,8 +97,12 @@ class InMemoryRepository:
         status: ExtractionStatus | None = None,
         since: datetime | None = None,
         limit: int | None = None,
+        source_ids: Collection[str] | None = None,
     ) -> list[Article]:
         """Return matching articles, newest ``fetched_at`` first."""
+        if isinstance(source_ids, str):
+            raise TypeError("source_ids must be a collection of ids, not a str")
+        wanted = None if source_ids is None else set(source_ids)
         _require_aware(since, "since")
         if limit is not None and limit < 0:
             raise ValueError("limit must be non-negative")
@@ -108,6 +112,7 @@ class InMemoryRepository:
                 for a in self._articles.values()
                 if (status is None or a.extraction.status == status)
                 and (since is None or a.fetched_at >= since)
+                and (wanted is None or a.source_id in wanted)
             ]
             # Two stable sorts: newest first, ties broken by ascending id.
             matches.sort(key=lambda a: a.id)

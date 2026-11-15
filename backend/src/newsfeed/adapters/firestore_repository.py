@@ -18,11 +18,16 @@ Indexes
 Firestore serves a query ordered by one field from its automatic single-field
 indexes, but an ordering that mixes directions, or an equality filter combined
 with an ordering, needs a composite index. The adapter orders ties by the
-stored ``id``/``run_id`` field, so it needs these four composite indexes
+stored ``id``/``run_id`` field, so it needs these six composite indexes
 (collection scope; Native mode):
 
 * ``articles``: ``fetched_at`` DESC, ``id`` ASC
 * ``articles``: ``extraction.status`` ASC, ``fetched_at`` DESC, ``id`` ASC
+* ``articles_by_source_and_fetched``: ``articles``: ``source_id`` ASC,
+  ``fetched_at`` DESC, ``id`` ASC (``source_ids``, with or without ``since``)
+* ``articles_by_status_source_and_fetched``: ``articles``:
+  ``extraction.status`` ASC, ``source_id`` ASC, ``fetched_at`` DESC, ``id`` ASC
+  (``status`` with ``source_ids``)
 * ``feedback``: ``created_at`` ASC, ``id`` ASC
 * ``run_stats``: ``started_at`` DESC, ``run_id`` ASC
 
@@ -46,6 +51,7 @@ Running the contract tests against the emulator (needs Docker)::
 
 from __future__ import annotations
 
+from collections.abc import Collection, Iterable, Sequence
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from urllib.parse import quote
@@ -67,7 +73,21 @@ if TYPE_CHECKING:
 
     from newsfeed.ports import Repository
 
-__all__ = ["FirestoreRepository"]
+__all__ = ["FirestoreRepository", "merge_newest_first"]
+
+# Firestore's ``in`` filter accepts at most this many values.
+_IN_LIMIT = 30
+
+
+def merge_newest_first(groups: Iterable[Sequence[Article]], limit: int | None) -> list[Article]:
+    """Merge per-group results into one list, newest ``fetched_at`` first, ties by id.
+
+    Each group is the newest ``limit`` of its own sources, so every row of the
+    overall newest ``limit`` is present and cutting the merge to ``limit`` is exact.
+    """
+    merged = sorted((a for group in groups for a in group), key=lambda a: a.id)
+    merged.sort(key=lambda a: a.fetched_at, reverse=True)
+    return merged if limit is None else merged[:limit]
 
 
 def _require_aware(value: datetime | None) -> None:
@@ -125,17 +145,42 @@ class FirestoreRepository:
         status: ExtractionStatus | None = None,
         since: datetime | None = None,
         limit: int | None = None,
+        source_ids: Collection[str] | None = None,
     ) -> list[Article]:
-        """Return matching articles, newest ``fetched_at`` first, ties by ascending id."""
+        """Return matching articles, newest ``fetched_at`` first, ties by ascending id.
+
+        More than 30 ``source_ids`` (Firestore's ``in`` limit) run as one query per
+        group of 30, merged exactly by ``merge_newest_first``.
+        """
         _require_aware(since)
         _require_limit(limit)
-        if limit == 0:
+        if isinstance(source_ids, str):
+            raise TypeError("source_ids must be a collection of ids, not a str")
+        if limit == 0 or (source_ids is not None and not source_ids):
             return []
+        if source_ids is None:
+            return self._query_articles(status, since, limit, None)
+        distinct = sorted(set(source_ids))
+        groups = [
+            self._query_articles(status, since, limit, distinct[i : i + _IN_LIMIT])
+            for i in range(0, len(distinct), _IN_LIMIT)
+        ]
+        return merge_newest_first(groups, limit)
+
+    def _query_articles(
+        self,
+        status: ExtractionStatus | None,
+        since: datetime | None,
+        limit: int | None,
+        source_ids: list[str] | None,
+    ) -> list[Article]:
         query: Any = self._articles
         if status is not None:
             query = query.where(
                 filter=FieldFilter("extraction.status", "==", ExtractionStatus(status).value)
             )
+        if source_ids is not None:
+            query = query.where(filter=FieldFilter("source_id", "in", source_ids))
         if since is not None:
             query = query.where(filter=FieldFilter("fetched_at", ">=", since.astimezone(UTC)))
         query = query.order_by("fetched_at", direction=Query.DESCENDING).order_by(

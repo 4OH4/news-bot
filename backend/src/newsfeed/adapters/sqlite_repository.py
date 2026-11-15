@@ -26,6 +26,7 @@ import json
 import sqlite3
 import threading
 import time
+from collections.abc import Collection
 from datetime import UTC, datetime
 from pathlib import Path
 from types import TracebackType
@@ -372,10 +373,15 @@ class SqliteRepository:
         status: ExtractionStatus | None = None,
         since: datetime | None = None,
         limit: int | None = None,
+        source_ids: Collection[str] | None = None,
     ) -> list[Article]:
         """Return matching articles, newest ``fetched_at`` first, ties by ascending id."""
         since_text = _format_time(since)
         _require_limit(limit)
+        if isinstance(source_ids, str):
+            raise TypeError("source_ids must be a collection of ids, not a str")
+        if source_ids is not None and not source_ids:
+            return []
         clauses: list[str] = []
         params: list[Any] = []
         if status is not None:
@@ -384,6 +390,10 @@ class SqliteRepository:
         if since_text is not None:
             clauses.append("fetched_at >= ?")
             params.append(since_text)
+        if source_ids is not None:
+            distinct = sorted(set(source_ids))
+            clauses.append(f"source_id IN ({', '.join('?' * len(distinct))})")
+            params.extend(distinct)
         sql = "SELECT * FROM articles"
         if clauses:
             sql += " WHERE " + " AND ".join(clauses)

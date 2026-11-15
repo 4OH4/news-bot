@@ -46,6 +46,23 @@ def make_article(
     )
 
 
+def make_source_article(
+    n: int,
+    source_id: str,
+    fetched_at: datetime = T0,
+    status: ExtractionStatus = ExtractionStatus.PENDING,
+) -> Article:
+    url = f"https://{source_id}.example.com/story-{n}"
+    return Article(
+        canonical_url=url,
+        url=url,
+        source_id=source_id,
+        title=f"Invented headline {n}",
+        fetched_at=fetched_at,
+        extraction=ArticleExtraction(status=status),
+    )
+
+
 def full_article() -> Article:
     """An article with every optional field set, to check nothing is lost."""
     return Article(
@@ -210,6 +227,72 @@ class TestArticles:
             repo.list_articles(since=datetime(2026, 10, 11, 12, 0))
         with pytest.raises(ValueError):
             repo.list_articles(limit=-1)
+
+    def test_list_filters_by_source_ids_newest_first(self, repo: Repository) -> None:
+        articles = [
+            make_source_article(n, src, T0 + timedelta(minutes=n))
+            for n, src in enumerate(["a", "b", "c", "a", "c", "b"])
+        ]
+        for article in articles:
+            repo.upsert_article(article)
+        result = repo.list_articles(source_ids=["a", "c"])
+        assert ids(result) == [articles[i].id for i in (4, 3, 2, 0)]
+        assert ids(repo.list_articles(source_ids={"b"})) == [articles[5].id, articles[1].id]
+        assert ids(repo.list_articles(source_ids=("a", "a"))) == [articles[3].id, articles[0].id]
+        assert len(repo.list_articles(source_ids=None)) == 6
+
+    def test_list_source_ids_empty_or_unknown_returns_nothing(self, repo: Repository) -> None:
+        repo.upsert_article(make_source_article(1, "a"))
+        assert repo.list_articles(source_ids=[]) == []
+        assert repo.list_articles(source_ids=["nope"]) == []
+
+    def test_list_source_ids_limit_applies_to_the_combined_result(self, repo: Repository) -> None:
+        articles = [
+            make_source_article(n, "a" if n % 2 else "b", T0 + timedelta(minutes=n))
+            for n in range(10)
+        ]
+        for article in articles:
+            repo.upsert_article(article)
+        result = repo.list_articles(source_ids=["a", "b"], limit=4)
+        assert ids(result) == [articles[i].id for i in (9, 8, 7, 6)]
+
+    def test_list_source_ids_ties_break_by_ascending_id(self, repo: Repository) -> None:
+        tied = [make_source_article(n, "a" if n % 2 else "b") for n in range(6)]
+        for article in tied:
+            repo.upsert_article(article)
+        assert ids(repo.list_articles(source_ids=["a", "b"])) == sorted(a.id for a in tied)
+
+    def test_list_source_ids_combines_with_status_and_since(self, repo: Repository) -> None:
+        keep = make_source_article(1, "a", T0 + timedelta(minutes=5), ExtractionStatus.OK)
+        for article in (
+            keep,
+            make_source_article(2, "a", T0 + timedelta(minutes=6), ExtractionStatus.FAILED),
+            make_source_article(3, "a", T0 - timedelta(minutes=1), ExtractionStatus.OK),
+            make_source_article(4, "b", T0 + timedelta(minutes=7), ExtractionStatus.OK),
+        ):
+            repo.upsert_article(article)
+        result = repo.list_articles(source_ids=["a"], status=ExtractionStatus.OK, since=T0)
+        assert ids(result) == [keep.id]
+
+    def test_list_source_ids_rejects_a_bare_string(self, repo: Repository) -> None:
+        article = make_source_article(1, "a")
+        repo.upsert_article(article)
+        # An unknown keyword is also a TypeError, so show the keyword exists first.
+        assert ids(repo.list_articles(source_ids=["a"])) == [article.id]
+        with pytest.raises(TypeError, match="source_ids"):
+            repo.list_articles(source_ids="a")  # type: ignore[arg-type]
+
+    def test_list_source_ids_beyond_one_firestore_group(self, repo: Repository) -> None:
+        # 31 sources: more than one group of 30 on Firestore, newest in the last.
+        sources = [f"s{n:02d}" for n in range(31)]
+        articles = [
+            make_source_article(n, src, T0 + timedelta(minutes=n)) for n, src in enumerate(sources)
+        ]
+        for article in articles:
+            repo.upsert_article(article)
+        result = repo.list_articles(source_ids=sources, limit=3)
+        assert ids(result) == [articles[i].id for i in (30, 29, 28)]
+        assert len(repo.list_articles(source_ids=sources)) == 31
 
     def test_delete_article(self, repo: Repository) -> None:
         article = make_article(1)
