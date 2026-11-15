@@ -1,4 +1,4 @@
-"""The owner-only API app: the feed, article HTML and the built client.
+"""The owner-only API app: the feed, its views in pages, article HTML and the built client.
 
 Every route sits behind the app-level owner check (``api.auth``), so a route
 added later can't skip it. Content is read through the ``BlobStore`` port only;
@@ -7,13 +7,17 @@ the read routes need no repository read.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import hashlib
+import json
 import mimetypes
 import re
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Annotated, Any
 
-from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, status
 from fastapi.responses import FileResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
@@ -30,8 +34,15 @@ API_CACHE_CONTROL = "private, no-cache"  # clients revalidate with the ETag
 CLIENT_CACHE_CONTROL = "no-cache"
 ASSET_CACHE_CONTROL = "private, max-age=31536000, immutable"  # hashed file names
 
+SCHEMA_VERSION = 1
+PAGE_LIMIT = 50
+MAX_PAGE_LIMIT = 100
+
 # Matched with fullmatch: ``$`` alone would also accept a trailing newline.
 _ARTICLE_ID = re.compile(r"[0-9a-f]{16}")
+_VIEW = re.compile(r"[a-z0-9-]+")
+_CURSOR = re.compile(r"[A-Za-z0-9_-]{1,200}")
+_CURSOR_BODY = re.compile(r"([A-Za-z0-9._-]+):([0-9]{1,9})")
 _MEDIA_TYPES = {".webmanifest": "application/manifest+json", ".js": "text/javascript"}
 
 
@@ -71,14 +82,33 @@ def create_app(
     app.add_middleware(SecurityHeadersMiddleware)
     app.state.repository = repository
 
+    def no_feed_yet() -> HTTPException:
+        return HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "No feed has been published yet")
+
     @app.get("/api/feed")
-    def get_feed(request: Request) -> Response:
+    def get_feed(
+        request: Request,
+        view: str | None = None,
+        limit: Annotated[int, Query(ge=1, le=MAX_PAGE_LIMIT)] = PAGE_LIMIT,
+        cursor: str | None = None,
+    ) -> Response:
+        if view is None:
+            try:
+                data = blobs.get(blobs.ref_for(FEED_KEY))
+            except BlobNotFoundError:
+                raise no_feed_yet() from None
+            return _blob_response(request, data, "application/json")
+        if not _VIEW.fullmatch(view):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "View not found")
+        offset = _cursor_offset(cursor) if cursor is not None else 0
         try:
-            data = blobs.get(blobs.ref_for(FEED_KEY))
+            stored = blobs.get(blobs.ref_for(f"views/{view}.json"))
         except BlobNotFoundError:
-            raise HTTPException(
-                status.HTTP_503_SERVICE_UNAVAILABLE, "No feed has been published yet"
-            ) from None
+            if not blobs.exists(blobs.ref_for(FEED_KEY)):
+                raise no_feed_yet() from None
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "View not found") from None
+        page = _page(view, stored, offset, limit)
+        data = json.dumps(page, ensure_ascii=False, allow_nan=False).encode("utf-8")
         return _blob_response(request, data, "application/json")
 
     @app.get("/api/articles/{id}")
@@ -104,6 +134,49 @@ def create_app(
         return _client_response(root, path)
 
     return app
+
+
+def _cursor(run_id: str, offset: int) -> str:
+    """An opaque cursor: base64url of ``<run_id>:<offset>``, unpadded."""
+    return base64.urlsafe_b64encode(f"{run_id}:{offset}".encode()).decode().rstrip("=")
+
+
+def _cursor_offset(cursor: str) -> int:
+    """The offset a cursor names; 400 if it isn't one of ours.
+
+    Its run id isn't checked: after a new run the same offset of the new list is
+    served, and the page's ``run_id`` tells the client the list changed (ADR-0012).
+    """
+    bad = HTTPException(status.HTTP_400_BAD_REQUEST, "Malformed cursor")
+    if not _CURSOR.fullmatch(cursor):
+        raise bad
+    try:
+        body = base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4)).decode("ascii")
+    except (binascii.Error, ValueError):
+        raise bad from None
+    match = _CURSOR_BODY.fullmatch(body)
+    if match is None:
+        raise bad
+    return int(match.group(2))
+
+
+def _page(view: str, stored: bytes, offset: int, limit: int) -> dict[str, Any]:
+    """One page of a stored view file, in the ``feed.json`` envelope."""
+    try:
+        document = json.loads(stored)
+        run_id, items, generated_at = (
+            document["run_id"],
+            document["items"],
+            document["generated_at"],
+        )
+        if not (isinstance(run_id, str) and isinstance(items, list)):
+            raise TypeError
+    except (ValueError, KeyError, TypeError):
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "View can't be read") from None
+    end = offset + limit
+    next_cursor = _cursor(run_id, end) if end < len(items) else None
+    page = {"schema_version": SCHEMA_VERSION, "generated_at": generated_at, "run_id": run_id}
+    return page | {"view": view, "next_cursor": next_cursor, "items": items[offset:end]}
 
 
 def _etag(data: bytes) -> str:
