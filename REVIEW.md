@@ -9,6 +9,7 @@ Failure patterns taken from real defects in this repo. Test authors and workers 
 - A feature that crosses stages needs one test through the real pipeline, with the real `Repository` and `BlobStore` adapters.
 - A claim about what a later run will do needs a test across two runs. In #144, a design note promised a later merge that didn't exist.
 - A URL transform built for identity, such as a dedupe key, must not be reused to fetch pages without checking what else it changes on real links (trailing slashes, query order, AMP form), because each change is a different request to the site. Instance: #274.
+- A cost estimate must count per-request side charges, such as request logging, not only the main service's price. Instance: PR #186.
 
 ## Robust code
 

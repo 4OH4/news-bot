@@ -20,7 +20,7 @@ You have used the app daily since 7 November, so most of this is a check that no
 
 6. **Cost.** Open https://console.cloud.google.com/billing, pick the billing account, then Reports. Agents can't read billing, so the last figure on record is from 7 November (below).
 
-**What agents checked on 2026-11-15:** an unauthenticated request to the service, for `/` and for `/api/feed`, is sent to Google sign-in (302) and never reaches the app. The service runs the image built from `5f19e64`. Every hourly job run since 5 November succeeded. Steps 1 to 3 and the signed-in part of step 4 need your phone and your account, so agents haven't run them; you ran all of them on 7 November when the app went live.
+**What agents checked on 2026-11-15:** an unauthenticated request to the service, for `/` and for `/api/feed`, is sent to Google sign-in (302) and never reaches the app. The service runs the image built from `5f19e64`. All 256 hourly job runs since 5 November succeeded. Steps 1 to 3 and the signed-in part of step 4 need your phone and your account, so agents haven't run them; you ran all of them on 7 November when the app went live.
 
 ## Goal check
 
@@ -31,17 +31,17 @@ Exit criterion: you use it daily in place of the Google feed for two weeks.
 | Criterion | Evidence | State |
 |---|---|---|
 | Installable on Android | You installed it on 7 November (#179) | Shown |
-| Read today's feed, open an article | Feedback in the live store has `open` and `read` events every day from 7 to 15 November: 78 opens and 69 reads across 14 sources, rising from 4 to 11 a day in the first week to 31 to 33 a day from 13 November | Shown |
-| Like one, read it again offline | 5 likes and 1 dismiss in the store. Offline reading checked by you on 7 November; the offline cache has e2e tests | Shown |
+| Read today's feed, open an article | Feedback in the live store has events on every day from 7 to 15 November (reads every day, opens from 8 November): 78 opens and 69 reads across 14 sources, 4 to 15 events a day in the first week and 31 to 33 a day from 13 November | Shown |
+| Like one, read it again offline | 5 like events (3 likes standing, 2 retracted) and 1 dismiss in the store. Offline reading checked by you on 7 November; the offline cache has e2e tests | Shown |
 | Only you can use it | Unauthenticated requests are redirected to sign-in (checked today); you saw another account refused on 7 November | Shown |
 | Daily, for two weeks | 9 consecutive days | **Waived by you** |
 | In place of the Google feed | Only you can say. You raised at least 6 requests from daily use (#271, #272, #290, #300, #304, #307), which suggests you used it as your feed | Your judgement |
 
-**The pipeline under it** also held: 250 of 250 hourly runs succeeded from 5 to 15 November, averaging 4.3 minutes (the latest 24 averaged 4.0, the longest took 6), well inside the 50-minute timeout.
+**The pipeline under it** also held: 256 of 256 hourly runs succeeded from 5 to 15 November, averaging 4.3 minutes (the latest 24 averaged 4.0, the longest took 6), well inside the 50-minute timeout.
 
 ## Decisions to confirm
 
-Merging this report accepts all of these. Comment on any you reject, and it becomes a normal issue. PRs you merged yourself (#200, #202, #209, #222, #234, #261, #277, #278, #281, #287, #295, #305, #306) had their `Confirm later` entries accepted when you merged them, and aren't repeated.
+Merging this report accepts all of these. Comment on any you reject, and it becomes a normal issue. PRs you merged yourself (#193, #200, #202, #209, #222, #234, #245, #261, #277, #278, #281, #287, #295, #305, #306) had their `Confirm later` entries accepted when you merged them, and aren't repeated.
 
 **Look at these first**
 
@@ -110,7 +110,7 @@ Agent-merged PRs, 36 in all (27 product code, 9 docs and design): [#186](https:/
 | Entry | Status |
 |---|---|
 | Whether the test author is worth its cost | **Accept: keep it.** Every feat and fix ran test-first; reviews in batches 10 to 15 found no defects, against six rework rounds in batch 3. Its cost showed as size, not usage: its tests pushed #216 into a split and PR #292 to 1,482 of 1,500 lines. That is process item 1 below. Removed |
-| Agents running from the main checkout | **Accept.** No case this phase; reviewers now run with `isolation: worktree`. Removed |
+| Agents running from the main checkout | **Accept.** One more case on 1 November (reviewers shared the main checkout, one detached its HEAD, nothing lost); PR #194 made reviewers run with `isolation: worktree`, with no case since. Removed |
 | `REVIEW.md` line: a URL transform built for identity mustn't be reused to fetch (from #274) | **Address:** added to `REVIEW.md` in this PR. Removed |
 | Check that Al Jazeera English gives full articles | **Accept: keep the source.** 8 days: 441 of 651 articles `ok` (median 535 words), 199 `partial` (median 63 words, likely video and live pages, shown as links), 11 failed. Removed |
 | Remember the last-used tab | **Accept.** You didn't ask for it in daily use, and a tab tap already reloads at the top. Removed |
@@ -119,15 +119,16 @@ Agent-merged PRs, 36 in all (27 product code, 9 docs and design): [#186](https:/
 | Machine user for merges | **Stays deferred.** You choose |
 | Pins Dependabot doesn't update | **Stays deferred,** Phase 4 milestone |
 | Choose News sources in Settings; word-count rules for Longer | **Stays deferred.** The tabs reached your phone on 15 November, so there isn't a week of use yet. Look again on 2026-11-22 |
-| `guardian-longread` extracts about 81 words | **Stays deferred.** Still 6 of 10 `partial` in 14 days. Look again with #89 |
+| `guardian-longread` extracts few words (partial median 81) | **Stays deferred.** Still 6 of 10 `partial` in 14 days. Look again with #89 |
 | Region filter, importance, ranking recipe per view, sync across devices, wire sources | **Stays deferred.** Phase 4 design reads them; triggers unchanged |
 
 ## Risks and parked work
 
-- **Article HTML on the app origin (#239).** You accepted the residual risk twice (PRs #226 and #237, ADR-0011): a bypass of both sanitisers and the CSP could persist through the service-worker cache and send forged feedback. **Recommendation: accept, and leave #239 open under ADR-0011's "Revisit when"** (a user who isn't a developer, production, a sanitiser advisory, a wider allowlist, a looser CSP). It moves to the Phase 6 milestone, off `agent-ready`.
+- **Article HTML on the app origin (#239).** You accepted the residual risk twice (PRs #226 and #237, ADR-0011): a bypass of both sanitisers and the CSP could persist through the service-worker cache and send forged feedback. **Recommendation: accept, and leave #239 open under ADR-0011's "Revisit when"** (its list of triggers, including a user who isn't a developer, production, a sanitiser advisory, a wider allowlist and a looser CSP). It moves to the Phase 6 milestone, off `agent-ready`.
 - **#307 (header slides away on scroll, back-to-top button, Liked moves to Settings)** wasn't started, because you closed the phase first. It carries to Phase 4 and can run beside the Phase 4 design.
 - **Carried forward:** #89 (live extraction check; its Firestore part is now unblocked), #92 (page headline as title). **#50, Google News:** robots.txt still disallows the feed paths. Recommendation: close as not planned on sign-off.
 - **Cost:** your billing export on 7 November showed about £0.97 gross for 31 October to 7 November, rising to 16 to 19p a day, mostly job CPU, with the free tier making the net bill about £0. Nothing newer on record; step 6 of Try it shows it. Job runs have since fallen from 4.7 to about 4.0 minutes on average. The views add about 2,000 Firestore reads a run, about $0.15 a month.
+- **IAP bypass check.** When you accepted PR #200's risk, #179 was to show that a direct call bypassing IAP gets 403. That result isn't on record. The reviewer read the live config on 15 November: Cloud Run's invoker check is on, IAP's service agent is the only invoker, and IAP is enabled, so the risk looks contained. Accept.
 - **Terraform drift:** `terraform plan` shows the API service's `scaling` block going from zeros to null. Not applied; deferred (below).
 - **Leftover worktrees:** seven under `.claude/worktrees/` hold only scratch files or a reviewer's leftover edits on merged branches. Force removal is denied to agents. To clear them: `git worktree list`, then `git worktree remove --force <path>` for each `agent-*` and `before-272`.
 - **Parked PRs:** none.
@@ -137,16 +138,16 @@ Agent-merged PRs, 36 in all (27 product code, 9 docs and design): [#186](https:/
 
 | Measure | Target | Phase 2 | Phase 3 |
 |---|---|---|---|
-| PRs merged by agents (product code) | At least 80% | 3 of 3 pipeline PRs | 27 of 35 (77%), **just below**. Of the 8 you merged, 5 were look-and-feel changes you chose to see first (#278, #281, #295, #305, plus #306 which touched the deploy workflow), and 3 were Tier C by path (#202 scaffold, #222 deploy, #277 Makefile). Agents also merged 9 docs and design PRs |
+| PRs merged by agents (product code) | At least 80% | 3 of 3 pipeline PRs | 27 of 35 (77%), **just below**. Of the 8 you merged, 4 were look-and-feel changes you chose to see first (#278, #281, #295, #305), and 4 were Tier C by path (#202 scaffold, #222 deploy, #277 Makefile, #306 deploy workflow). Leaving out the four you chose to see, 27 of 31 (87%). Agents also merged 9 docs and design PRs |
 | Stop-the-line events | Few, with reasons | 1 | 3, all needing you: the dev account's two read-only roles (7 Nov), the first `terraform apply` with IAP's OAuth settings (#179), and the IAP spike's setup (#196). Plus 5 residual risks referred to you and accepted (#186's bill, #200, #226, #237, #280) |
-| Agent-merged PRs reverted or needing a behaviour fix | At most 1 in 10 | 0 of 3 | 1 of 27: PR #292's views were redesigned on your correction (PRs #301, #303). A simpler design, not a bug |
+| Agent-merged PRs reverted or needing a behaviour fix | At most 1 in 10 | 0 of 3 | **4 of 27 (15%), over target.** #233 closed a way for a website to read a local `.env` while `newsfeed serve` (#220) ran in development; #246 made #223's feedback input checks strict; #263 fixed #226's sanitiser letting `data:` URLs through; and PR #292's views were redesigned on your correction (PRs #301, #303). The first three were found by review and fixed in planned follow-up batches within a day; none reached your phone as a bug |
 | Decisions you overturn | At most 1 in 5 | Set by review | During the phase: the views' time windows and copy check (PR #292). At this review: set by your comments |
 | Rework rounds per PR | Falling | Falling | Falling: 6 PRs reworked in batch 3, one round each in batches 4 to 11, none in batches 12 to 15 |
 | Defects review caught that tests should have | Falling | At least 5 PRs | Batch 3 (test helpers writing the field the code read, #234, #235), then no defects in batches 10 to 15 |
 | Issues reworked because the plan was wrong | Reported | 2 | 4: #175 and #184 were too big and split mid-flight; #243's premise was wrong; #288 was redesigned (#296, #297) |
 | Usage pauses, usage per issue | Reported | None | None. 5-hour use peaked at 61%, weekly at 24%. No source for usage per issue |
 
-**Thresholds.** Keep them. The 77% is close, and most of the gap is your choice to see look-and-feel changes, so count PRs that are Tier C only because you asked to see them separately from the target from Phase 4. The "1 in 10" rate now has 27 PRs behind it, and holds.
+**Thresholds.** The agent-merge share is close, and the gap is your choice to see look-and-feel changes, so from Phase 4 count those PRs separately. The behaviour-fix rate is over its target. All three fixes came from review notes known at merge time and shipped in the next batch, so the rule that tightens is not the tiers but the merge: **a review note that matters (#233: a secret readable in development) is fixed before merge, not in a follow-up.** That goes into process item 2. Keep the thresholds and look again at the Phase 4 milestone.
 
 **Compaction (§16).** One manual mid-batch compaction, with nothing lost. No automatic one yet. The approach stays.
 
@@ -168,7 +169,7 @@ Agent-merged PRs, 36 in all (27 product code, 9 docs and design): [#186](https:/
 | # | Friction | Evidence | Recommendation | Shows it worked |
 |---|---|---|---|---|
 | 1 | Sizing: tests crowd the 1,500-line limit, and big issues split mid-flight | #175 (518 source lines) and #184 (610) split into sub-issues; #216 split after review because its tests were 1,020 lines; PR #292 at 1,482 lines, 887 of them tests; client test helpers counted as source | The architect sizes issues with tests included, under 400 source lines; each split part gets its own sub-issue and only the last closes the parent; the test author keeps tests lean (one test per acceptance example, shared setup); `tier.py` counts client test helpers as tests | No issue split mid-flight; no PR above 1,300 lines from tests |
-| 2 | The delivery manager's brief lags the habits that worked | Late messages to a busy delivery manager (3); a worker resumed by message didn't wake it (3 stalls on PR #277); worker reports reached the lead (2+3); `Confirm later` marker with no text tripped the gate (3); a review with no SHA showed as unreviewed (#287); Delivery reviews needed `make client-install` (2); a Needs human item reached you before the delivery manager relayed it (PR #237); a test-only rework on a high-risk PR merged without a second review (PRs #261, #262) | Write the handoff's interim lessons into the briefs: never block in a foreground command while agents run; start a fresh worker for rework rather than resuming one; hand over to a fresh delivery manager at a clean point; reviews state `Checked at <sha>`; text on the `Confirm later` line; `make client-install` first; the worker's rework read includes inline review comments; the lead's status check greps new comments for "Needs human"; a test-only rework that changes no reviewed source needs no second review | None of these recur in Phase 4 batch reports |
+| 2 | The delivery manager's brief lags the habits that worked | Late messages to a busy delivery manager (3); a worker resumed by message didn't wake it (3 stalls on PR #277); worker reports reached the lead (2+3); `Confirm later` marker with no text tripped the gate (3); a review with no SHA showed as unreviewed (#287); Delivery reviews needed `make client-install` (2); a Needs human item reached you before the delivery manager relayed it (PR #237); a test-only rework on a high-risk PR merged without a second review (PRs #261, #262) | Write the handoff's interim lessons into the briefs: never block in a foreground command while agents run; start a fresh worker for rework rather than resuming one; hand over to a fresh delivery manager at a clean point; reviews state `Checked at <sha>`; text on the `Confirm later` line; `make client-install` first; the worker's rework read includes inline review comments; the lead's status check greps new comments for "Needs human"; a review note that matters is fixed before merge, not in a follow-up (#233); a test-only rework that changes no reviewed source needs no second review, even on a high-risk PR (this relaxes the rule, so it's your call) | None of these recur in Phase 4 batch reports |
 | 3 | Issues leave out what the next agent needs | Look-and-feel changes could merge without you seeing them (#271, your note); an issue named the REST field for a `gh ... view` call (#286); "How to verify" said `make run`, which fetches live feeds (#297); the test author picked an unnamed helper's signature and tested through the whole app (#289, #296) | Architect brief and issue template: a change to how the client looks gets `needs-human` and phone-size before and after screenshots, light and dark (the #271 pattern); issues name the helpers and interfaces tests call; verification commands don't touch the network | No look-and-feel PR reaches you unseen; no worker edits a test author's tests for an unnamed interface |
 
 **Accept.** No action. Say so if you disagree.
@@ -191,6 +192,7 @@ Agent-merged PRs, 36 in all (27 product code, 9 docs and design): [#186](https:/
 | Longer seeding retries, seeding log check | From PR #292 | Gone: seeding was removed in PR #303 |
 | Untested guards in `publish/views.py`; a two-assert test for the version wiring (PR #306); the Firestore 30-source chunking tested only in the emulator | Reviewers' notes | Cheap: a wrong guard shows as a wrong view, fixed next run, and no view has 30 sources |
 | `REVIEW.md` line: a test of a bot-bumped pin mustn't hard-code the version | Batch 5 candidate | Added to `REVIEW.md` in this PR |
+| `REVIEW.md` line: a cost estimate counts per-request side charges such as logging | 1 November, PR #186's review | Added to `REVIEW.md` in this PR |
 | ADR-0006 still said a missing copy shows as a link | PR #303 follow-up | Corrected in this PR |
 
 **Defer.** Logged in `DEFERRED_WORK.md`.
