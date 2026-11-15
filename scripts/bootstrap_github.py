@@ -2,7 +2,7 @@
 """Bootstrap GitHub labels, milestones and seed issues for the newsfeed project.
 
 Creates everything in PROJECT_PLAN.md §9.1 and §10 using the GitHub CLI:
-  * labels (area:*, size:*, agent-ready, needs-human, blocked)
+  * labels (area:*, size:*, agent-ready, needs-human, blocked, triage)
   * milestones Phase 0 .. Phase 6
   * the 21 seed issues for Phases 0-1, with "Depends on #N" links filled in
     and "Blocks" lists computed for needs-human issues
@@ -42,6 +42,7 @@ LABELS: list[tuple[str, str, str]] = [
     ("agent-ready", "0E8A16", "Fully specified; safe for an agent to pick up unsupervised"),
     ("needs-human", "D93F0B", "Needs a human decision, credentials or judgement"),
     ("blocked", "B60205", "Waiting on another issue or an external factor"),
+    ("triage", "C5A3F5", "Rough idea or bug report from the owner; agents triage it into agent-ready work"),
     ("size:S", "C2E0C6", "Small: under a couple of hours"),
     ("size:M", "FEF2C0", "Medium: roughly half a day"),
     ("size:L", "F9D0C4", "Large: split before marking agent-ready"),

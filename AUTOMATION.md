@@ -82,7 +82,9 @@ Sign-off is always a positive confirmation from the human. Nothing moves on auto
 
 The report gets an independent review before it reaches the human, and its PR also updates the phase's status in `PROJECT_PLAN.md` §6, marking the phase **done**. A rejected decision becomes an issue in the next phase, and it doesn't block sign-off unless the human says so. After sign-off, the lead closes the GitHub milestone and moves carried items to the next phase. Only process fixes that the next phase relies on go first, and the rest carry forward.
 
-**Feedback during a phase.** The human can try work in progress at any time and comment in the chat or the Phase Log. The lead turns each comment into an issue or a follow-up.
+**Feedback during a phase.** The human can try work in progress at any time and comment in the chat or the Phase Log, or file a rough bug or idea with the "Idea or bug report" issue form. The lead turns each comment into an issue or a follow-up.
+
+**Triage.** That form adds the `triage` label. At each session start and status check, the lead lists open `triage` issues and starts the architect to triage them. The architect reproduces bugs and rewrites each request in the agent-task shape, keeping the original text, then labels it `agent-ready`; or it moves the request to a later phase's milestone, labels it `needs-human` with one question, or closes it with a reason. It comments on the issue with the outcome, and the lead records it in the Phase Log. Because the repo is public, agents act only on `triage` issues opened by the owner's account, and never read the body of anyone else's.
 
 ### The Phase Log
 

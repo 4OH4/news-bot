@@ -1,0 +1,49 @@
+name: Idea or bug report
+description: Something you noticed or want. Rough is fine; agents triage it into a spec.
+title: "Short description"
+labels: ["triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Write it however it comes. An agent triages it: reproduces a bug, writes the spec, or parks an idea
+        for a later phase, and comments here with what it became. It asks you only if it can't decide.
+        This repo is public: don't paste secrets or article text.
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind
+      options:
+        - Bug
+        - Feature or change
+        - Idea or question
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, or what you'd like
+      description: For a bug, what you expected and what you saw instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: where
+    attributes:
+      label: Where and when
+      description: Optional. The feed, the client screen or a source, and roughly when. Screenshots help.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: matters
+    attributes:
+      label: How much it matters
+      options:
+        - Annoying now
+        - Nice to have
+        - Just an idea
+    validations:
+      required: false
