@@ -174,6 +174,7 @@ Each phase has a clear exit criterion. Later phases may be re-planned based on w
 - Installable on the Android home screen.
 - **Exit:** I use it daily in place of the Google feed for two weeks.
 - **Milestone demo:** install the PWA on my Android phone, read today's feed, open an article, like one, and read it again offline.
+- **Status (2026-11-15): done.** Closed by the owner after nine days of daily use, before the two weeks ran; #307, #89 and #92 carry forward. See `docs/milestones/phase-3.md`.
 
 ### Phase 4: Personalisation
 - Embedding provider interface (Vertex AI or a local model); interest centroids built from liked and read articles.
