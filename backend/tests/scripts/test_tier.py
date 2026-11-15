@@ -630,6 +630,26 @@ def test_client_source_counts_towards_the_source_limit() -> None:
     assert classify(F("client/src/app.ts", tier.MAX_SRC_LINES + 1)).blocks
 
 
+@pytest.mark.parametrize(
+    "path",
+    [
+        "client/e2e/helpers.ts",  # imported only by the Playwright specs
+        "client/e2e/fixtures/feed.json",
+        "client/src/feedback/test-env.ts",  # imported only by Vitest tests
+    ],
+)
+def test_client_test_only_helpers_count_as_test_lines_not_source(path: str) -> None:
+    result = classify(F(path, tier.MAX_SRC_LINES + 1))
+    assert result.blocks == []
+
+
+def test_client_test_helpers_still_count_towards_the_total_limit() -> None:
+    result = classify(F("client/e2e/helpers.ts", tier.MAX_TOTAL_LINES + 1))
+    assert result.blocks == [
+        f"{tier.MAX_TOTAL_LINES + 1} lines changed in total (limit 1500): split it"
+    ]
+
+
 def test_generated_files_do_not_count_towards_the_limits() -> None:
     result = classify(
         F("eval/results/2026-10-17.json", 4000),
