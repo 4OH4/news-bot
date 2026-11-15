@@ -20,5 +20,6 @@ The lead reviews this file at each milestone. An entry that is due gets a new de
 | Word-count rules for Longer: a floor to drop short New Yorker pieces (138 of about 183 long-form items in 14 days, median 866 words), and long pieces from general news feeds such as BBC In Depth | Tags only in the first version | After a week of using Longer | Phase 3 (views) |
 | `guardian-longread` extracts about 93 words (median; 6 of 10 `partial` in 14 days), so its pieces show as links | Found while sizing views; not yet investigated | Next extraction review | Phase 3 (views) |
 | Remember the last-used tab as the landing view | Feed is the default | Phase 3 milestone | Phase 3 (views) |
+| Getting back to the top of a long list: (1) tapping the current tab scrolls it to the top (a second tap could refresh); (2) a "back to top" button that appears once well down the list (say past 10 cards) and scrolling up | Owner's request, 2026-11-15; both need the tabs (#289, PR #295) first. Option 2 is a visual change, so its PR gets screenshots and the owner's review | After PR #295 merges | Phase 3 (views) |
 | Sync view preferences across devices (stored through the API) | One device today | A second device | Phase 3 (views) |
 | Authoritative wire sources (Reuters, AP), which have no public RSS | Source question, separate from views | Next source review | Phase 3 (views) |
