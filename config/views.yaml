@@ -1,13 +1,8 @@
-# Feed views (#288, ADR-0012), loaded by newsfeed.config.load_views. Publish
-# writes each as views/<name>.json: feed.json's candidates with no 200-item cap,
-# narrowed by source tag and window. The API serves them in pages:
-# GET /api/feed?view=<name>&limit=<n>&cursor=<c>. Unknown keys are rejected.
-#
-#   <name>:            # lowercase letters, digits and '-'
-#     tags: [news]     # sources with any of these tags; omit for every source
-#     order: newest    # newest (effective time) or score (as feed.json)
-#     window_hours: 72 # past publish's 72-hour read, carried forward each run
-
+# Feed views (#288, ADR-0012): publish writes each as views/<name>.json, feed.json's
+# candidates uncapped; the API pages them (GET /api/feed?view=<name>). Unknown keys
+# are rejected. Names: lowercase letters, digits, '-'. tags: sources with any of
+# them (omit for all). order: newest | score. window_hours: past publish's 72-hour
+# read, the list is carried forward from the previous file each run.
 views:
   news:
     tags: [news]
