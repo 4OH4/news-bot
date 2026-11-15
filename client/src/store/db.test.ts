@@ -1,8 +1,10 @@
 import "fake-indexeddb/auto";
+import { openDB } from "idb";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Feed, FeedItem } from "../feed/types";
 import {
   clearAll,
+  DB_NAME,
   getArticleHtml,
   loadAllFeeds,
   loadFeed,
@@ -168,5 +170,17 @@ describe("per-view records (#289)", () => {
     await saveFeed(feed(["old"]), '"n1"', "news");
     await pruneArticles(feed(["other"]));
     expect(await getArticleHtml("old")).not.toBeNull();
+  });
+
+  it("reads the old single-feed record as the Feed view, and the next save deletes it", async () => {
+    await saveFeed(feed(["x"]), '"x1"', "news"); // creates the database
+    const raw = await openDB(DB_NAME);
+    await raw.put("feed", { key: "current", feed: feed(["old"]), etag: '"o1"', fetchedAt: 5 });
+    expect((await loadFeed("feed"))?.feed.items.map((i) => i.id)).toEqual(["old"]);
+    expect(await loadFeed("longer")).toBeNull();
+    await saveFeed(feed(["new"]), '"f1"', "feed");
+    expect(await raw.get("feed", "current")).toBeUndefined();
+    expect((await loadFeed("feed"))?.feed.items.map((i) => i.id)).toEqual(["new"]);
+    raw.close();
   });
 });

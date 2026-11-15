@@ -52,7 +52,12 @@ function db(): Promise<IDBPDatabase<NewsfeedDB>> {
 
 /** A view's stored list with its etag and fetch time, or null when nothing is stored. */
 export async function loadFeed(view: ViewName = "feed"): Promise<StoredFeed | null> {
-  const record = await (await db()).get("feed", feedKey(view));
+  const store = await db();
+  // First open after the tabs update: the old single-feed record is the Feed view until
+  // the next save replaces it, so Feed isn't empty offline.
+  const record =
+    (await store.get("feed", feedKey(view))) ??
+    (view === "feed" ? await store.get("feed", OLD_FEED_KEY) : undefined);
   if (!record) return null;
   return { feed: record.feed, etag: record.etag, fetchedAt: record.fetchedAt };
 }

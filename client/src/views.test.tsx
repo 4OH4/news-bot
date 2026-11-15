@@ -15,10 +15,10 @@ interface ViewPage {
 
 /** A fake API for the three views. Page i of a view is reached with the cursor `c<i>`. */
 function installViews(pages: Record<string, ViewPage[]>) {
-  const api = { online: true, requests: [] as URL[], articles: [] as string[] };
+  const api = { online: true, requests: [] as URL[], etags: [] as (string | null)[], articles: [] as string[] };
   vi.stubGlobal(
     "fetch",
-    vi.fn(async (input: unknown) => {
+    vi.fn(async (input: unknown, init?: RequestInit) => {
       if (!api.online) throw new TypeError("Failed to fetch");
       const raw =
         typeof input === "string" ? input : input instanceof URL ? input.href : (input as Request).url;
@@ -29,6 +29,7 @@ function installViews(pages: Record<string, ViewPage[]>) {
       }
       if (url.pathname !== "/api/feed") return new Response(null, { status: 204 });
       api.requests.push(url);
+      api.etags.push(new Headers(init?.headers).get("If-None-Match"));
       const view = url.searchParams.get("view") ?? "";
       const cursor = url.searchParams.get("cursor");
       const index = cursor ? Number(cursor.slice(1)) : 0;
@@ -202,6 +203,68 @@ describe("Load more", () => {
     refreshButton()!.click();
     await vi.waitFor(() => expect(api.requests).toHaveLength(3));
     expect(viewParams(api)[2]).toMatchObject({ view: "news", cursor: null });
+    // The page-1 ETag was dropped, so this refresh is unconditional.
+    expect(api.etags[2]).toBeNull();
+  });
+
+  it("a Refresh after Load more from the same run still sends the page-1 ETag", async () => {
+    const api = installViews({
+      news: [
+        { items: [story("n1")], next_cursor: "c1" },
+        { items: [story("n2")], next_cursor: null },
+      ],
+    });
+    await loadStores();
+    await open("/news");
+    await waitText("Invented n1 story");
+    await idle();
+    loadMore()!.click();
+    await waitText("Invented n2 story");
+    refreshButton()!.click();
+    await vi.waitFor(() => expect(api.requests).toHaveLength(3));
+    expect(api.etags[2]).toBe('"news-0"');
+  });
+
+  it("Load more is disabled while a refresh is in flight", async () => {
+    installViews({ news: [{ items: [story("n1")], next_cursor: "c1" }, { items: [story("n2")] }] });
+    await loadStores();
+    await open("/news");
+    await waitText("Invented n1 story");
+    await idle();
+    expect(loadMore()!.disabled).toBe(false);
+    // Hold the refresh's answer so the busy window can be observed.
+    const inner = globalThis.fetch;
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    vi.stubGlobal("fetch", async (...args: Parameters<typeof fetch>) => {
+      await gate;
+      return inner(...args);
+    });
+    refreshButton()!.click();
+    await vi.waitFor(() => expect(loadMore()!.disabled).toBe(true));
+    release();
+    await idle();
+    expect(loadMore()!.disabled).toBe(false);
+  });
+
+  it("Load more pages are stored, so the list reopens offline with them", async () => {
+    const api = installViews({
+      news: [
+        { items: [story("n1")], next_cursor: "c1" },
+        { items: [story("n2")], next_cursor: null },
+      ],
+    });
+    await loadStores();
+    await open("/news");
+    await waitText("Invented n1 story");
+    await idle();
+    loadMore()!.click();
+    await waitText("Invented n2 story");
+    await idle();
+    api.online = false;
+    await open("/news");
+    await waitText("Invented n2 story");
+    expect(root.textContent).toContain("Invented n1 story");
   });
 });
 

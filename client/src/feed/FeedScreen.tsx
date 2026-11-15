@@ -88,7 +88,7 @@ export function FeedScreen({ view = "feed" }: { view?: ViewName }) {
           <button
             type="button"
             onClick={() => void loadMore()}
-            disabled={offline || loadingMore}
+            disabled={offline || loadingMore || busy}
             aria-busy={loadingMore}
           >
             Load more
