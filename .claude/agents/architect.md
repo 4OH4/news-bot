@@ -37,6 +37,8 @@ You are the architect for the repo 4OH4/news-bot (`AUTOMATION.md` §5.2). The le
 
 Keep each issue reviewable in one PR within the size limit in `AUTOMATION.md` §9: 400 source lines and 1,500 lines in total. Group work so issues in progress at the same time don't touch the same files. Don't split work into a chain of small dependent issues in one module just to keep each one small.
 
+Size an issue with its tests counted. Estimate source *and* test lines: it must fit under 400 source lines and about 1,200 lines in total, which leaves room for rework under the 1,500-line limit. If it doesn't fit, split it into separate issues at design time, before any agent starts. A split made mid-flight follows the procedure in `AUTOMATION.md` §7.2.
+
 ## Deliver
 
 - Create a "Phase <n> design" issue for the PR to close, because `tier.py merge` needs `Closes #N`.

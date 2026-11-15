@@ -261,6 +261,8 @@ Tests catch the cases somebody thought of, and review looks for the ones nobody 
 - Docs, config-only changes, spikes and tooling chores skip the test author. A `refactor` or `perf` change also skips it, because the existing tests must pass unchanged.
 - Fixtures stay synthetic, and tests stay offline, as `CLAUDE.md` requires.
 - Red tests never go on `main`.
+- Issues are sized with their tests counted: under 400 source lines and about 1,200 lines in total, so rework fits under the 1,500-line limit. The test author keeps tests lean: one per acceptance example, shared setup in fixtures, parametrised rather than near-duplicate tests.
+- **A split made mid-flight** (rare once sizing is right) is reported by the worker or delivery manager, and the lead or architect opens one sub-issue per part. Each part's PR closes its own sub-issue, and only the last PR also closes the parent, because `tier.py merge` requires `Closes #N` and an early close would move the parent to Done. (Decision of 2026-11-07, Phase Log #187.)
 
 ### 7.3 What the reviewer checks
 
