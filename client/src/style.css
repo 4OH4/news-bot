@@ -108,7 +108,11 @@ button {
   border-radius: 6px;
 }
 
-.card-image[hidden] {
+.card-image-link {
+  display: block;
+}
+
+.card-image-link[hidden] {
   display: none;
 }
 
