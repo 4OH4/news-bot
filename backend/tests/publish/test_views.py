@@ -407,6 +407,31 @@ def test_a_carried_item_that_is_no_longer_eligible_is_dropped(env: Env, case: st
     assert stale.id not in longer
 
 
+def test_a_carried_item_dated_in_the_future_is_dropped(env: Env) -> None:
+    keeper = store_content(env, article("aeon", "keeper", age_hours=5 * 24))
+    future = store_content(env, article("aeon", "tomorrow", age_hours=-24))
+    prior_view(env, "longer", [keeper, future])
+    assert future.id in ids(read(env, "views/longer.json")), "setup: the old file holds it"
+
+    publish()
+
+    longer = ids(view(env, "longer"))
+    assert keeper.id in longer
+    assert future.id not in longer
+
+
+def test_an_article_read_this_run_and_now_muted_is_not_brought_back_from_the_old_file(
+    env: Env,
+) -> None:
+    live = store_content(env, article("aeon", "muted-since", age_hours=48))
+    prior_view(env, "longer", [live])
+    seed(env, [live.model_copy(update={"score": 0.0, "score_breakdown": {"muted": 1.0}})])
+
+    publish()
+
+    assert live.id not in ids(view(env, "longer"))
+
+
 def test_a_fresh_row_replaces_the_carried_row_for_the_same_story(env: Env) -> None:
     old = article("aeon", "again", age_hours=48, score=0.2)
     prior_view(env, "longer", [store_content(env, old)])
