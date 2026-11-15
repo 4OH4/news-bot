@@ -11,7 +11,7 @@ First delete the recurring status check (`CronList`, then `CronDelete`) so that 
 
 List any delivery manager or architect still running. For each one, either:
 - wait for it to report, then handle the report as in `/lead-start`; or
-- if the user is leaving now, note it as still running. Its worktrees will be kept and listed next session, and a new delivery manager can pick up from the board.
+- if the user is leaving now, note it as still running. Its worktrees will be kept and listed next session. Record its batch, stage and open PRs in the handoff note, so the next session can list them as `Carried:` lines for a new delivery manager.
 
 Never remove a worktree that a running agent is using.
 

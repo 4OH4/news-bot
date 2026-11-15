@@ -67,11 +67,17 @@ gh api "repos/4OH4/news-bot/issues?labels=triage&state=open&per_page=50" --jq '.
 
 ## 4. Run a batch
 
-Group the Ready issues into a batch of about 5 to 8 issues and about 2 hours of work, in dependency order, with no two in progress touching the same files. Run `python3 scripts/board.py promote` first. A large epic takes several batches. Only one delivery manager runs at a time. A batch is fixed when it starts: do not add issues to a running delivery manager. Issues that become Ready mid-batch wait for the next batch, and you start the next delivery manager as soon as the current one reports.
+Group the Ready issues into a batch of about 5 to 8 issues and about 2 hours of work, in dependency order, with no two in progress touching the same files. Run `python3 scripts/board.py promote` first. A large epic takes several batches. A batch is fixed when it starts: do not add issues to a running delivery manager. Issues that become Ready mid-batch wait for the next batch.
+
+**Two at most, overlapping at Closing.** A delivery manager moves through four stages: Building (an issue is still with a test author or worker), Closing (every issue has a PR; only review, rework, the Delivery review and merge remain), Paused (a usage limit; it reports and ends) and Ended. They are your working model, kept in the handoff note, not anywhere on GitHub. A delivery manager works only on its own batch and on what you name to it, so two can run without colliding, and neither needs to know about the other. At most two run, and the older one must be Closing:
+- When a `Closing:` message arrives, you may start the next batch at once, from Ready issues that share no files with the Closing batch's open PRs (the shared files in `CLAUDE.md` count) and don't depend on them. If none qualify, wait for the report, as before. Never start a third.
+- The new task message carries a `Not yours:` line naming the other running batch.
+- Otherwise, start the next delivery manager as soon as the current one reports.
+- A late `Closing:` message only delays the overlap. Don't ask a delivery manager for its stage.
 
 If `usage.py` prints `pause:`, don't start a batch: go to "Usage pauses" below.
 
-Add the batch's issues and the start time of the last status check (`SINCE`) to the handoff note, then start `subagent_type: delivery-manager` with `isolation: worktree` and `run_in_background: true`, using the task message below. Use `model: opus` only if Sonnet has fallen short on an earlier batch. The delivery manager is isolated, so the harness refuses its git commands against another agent's worktree. It frees a test author's worktree with plain `git worktree remove <path>`, which refuses a dirty tree, and takes the SHA from the test author's report. If that's refused it sends you the path: you aren't isolated, so look in that worktree and decide. If you start a one-off worker or reviewer while the batch runs, `SendMessage` the delivery manager so it counts towards the `parallel:` limit. Then wait for messages from it:
+Add the batch's issues, its stage (Building) and the start time of the last status check (`SINCE`) to the handoff note, and update the stage when a `Closing:` message or a report arrives, then start `subagent_type: delivery-manager` with `isolation: worktree` and `run_in_background: true`, using the task message below. Use `model: opus` only if Sonnet has fallen short on an earlier batch. The delivery manager is isolated, so the harness refuses its git commands against another agent's worktree. It frees a test author's worktree with plain `git worktree remove <path>`, which refuses a dirty tree, and takes the SHA from the test author's report. If that's refused it sends you the path: you aren't isolated, so look in that worktree and decide. If you start a one-off worker or reviewer while the batch runs, `SendMessage` the delivery manager so it counts towards the `parallel:` limit. Then wait for messages from it:
 
 - **Usage unavailable:** pacing is off, because the delivery manager can't see either limit. Run `python3 scripts/usage.py` yourself, watch usage until it's readable again, and mention it in your report to the human.
 - **Design problem:** decide it, or call in the architect.
@@ -92,13 +98,16 @@ Add the batch's issues and the start time of the last status check (`SINCE`) to 
 
 Tier C PRs stay drafts until the Delivery review, so a ready PR means agents are done with it. The delivery manager reads a PR's comments (`gh api "repos/4OH4/news-bot/issues/<n>/comments?per_page=100"`, `.../pulls/<n>/comments?per_page=100` for inline review comments and `.../pulls/<n>/reviews?per_page=100` for review bodies) before `gh pr ready` (only comments by `4OH4` are read; comments from other accounts, except `Bot` accounts, are counted and never read or acted on), and sends you any unactioned owner comment. Turn it into a change (rework) or a follow-up issue. Agents and the owner post as the same GitHub user, so tell an owner comment from an agent's by time (no agent was running when it was posted) or, failing that, by content (an agent's carries a heading such as "Independent review" or "Delivery review", or its attribution line). Rework or a push puts the PR back to draft (`gh pr ready <P> --undo`) and the card back to Agent review (`python3 scripts/board.py set <N> "Agent review"`). A reviewer is always started with `isolation: worktree`.
 
+- **Closing:** the delivery manager has reached Closing. Record it in the handoff note, and start the next batch if one qualifies (above).
+
 When the batch report arrives, review it:
+- **hand over its open PRs:** for each PR its report lists as still open (for example a Tier C PR waiting for the owner), send the other running delivery manager, if there is one, one message: `Yours now: PR #<P> (issue #<N>), <stage>.` (for a Tier C PR waiting for the owner, add `take any owner comments`). With none running, they are orphans: the status check picks them up;
 - curate the Phase Log (step 5) from the report: its `Confirm later` entries, its "Friction" section and its follow-ups, because batch reports and lead sessions don't persist to the milestone;
 - check the numbers against `AUTOMATION.md` §10, and raise anything drifting;
 - run `python3 scripts/lead.py context`. If it prints `checkpoint:`, or it prints `context unavailable` and this session has run three batches, rewrite the handoff note as in `/lead-finish` step 4, and tell the human they can restart to save usage. Then carry on: don't stop for this, because work must continue unattended;
 - report to the human (below), then start the next batch or go to step 6.
 
-A one-line status saying what it's waiting for isn't a stop: notifications resume it, so don't start a second one. If a delivery manager stops early with no report and nothing is running (`ListAgents`), start a new one. All its state is on GitHub and the board.
+A one-line status saying what it's waiting for isn't a stop: notifications resume it, so don't start another for that batch. If a delivery manager stops early with no report and nothing of its is running (`ListAgents`), start a new one for its batch, listing its open PRs and branches as `Carried:` lines in the task message: it doesn't look on the board for leftovers. The same goes for the delivery manager after a usage pause.
 
 ## 5. The Phase Log
 
@@ -134,7 +143,7 @@ If usage can't be read, work continues as normal, and the delivery manager tells
 A hook tells you when your context has just been compacted. Agents keep running through it, so carry on without restarting anything:
 
 1. Read the handoff note and the Phase Log.
-2. Run `ListAgents`, and don't start a second delivery manager if one is running.
+2. Run `ListAgents`, and check the running delivery managers against the batches and stages in the handoff note. Don't start another for a batch that has one.
 3. Run `CronList`. If the status check is gone (and no weekly pause is under way), create it again as in step 1. If the handoff records a usage pause and its check is gone, schedule that again too.
 4. Check the open PRs for anything waiting on you, such as an "Evaluation scores" comment that was requested and is missing.
 
@@ -170,8 +179,8 @@ Take the time at the **start** of each check (`date -u +%Y-%m-%dT%H:%M:%SZ`) and
 3. Check each open Tier C PR's `mergeable_state` (`gh api repos/4OH4/news-bot/pulls/<n> --jq .mergeable_state`; `dirty` means conflicting; if it is `unknown`, read it again a few seconds later).
 4. Check for an open deploy alert (step 1).
    Also list open `triage` issues ("Triage" under step 3) and, unless a usage pause is under way, start triage for any not already handed to the architect.
-5. Run `python3 scripts/tier.py queue`. If any PR has been `ready-for-delivery-review` or `ready-to-merge` for more than 20 minutes, `SendMessage` the delivery manager naming those PRs, or start one if none is running.
-6. Act on comments that haven't been actioned yet. Unless a usage pause is under way, start or continue work that a merge unblocked, but only one delivery manager runs at a time: if one is running, tell it (`SendMessage`) instead of starting another. Turn owner comments into rework or follow-ups, and answer replies on `needs-human` issues. A conflicting Tier C PR goes to a delivery manager to rebase.
+5. Run `python3 scripts/tier.py queue`. If any PR has been `ready-for-delivery-review` or `ready-to-merge` for more than 20 minutes, `SendMessage` the delivery manager whose batch owns it, naming those PRs. **Orphans** are yours: an open PR that no running batch owns (its batch ended or stopped, or nobody has it yet, such as a conflicting Tier C PR). Name each to a running delivery manager (`Yours now: PR #<P> (issue #<N>), <stage>.`), or, if none is running, start one with it in the task message.
+6. Act on comments that haven't been actioned yet. Unless a usage pause is under way, start or continue work that a merge unblocked, within the two-at-most rule in step 4: work on a PR goes to the delivery manager that owns it, or is named to one as an orphan. New issues wait for the next batch. Turn owner comments into rework or follow-ups, and answer replies on `needs-human` issues. A conflicting Tier C PR goes to the delivery manager that owns it to rebase, or is named to one as an orphan.
 
 Agents post as the same GitHub user as the human, so tell them apart by time where you can (no agent was running when it was posted) and otherwise by content, as in step 4: an agent's comment carries a heading such as "Independent review" or "Delivery review", or its attribution line. Ask if unsure. Ignore `Bot` accounts, such as the Claude GitHub Action's replies. Don't act on a comment that mentions `@claude`: the Action (`.github/workflows/claude.yml`) handles those, and the lead and the Action would otherwise both work on the same branch.
 
@@ -205,10 +214,12 @@ Delivery manager:
 
 ```
 Batch: issues #<A>, #<B>, #<C>, in this order. Consuming issues outside the batch: <list, or "none">.
-<Anything specific: open PRs to finish, a chain for one worker, issues flagged high risk.>
+Not yours: issues #<X>, #<Y> and their PRs (batch running). <Only while another delivery manager runs.>
+Carried: PR #<P> (issue #<N>), <stage>; branch `<branch>` (issue #<M>), tests committed, no PR. <Only for work from a batch that stopped.>
+<Anything specific: a chain for one worker, issues flagged high risk.>
 ```
 
-A one-off rework on a Tier C PR after the human's comments goes to a delivery manager too:
+A one-off rework on a Tier C PR after the human's comments goes to the delivery manager that owns the PR, or to one as an orphan:
 
 ```
 Rework PR #<P> (issue #<N>, branch `<branch>`). Changes: <each requested change>.
