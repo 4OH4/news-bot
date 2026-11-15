@@ -56,6 +56,7 @@ from newsfeed.models import (
 )
 from newsfeed.ports import Extractor, Fetcher
 from newsfeed.publish.feed import FEED_WINDOW_HOURS, PARTIAL_MIN_WORDS, publish_feed
+from newsfeed.publish.views import publish_views
 from newsfeed.rank.interests import InterestsConfig
 from newsfeed.rank.stage import DEFAULT_WINDOW_HOURS, rank_recent
 from newsfeed.wiring import Services
@@ -1129,9 +1130,16 @@ def publish_stage(
     now: datetime,
     window_hours: float,
 ) -> None:
-    """Write ``feed.json``. A failure is logged and counted; the previous feed stays."""
+    """Write ``feed.json``, then the views, from one read of the repository.
+
+    A failure is logged and counted, and keeps that file's previous version; a
+    failed view never undoes ``feed.json``.
+    """
     try:
-        built = publish_feed(services, sources, run_id=run_id, now=now, window_hours=window_hours)
+        articles = services.repository.list_articles(since=now - timedelta(hours=window_hours))
+        built = publish_feed(
+            services, sources, run_id=run_id, now=now, window_hours=window_hours, articles=articles
+        )
     except Exception as exc:
         log.error(
             "publish failed; previous feed.json left in place",
@@ -1152,6 +1160,19 @@ def publish_stage(
         tally.count(PipelineStage.PUBLISH, "dropped", built.dropped)
     if built.links_for_missing_content:
         tally.count(PipelineStage.PUBLISH, "missing_content", built.links_for_missing_content)
+    outcomes = publish_views(
+        services,
+        sources,
+        articles=articles,
+        read_window_hours=window_hours,
+        run_id=run_id,
+        now=now,
+        generated_at=built.feed["generated_at"],
+    )
+    for outcome in outcomes.values():
+        tally.count(PipelineStage.PUBLISH, f"views_{outcome}")
+        if outcome == "failed":
+            tally.error()
 
 
 def run_pipeline(
