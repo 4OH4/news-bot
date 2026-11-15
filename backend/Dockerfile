@@ -37,7 +37,9 @@ WORKDIR /client
 COPY client/package.json client/package-lock.json ./
 RUN npm ci --ignore-scripts
 COPY client/ ./
-RUN npm run build
+# The version Settings shows. Local builds pass nothing, so it stays "dev".
+ARG APP_VERSION=dev
+RUN VITE_APP_VERSION="$APP_VERSION" npm run build
 
 # Shared by both final targets: the unprivileged user, config and environment.
 FROM python-base AS base

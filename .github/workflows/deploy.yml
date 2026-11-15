@@ -68,6 +68,15 @@ jobs:
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
+      # The version Settings shows: short commit SHA and UTC build time. The SHA
+      # comes in through env, never interpolated into the script. The client build
+      # takes the string as it is (backend/Dockerfile, client/vite.config.ts).
+      - name: Work out the app version
+        id: version
+        env:
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: echo "app_version=${HEAD_SHA:0:7} · $(date -u '+%-d %b %H:%M')" >> "$GITHUB_OUTPUT"
+
       # provenance is off so each image is one manifest: an attestation would be
       # a second version, counting against the registry's keep-10 cleanup policy.
       # No build cache: any workflow running on main can write the Actions cache,
@@ -80,6 +89,8 @@ jobs:
           push: true
           tags: ${{ env.IMAGE }}
           provenance: false
+          build-args: |
+            APP_VERSION=${{ steps.version.outputs.app_version }}
 
       # Image only: any other change here would show as drift in the next plan.
       - name: Update the Cloud Run Job
