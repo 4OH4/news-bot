@@ -1,6 +1,5 @@
 name: Idea or bug report
 description: Something you noticed or want. Rough is fine; agents triage it into a spec.
-title: "Short description"
 labels: ["triage"]
 body:
   - type: markdown
