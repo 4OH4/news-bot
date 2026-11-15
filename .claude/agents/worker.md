@@ -59,7 +59,7 @@ You are a worker agent for the repo 4OH4/news-bot, running in your own git workt
 
 ## Rework
 
-You are sent back with review defects or the human's requested changes, either by message while you're still running or by being started fresh on an existing PR.
+You are sent back with review defects or the human's requested changes, by being started fresh on an existing PR, with the defects or changes in your task message.
 - If you're starting fresh: `git fetch origin`, then `git checkout -B <branch> origin/<branch>` and continue on that branch. Don't create a new branch or PR. If git says the branch is already used by another worktree, stop and report back; don't force it or work around it.
 - Read the PR's inline review comments as well as the review body: `gh api repos/4OH4/news-bot/pulls/<n>/comments`.
 - If an earlier worker was cut off, its branch and worktree remain. Carry on from what it pushed.
