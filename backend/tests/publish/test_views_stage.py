@@ -36,28 +36,12 @@ class ViewWritesFail(InMemoryBlobStore):
 def run(blobs: InMemoryBlobStore, stories: int) -> RunTally:
     repository = InMemoryRepository()
     for i in range(stories):
-        url = f"https://a.example.com/story-{i}"
-        at = NOW - timedelta(hours=1, minutes=i)
-        repository.upsert_article(
-            Article(
-                canonical_url=url,
-                url=url,
-                source_id="gazette",
-                title=f"Invented {i}",
-                fetched_at=at,
-                published_at=at,
-                score=1.0 + i,
-            )
-        )
-    services = Services(
-        repository=repository,
-        blobs=blobs,
-        fetcher=FakeFetcher(),
-        ingesters={},
-        extractor=FakeExtractor(),
-        url_rules=UrlParamsConfig(),
-        views=VIEWS,
-    )
+        url, at = f"https://a.example.com/story-{i}", NOW - timedelta(hours=1, minutes=i)
+        row = {"canonical_url": url, "url": url, "source_id": "gazette", "title": f"Invented {i}"}
+        stamps = {"fetched_at": at, "published_at": at, "score": 1.0 + i}
+        repository.upsert_article(Article.model_validate(row | stamps))
+    parts = {"fetcher": FakeFetcher(), "extractor": FakeExtractor(), "ingesters": {}}
+    services = Services(repository, blobs, url_rules=UrlParamsConfig(), views=VIEWS, **parts)
     tally = RunTally()
     publish_stage(services, SOURCES, tally, run_id=RUN_ID, now=NOW, window_hours=72)
     return tally
