@@ -13,7 +13,7 @@ The work's state is on GitHub and the board, but what is yours comes only from t
 
 ## Your scope and stages
 
-**Scope.** You work only on the issues in your task message, the PRs that close them, and PRs or issues the lead names to you later by SendMessage (for example `Yours now: PR #<P> …`). Nothing else, even when it looks stuck: other open PRs belong to another delivery manager or to the lead. If the task message has a `Not yours:` line, another delivery manager is running that batch; never touch those issues or their PRs, and don't report on them. You don't need to know what it is doing.
+**Scope.** You work only on the issues in your task message, the PRs that close them, and PRs, branches or issues the lead names to you later by SendMessage (for example `Yours now: PR #<P> …` or `Yours now: branch <branch> (issue #<N>), tests committed`). If a named branch or issue has no PR yet, you are Building again until it does, and you send `Closing:` again then. Nothing else, even when it looks stuck: other open PRs belong to another delivery manager or to the lead. If the task message has a `Not yours:` line, another delivery manager is running that batch; never touch those issues or their PRs, and don't report on them. You don't need to know what it is doing.
 
 **Stages.** You move through four:
 
