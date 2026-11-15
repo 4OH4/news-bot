@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 //
-// The /liked and /settings routes and the app-level header links to them (#216, #217).
+// The /liked and /settings routes and the links to them (#216, #217; header icons since #289).
 import { h, render } from "preact";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installRouter, loadStores, locationAt, makeFeed, makeItem } from "../test/test-env";
@@ -53,27 +53,18 @@ describe("App routes", () => {
     expect(root.textContent).not.toContain(IN_FEED.title);
   });
 
-  it("the feed page has a bottom Sections bar with a link to /liked, outside the screen's <main>", async () => {
-    await showApp("/");
-    await vi.waitFor(() => expect(root.textContent).toContain(IN_FEED.title), { timeout: 2000 });
-    const link = root.querySelector('a[href="/liked"]');
-    expect(link).not.toBeNull();
-    expect(link?.closest("nav")?.getAttribute("aria-label")).toBe("Sections");
-    expect(link?.closest("header")).toBeNull();
-    expect(link?.closest("nav")?.classList.contains("tab-bar")).toBe(true);
-    expect(link?.closest("main")).toBeNull();
-  });
-
-  it.each(["/", "/liked"])("the Sections bar on %s links to /settings, outside the screen's <main>", async (path) => {
-    await showApp(path);
-    await vi.waitFor(() => expect(root.querySelector('a[href="/settings"]')).not.toBeNull(), {
-      timeout: 2000,
-    });
-    const link = root.querySelector('a[href="/settings"]');
-    expect(link?.closest("nav")?.classList.contains("tab-bar")).toBe(true);
-    expect(link?.closest("header")).toBeNull();
-    expect(link?.closest("main")).toBeNull();
-  });
+  // #289: Liked and Settings moved from the tab bar to header icons on the feed screens.
+  it.each(["/liked", "/settings"])(
+    "the feed page links to %s from its header, not from the Sections bar",
+    async (href) => {
+      await showApp("/");
+      await vi.waitFor(() => expect(root.textContent).toContain(IN_FEED.title), { timeout: 2000 });
+      const link = root.querySelector(`a[href="${href}"]`);
+      expect(link).not.toBeNull();
+      expect(link?.closest("header.top")).not.toBeNull();
+      expect(link?.closest("nav")).toBeNull();
+    },
+  );
 
   it("/settings shows the Settings screen, not the feed", async () => {
     await showApp("/settings");
@@ -97,7 +88,7 @@ const current = () =>
     .map((a) => a.textContent?.trim());
 
 describe("bottom tab bar (#272)", () => {
-  it("is a <nav> named Sections with exactly Feed, Liked and Settings links", async () => {
+  it("is a <nav> named Sections with exactly News, Feed and Longer links (#289)", async () => {
     await showApp("/");
     await vi.waitFor(() => expect(bar()).not.toBeNull(), { timeout: 2000 });
     expect(bar()?.classList.contains("tab-bar")).toBe(true);
@@ -106,9 +97,9 @@ describe("bottom tab bar (#272)", () => {
       a.getAttribute("href"),
     ]);
     expect(links).toEqual([
+      ["News", "/news"],
       ["Feed", "/"],
-      ["Liked", "/liked"],
-      ["Settings", "/settings"],
+      ["Longer", "/longer"],
     ]);
   });
 
@@ -120,15 +111,15 @@ describe("bottom tab bar (#272)", () => {
   });
 
   it.each([
-    ["/", "Feed"],
-    ["/liked", "Liked"],
-    ["/liked/", "Liked"],
-    ["/settings", "Settings"],
-    ["/settings/", "Settings"],
-  ])("at %s only %s has aria-current=page", async (path, name) => {
+    ["/", ["Feed"]],
+    ["/liked", []],
+    ["/liked/", []],
+    ["/settings", []],
+    ["/settings/", []],
+  ])("at %s the current tab is %j (Liked and Settings are not tabs, #289)", async (path, names) => {
     await showApp(path);
     await vi.waitFor(() => expect(bar()).not.toBeNull(), { timeout: 2000 });
-    expect(current()).toEqual([name]);
+    expect(current()).toEqual(names);
   });
 
   it("is not shown in the reader", async () => {

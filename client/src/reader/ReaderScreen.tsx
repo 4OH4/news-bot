@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { fetchArticle } from "../api/articles";
 import { OfflineError } from "../api/client";
-import { fetchFeed } from "../api/feed";
+import { fetchView } from "../api/feed";
 import type { FeedItem } from "../feed/types";
 import { findLiked, isLiked, setLiked } from "../feedback/liked";
 import { startReading } from "../feedback/reading";
-import { getArticleHtml, loadFeed, putArticleHtml } from "../store/db";
+import { getArticleHtml, loadAllFeeds, putArticleHtml } from "../store/db";
 import { cleanArticleHtml } from "./sanitize";
 import { listOrigin } from "./scroll";
 import { currentTheme, toggleTheme, type Theme } from "./theme";
@@ -42,10 +42,10 @@ function goBack(event: MouseEvent) {
   history.back();
 }
 
-/** Finds the item for `id`: the stored feed, then the Liked list, and only then the network. */
+/** Finds the item for `id`: the stored views, then the Liked list, and only then the network. */
 async function findItem(id: string): Promise<FeedItem | null> {
   try {
-    const stored = (await loadFeed())?.feed.items.find((i) => i.id === id);
+    const stored = (await loadAllFeeds()).flatMap((f) => f.items).find((i) => i.id === id);
     if (stored) return stored;
   } catch {
     // No usable store: try the others.
@@ -58,7 +58,7 @@ async function findItem(id: string): Promise<FeedItem | null> {
     // As above.
   }
   try {
-    const result = await fetchFeed();
+    const result = await fetchView("feed", {});
     if (result !== "not-modified") return result.feed.items.find((i) => i.id === id) ?? null;
   } catch {
     // Offline or refused: the reader shows what it has.

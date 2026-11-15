@@ -1,9 +1,12 @@
 import "fake-indexeddb/auto";
+import { openDB } from "idb";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Feed, FeedItem } from "../feed/types";
 import {
   clearAll,
+  DB_NAME,
   getArticleHtml,
+  loadAllFeeds,
   loadFeed,
   markKept,
   pruneArticles,
@@ -149,5 +152,35 @@ describe("clearAll", () => {
     expect(await loadFeed()).toBeNull();
     expect((await getArticleHtml("a")) ?? null).toBeNull();
     expect((await getArticleHtml("b")) ?? null).toBeNull();
+  });
+});
+
+describe("per-view records (#289)", () => {
+  it("keeps each view's list apart, and loadAllFeeds returns every stored one", async () => {
+    await saveFeed(feed(["n"]), '"n1"', "news");
+    await saveFeed(feed(["l"]), '"l1"', "longer");
+    expect((await loadFeed("news"))?.feed.items.map((i) => i.id)).toEqual(["n"]);
+    expect((await loadFeed("longer"))?.etag).toBe('"l1"');
+    expect(await loadFeed("feed")).toBeNull();
+    expect((await loadAllFeeds()).map((f) => f.items[0]?.id)).toEqual(["n", "l"]);
+  });
+
+  it("does not prune an old article that another view still lists", async () => {
+    await putAged("old", 8);
+    await saveFeed(feed(["old"]), '"n1"', "news");
+    await pruneArticles(feed(["other"]));
+    expect(await getArticleHtml("old")).not.toBeNull();
+  });
+
+  it("reads the old single-feed record as the Feed view, and the next save deletes it", async () => {
+    await saveFeed(feed(["x"]), '"x1"', "news"); // creates the database
+    const raw = await openDB(DB_NAME);
+    await raw.put("feed", { key: "current", feed: feed(["old"]), etag: '"o1"', fetchedAt: 5 });
+    expect((await loadFeed("feed"))?.feed.items.map((i) => i.id)).toEqual(["old"]);
+    expect(await loadFeed("longer")).toBeNull();
+    await saveFeed(feed(["new"]), '"f1"', "feed");
+    expect(await raw.get("feed", "current")).toBeUndefined();
+    expect((await loadFeed("feed"))?.feed.items.map((i) => i.id)).toEqual(["new"]);
+    raw.close();
   });
 });

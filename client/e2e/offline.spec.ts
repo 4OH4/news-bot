@@ -48,7 +48,7 @@ async function stored(page: Page): Promise<{ feed: number; articles: number } | 
 
 /** Opens the app once with the example feed, and waits until it is stored and the worker is on. */
 async function firstRun(page: Page, headers: Record<string, string> = { ETag: '"v1"' }) {
-  await page.route("**/api/feed", (route) => route.fulfill({ json: example, headers }));
+  await page.route("**/api/feed?*", (route) => route.fulfill({ json: example, headers }));
   // The feed's background prefetch (#216) asks for article text. Unstubbed, the preview server
   // answers with the app's own HTML, which would be stored; a 404 stores nothing, so these
   // tests count only the articles they put there themselves.
@@ -66,7 +66,7 @@ test("offline in real Chromium: reloading shows the stored feed with an offline 
   await firstRun(page);
   await context.setOffline(true);
   // A fulfilled route answers even while offline, so drop the stub: the request must fail.
-  await page.unroute("**/api/feed");
+  await page.unroute("**/api/feed?*");
   await page.reload();
   await expect(cards(page)).toHaveCount(5);
   await expect(page.getByText(/offline/i).first()).toBeVisible();
@@ -81,8 +81,8 @@ test("a stored feed shows at once while a slow API is still answering, then is r
     ...example,
     items: example.items.map((i, n) => (n === 0 ? { ...i, title: "Replaced headline" } : i)),
   };
-  await page.unroute("**/api/feed");
-  await page.route("**/api/feed", async (route) => {
+  await page.unroute("**/api/feed?*");
+  await page.route("**/api/feed?*", async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 2500));
     await route.fulfill({ json: replaced, headers: { ETag: '"v2"' } });
   });
@@ -98,8 +98,8 @@ test("an unchanged feed is requested with If-None-Match and a 304 changes nothin
 }) => {
   await firstRun(page);
   let conditional = "";
-  await page.unroute("**/api/feed");
-  await page.route("**/api/feed", (route) => {
+  await page.unroute("**/api/feed?*");
+  await page.route("**/api/feed?*", (route) => {
     conditional = route.request().headers()["if-none-match"] ?? "";
     return route.fulfill({ status: 304, body: "" });
   });
@@ -112,8 +112,8 @@ test("an unchanged feed is requested with If-None-Match and a 304 changes nothin
 
 test("a refresh with schema_version 2 keeps the stored feed and shows it", async ({ page }) => {
   await firstRun(page);
-  await page.unroute("**/api/feed");
-  await page.route("**/api/feed", (route) =>
+  await page.unroute("**/api/feed?*");
+  await page.route("**/api/feed?*", (route) =>
     route.fulfill({ json: { ...example, schema_version: 2, items: [] }, headers: { ETag: '"v9"' } }),
   );
   await page.reload();
@@ -130,8 +130,8 @@ test("a 401 while online leaves the feed on screen under the Reconnect banner, s
   page,
 }) => {
   await firstRun(page);
-  await page.unroute("**/api/feed");
-  await page.route("**/api/feed", (route) => route.fulfill({ status: 401, body: "" }));
+  await page.unroute("**/api/feed?*");
+  await page.route("**/api/feed?*", (route) => route.fulfill({ status: 401, body: "" }));
   await page.reload();
   await expect(reconnect(page)).toBeVisible();
   await expect(cards(page)).toHaveCount(5);
@@ -147,7 +147,7 @@ test("a lapsed session with no network shows the feed and the offline notice, no
   // Offline, the request never reaches IAP, so a lapsed session cannot be told apart from the
   // first offline test above: the same steps cover this case. The 401-while-offline mapping
   // itself is covered by reportAuthRequired (auth/status.test.ts).
-  await page.unroute("**/api/feed");
+  await page.unroute("**/api/feed?*");
   await page.reload();
   await expect(cards(page)).toHaveCount(5);
   await expect(page.getByText(/offline/i).first()).toBeVisible();
@@ -177,8 +177,8 @@ test("a 403 shows the not-allowed screen and keeps the stored feed and articles"
     });
     db.close();
   });
-  await page.unroute("**/api/feed");
-  await page.route("**/api/feed", (route) => route.fulfill({ status: 403, body: "" }));
+  await page.unroute("**/api/feed?*");
+  await page.route("**/api/feed?*", (route) => route.fulfill({ status: 403, body: "" }));
   await page.reload();
   await expect(page.getByRole("button", { name: /sign out/i })).toBeVisible();
   expect(await stored(page)).toEqual({ feed: 1, articles: 1 });
@@ -186,8 +186,8 @@ test("a 403 shows the not-allowed screen and keeps the stored feed and articles"
 
 test("a sign-out the user chooses leaves no feed or article in IndexedDB", async ({ page }) => {
   await firstRun(page);
-  await page.unroute("**/api/feed");
-  await page.route("**/api/feed", (route) => route.fulfill({ status: 403, body: "" }));
+  await page.unroute("**/api/feed?*");
+  await page.route("**/api/feed?*", (route) => route.fulfill({ status: 403, body: "" }));
   await page.route("**/gcp-iap-mode=CLEAR_LOGIN_COOKIE*", (route) =>
     route.fulfill({ contentType: "text/html", body: "<p>signed out</p>" }),
   );

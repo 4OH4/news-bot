@@ -1,4 +1,4 @@
-import type { Feed } from "../feed/types";
+import type { Feed, ViewName } from "../feed/types";
 import { apiFetch } from "./client";
 
 export const SUPPORTED_SCHEMA_VERSION = 1;
@@ -11,7 +11,7 @@ export class UnsupportedFeedError extends Error {
   }
 }
 
-/** The API has no feed yet (503): the pipeline has not published one. */
+/** The API has no feed yet (503), or this view is not written yet (404). */
 export class FeedNotReadyError extends Error {
   constructor() {
     super("The first feed is not ready");
@@ -27,15 +27,29 @@ export class FeedHttpError extends Error {
   }
 }
 
-/** Fetches the feed. Pass the last etag for a conditional GET; a 304 gives "not-modified". */
-export async function fetchFeed(
-  etag?: string,
+export interface ViewRequest {
+  /** The last etag of this view's first page, for a conditional GET. */
+  etag?: string;
+  /** The `next_cursor` of the previous page; omitted for page 1. */
+  cursor?: string;
+  limit?: number;
+}
+
+/**
+ * Fetches one page of a view. A 304 gives "not-modified". A 404 means the view's file is not
+ * written yet (the hour after a deploy), so it counts as "not ready" like a 503.
+ */
+export async function fetchView(
+  view: ViewName,
+  { etag, cursor, limit = 50 }: ViewRequest,
 ): Promise<{ feed: Feed; etag: string } | "not-modified"> {
-  const response = await apiFetch("/api/feed", {
+  const params = new URLSearchParams({ view, limit: String(limit) });
+  if (cursor) params.set("cursor", cursor);
+  const response = await apiFetch(`/api/feed?${params.toString()}`, {
     headers: etag ? { "If-None-Match": etag } : {},
   });
   if (response.status === 304) return "not-modified";
-  if (response.status === 503) throw new FeedNotReadyError();
+  if (response.status === 503 || response.status === 404) throw new FeedNotReadyError();
   if (!response.ok) throw new FeedHttpError(response.status);
   const body: unknown = await response.json();
   const version = (body as { schema_version?: unknown } | null)?.schema_version;

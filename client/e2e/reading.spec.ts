@@ -57,7 +57,7 @@ test("a prefetched top article opens offline under the production service worker
   context,
 }) => {
   const requested: string[] = [];
-  await page.route("**/api/feed", (route) =>
+  await page.route("**/api/feed?*", (route) =>
     route.fulfill({ json: example, headers: { ETag: '"v1"' } }),
   );
   await page.route("**/api/articles/*", (route) => {

@@ -93,9 +93,23 @@ describe("list scroll, kept per list", () => {
     const scrollTo = returnTo("/liked");
     await vi.waitFor(() => expect(scrollTo).toHaveBeenCalledWith(0, 70));
   });
+
+  it.each(["/news", "/longer"])("keeps %s apart from the Feed tab (#289)", async (tab) => {
+    leaveList(tab, 300);
+    leaveList("/", 150);
+    const scrollTo = returnTo(`${tab}/`);
+    await vi.waitFor(() => expect(scrollTo).toHaveBeenCalledWith(0, 300));
+    expect(scrollTo).not.toHaveBeenCalledWith(0, 150);
+  });
 });
 
 describe("listOrigin", () => {
+  it.each(["/news", "/longer"])("names the %s tab for an article opened from it (#289)", (tab) => {
+    leaveList(tab, 10);
+    at("/article/aa11bb22cc33dd44");
+    expect(listOrigin()).toBe(tab);
+  });
+
   it("names the list the article was opened from", () => {
     leaveList("/liked", 10);
     at("/article/aa11bb22cc33dd44");

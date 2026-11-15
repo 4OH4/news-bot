@@ -44,11 +44,11 @@ afterEach(() => {
 });
 
 describe("prefetchArticles", () => {
-  it("limits itself to 50 by default", () => {
-    expect(PREFETCH_LIMIT).toBe(50);
+  it("limits itself to 20 by default (per view, #289)", () => {
+    expect(PREFETCH_LIMIT).toBe(20);
   });
 
-  it("stores the first 50 of 60 article items, fetched in feed order, 4 at a time", async () => {
+  it("stores the first 20 of 60 article items, fetched in feed order, 4 at a time", async () => {
     const requested: string[] = [];
     let inFlight = 0;
     let peak = 0;
@@ -63,12 +63,12 @@ describe("prefetchArticles", () => {
 
     await prefetchArticles(articlesFeed(60), fetchHtml);
 
-    const first50 = Array.from({ length: 50 }, (_, i) => `a${i + 1}`);
-    expect(requested).toEqual(first50);
+    const first20 = Array.from({ length: 20 }, (_, i) => `a${i + 1}`);
+    expect(requested).toEqual(first20);
     expect(peak).toBeGreaterThan(1);
     expect(peak).toBeLessThanOrEqual(4);
-    for (const id of first50) expect(await getArticleHtml(id)).toBe(`<p>invented body ${id}</p>`);
-    expect((await getArticleHtml("a51")) ?? null).toBeNull();
+    for (const id of first20) expect(await getArticleHtml(id)).toBe(`<p>invented body ${id}</p>`);
+    expect((await getArticleHtml("a21")) ?? null).toBeNull();
   });
 
   it("honours a smaller limit argument", async () => {

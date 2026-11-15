@@ -69,7 +69,7 @@ async function queuedIds(page: Page): Promise<string[]> {
 test("a queued event survives a reload and is sent, with the same id, once the network returns", async ({
   page,
 }) => {
-  await page.route("**/api/feed", (route) => route.fulfill({ json: feed }));
+  await page.route("**/api/feed?*", (route) => route.fulfill({ json: feed }));
   let online = false;
   let attempts = 0;
   const posts: { body: unknown; headers: Record<string, string> }[] = [];
@@ -102,7 +102,7 @@ test("a queued event survives a reload and is sent, with the same id, once the n
 test("on the not-allowed screen with a queued event, sign-out offers no discard, and send keeps everything", async ({
   page,
 }) => {
-  await page.route("**/api/feed", (route) => route.fulfill({ status: 403, body: "" }));
+  await page.route("**/api/feed?*", (route) => route.fulfill({ status: 403, body: "" }));
   const posted: string[] = [];
   await page.route("**/api/feedback", (route) => {
     posted.push(String((route.request().postDataJSON() as { id: string }).id));

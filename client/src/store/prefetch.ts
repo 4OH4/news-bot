@@ -1,7 +1,7 @@
 import type { Feed } from "../feed/types";
 import { getArticleHtml, putArticleHtml } from "./db";
 
-export const PREFETCH_LIMIT = 50;
+export const PREFETCH_LIMIT = 20;
 const CONCURRENCY = 4;
 
 /**
