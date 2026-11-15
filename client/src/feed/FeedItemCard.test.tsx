@@ -262,3 +262,112 @@ describe("the card menu", () => {
     expect(buttonsNamed(root, /undo/i)).toHaveLength(0);
   });
 });
+
+// #290: the lead image is a second tap target that opens the story like the headline does.
+const IMAGE = "https://invented.example.test/images/canal.jpg";
+const ARTICLE_IMG = { ...ARTICLE, lead_image: IMAGE };
+const LINK_IMG = { ...LINK, lead_image: IMAGE };
+
+function imageLink(item: FeedItem): HTMLAnchorElement | null {
+  return cardFor(item)!.querySelector<HTMLImageElement>("img.card-image")?.closest("a") ?? null;
+}
+
+describe("tapping a card's lead image", () => {
+  it("an article image links to the reader, like the headline", async () => {
+    await load();
+    await showCards(ARTICLE_IMG);
+    const link = imageLink(ARTICLE_IMG);
+    expect(link).not.toBeNull();
+    expect(link!.getAttribute("href")).toBe(titleLink(ARTICLE_IMG).getAttribute("href"));
+    expect(link!.getAttribute("href")).toBe(`/article/${ARTICLE.id}`);
+  });
+
+  it("a link item's image links to the site in a new tab, like the headline", async () => {
+    await load();
+    await showCards(LINK_IMG);
+    const link = imageLink(LINK_IMG)!;
+    expect(link).not.toBeNull();
+    expect(link.getAttribute("href")).toBe(LINK.url);
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toBe("noopener noreferrer");
+  });
+
+  it.each([
+    ["an article", ARTICLE_IMG],
+    ["a link", LINK_IMG],
+  ])("tapping the image of %s queues an open event and shows it as seen", async (_k, item) => {
+    const s = await load();
+    await showCards(item);
+    expect(looksSeen(cardFor(item)!)).toBe(false);
+
+    imageLink(item)!.click();
+
+    await vi.waitFor(async () => {
+      const opens = (await queuedEvents(s)).filter((e) => e.event === "open");
+      expect(opens.map((e) => [e.article_id, e.value])).toEqual([[item.id, null]]);
+    });
+    await vi.waitFor(() => expect(looksSeen(cardFor(item)!)).toBe(true));
+  });
+
+  it("tapping an article's image navigates to the reader after storing the open", async () => {
+    const s = await load();
+    await showCards(ARTICLE_IMG);
+
+    imageLink(ARTICLE_IMG)!.click();
+
+    await vi.waitFor(() =>
+      expect(location.assign).toHaveBeenCalledWith(expect.stringContaining(`/article/${ARTICLE.id}`)),
+    );
+    expect((await queuedEvents(s)).filter((e) => e.event === "open")).toHaveLength(1);
+  });
+
+  it("ctrl-clicking an article's image records the open without navigating this page", async () => {
+    const s = await load();
+    await showCards(ARTICLE_IMG);
+
+    imageLink(ARTICLE_IMG)!.dispatchEvent(
+      new MouseEvent("click", { bubbles: true, cancelable: true, ctrlKey: true }),
+    );
+
+    await vi.waitFor(async () =>
+      expect((await queuedEvents(s)).filter((e) => e.event === "open")).toHaveLength(1),
+    );
+    expect(location.assign).not.toHaveBeenCalled();
+  });
+
+  it("the image link is out of the tab order and hidden from assistive technology", async () => {
+    await load();
+    await showCards(ARTICLE_IMG);
+    const link = imageLink(ARTICLE_IMG)!;
+    expect(link).not.toBeNull();
+    expect(link.getAttribute("tabindex")).toBe("-1");
+    expect(link.getAttribute("aria-hidden")).toBe("true");
+    expect(cardFor(ARTICLE_IMG)!.querySelector("img.card-image")!.getAttribute("alt")).toBe("");
+    // The headline stays the story's one accessible link.
+    expect(titleLink(ARTICLE_IMG).getAttribute("tabindex")).toBeNull();
+    expect(titleLink(ARTICLE_IMG).getAttribute("aria-hidden")).toBeNull();
+  });
+
+  it("a card without a lead image has no image link", async () => {
+    await load();
+    await showCards(ARTICLE);
+    const links = [...cardFor(ARTICLE)!.querySelectorAll("a")];
+    expect(links.filter((a) => a.getAttribute("tabindex") === "-1")).toEqual([]);
+    expect(links.filter((a) => a.querySelector("img"))).toEqual([]);
+    expect(titleLink(ARTICLE)).toBeDefined();
+  });
+
+  it("when the image fails to load, no visible image or empty link remains", async () => {
+    await load();
+    await showCards(ARTICLE_IMG);
+    // Guard: the link must exist before it can be hidden, so this fails for the right reason.
+    expect(imageLink(ARTICLE_IMG)).not.toBeNull();
+
+    cardFor(ARTICLE_IMG)!.querySelector("img.card-image")!.dispatchEvent(new Event("error"));
+
+    await vi.waitFor(() => {
+      const link = imageLink(ARTICLE_IMG);
+      expect(link === null || link.hasAttribute("hidden")).toBe(true);
+    });
+  });
+});
