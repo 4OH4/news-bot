@@ -51,10 +51,10 @@ function reads(posted: Record<string, unknown>[]): Record<string, unknown>[] {
   return posted.filter((e) => e.event === "read");
 }
 
-test("leaving the reader by the Back link sends its read event", async ({ page }) => {
+test("leaving the reader by going back sends its read event", async ({ page }) => {
   const posted = await stubApi(page);
   await readTopArticle(page);
-  await page.getByRole("link", { name: "Back to the feed" }).click();
+  await page.goBack();
   await expect(page.locator("[data-testid='feed-item']").first()).toBeVisible();
 
   await expect.poll(() => reads(posted).length).toBe(1);

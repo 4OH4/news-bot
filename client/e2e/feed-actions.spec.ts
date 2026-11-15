@@ -90,7 +90,7 @@ test("tapping an article sends open, and back on the feed its card shows as seen
 
   await card(page, article).getByRole("link", { name: article.title }).click();
   await expect(page).toHaveURL(new RegExp(`/article/${article.id}$`));
-  await page.getByRole("link", { name: "Back to the feed" }).click();
+  await page.goBack();
 
   await expect(card(page, article)).toBeVisible();
   await expect.poll(() => events(posted, "open")).toEqual([[article.id, null]]);

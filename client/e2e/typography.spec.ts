@@ -143,7 +143,7 @@ test("a seen headline is lighter than an unseen one", async ({ page }) => {
   const title = (await target.locator(".card-title a").textContent())!;
   await target.getByRole("link", { name: title }).click();
   await expect(page).toHaveURL(/\/article\//);
-  await page.getByRole("link", { name: "Back to the feed" }).click();
+  await page.goBack();
 
   const seen = cards(page).first().locator(".card-title a");
   const unseen = cards(page).nth(1).locator(".card-title a");

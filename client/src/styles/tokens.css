@@ -15,6 +15,7 @@
   --text-secondary: #4a5260;
   --accent: #3b5b8c;
   --divider: #e2e5ea;
+  --like-fill: #c4c8ce;
   --font-headline: ui-serif, "Iowan Old Style", Charter, Georgia, "Noto Serif", serif;
   --font-body: system-ui, sans-serif;
   --fs-meta: 0.8125rem;
@@ -40,6 +41,7 @@
     --text-secondary: #b4bac3;
     --accent: #9db4dc;
     --divider: #2a2e35;
+    --like-fill: #8a919b;
   }
 }
 
@@ -57,6 +59,7 @@
   --text-secondary: #b4bac3;
   --accent: #9db4dc;
   --divider: #2a2e35;
+  --like-fill: #8a919b;
 }
 
 :root[data-theme="light"] {

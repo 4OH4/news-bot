@@ -6,12 +6,46 @@
   font-size: var(--fs-reader-body);
 }
 
-.reader-bar {
+/* Meta and link flow in the left column; the Like button keeps the right column, top-aligned. */
+.reader-byline {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--space);
-  margin-bottom: var(--space);
+}
+
+.reader-byline-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.reader-like {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin: -0.5rem -0.75rem 0 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.reader-like svg {
+  width: 1.25rem;
+  height: 1.25rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+.reader-like[aria-pressed="true"] svg {
+  fill: var(--like-fill);
 }
 
 .reader-title {

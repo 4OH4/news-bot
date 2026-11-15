@@ -7,8 +7,6 @@ import { findLiked, isLiked, setLiked } from "../feedback/liked";
 import { startReading } from "../feedback/reading";
 import { getArticleHtml, loadAllFeeds, putArticleHtml } from "../store/db";
 import { cleanArticleHtml } from "./sanitize";
-import { listOrigin } from "./scroll";
-import { currentTheme, toggleTheme, type Theme } from "./theme";
 
 const WORDS_PER_MINUTE = 200;
 
@@ -24,23 +22,12 @@ function formatDate(iso: string | null): string {
   return Number.isNaN(t) ? "" : new Date(t).toLocaleDateString(undefined, { dateStyle: "medium" });
 }
 
-function themeLabel(theme: Theme): string {
-  return theme === "dark" ? "Switch to light theme" : "Switch to dark theme";
-}
-
 type Body =
   | { state: "loading" }
   | { state: "html"; html: string }
   | { state: "expired" }
   | { state: "offline" }
   | { state: "failed" };
-
-/** Goes back in history when the list is the previous page, so its scroll position returns. */
-function goBack(event: MouseEvent) {
-  if (listOrigin() === null) return;
-  event.preventDefault();
-  history.back();
-}
 
 /** Finds the item for `id`: the stored views, then the Liked list, and only then the network. */
 async function findItem(id: string): Promise<FeedItem | null> {
@@ -99,8 +86,6 @@ export function ReaderScreen() {
   const id = decodeURIComponent(location.pathname.replace(/^\/article\//, "").replace(/\/$/, ""));
   const [item, setItem] = useState<FeedItem | null>(null);
   const [body, setBody] = useState<Body>({ state: "loading" });
-  const [label, setLabel] = useState(() => themeLabel(currentTheme()));
-  const [fromLiked] = useState(() => listOrigin() === "/liked");
   // null until the stored like state is known, so the button never shows a wrong state.
   const [liked, setLikedState] = useState<boolean | null>(null);
   const likedRef = useRef(false);
@@ -181,34 +166,36 @@ export function ReaderScreen() {
 
   return (
     <main class="reader">
-      <nav class="reader-bar">
-        <a href={fromLiked ? "/liked" : "/"} onClick={goBack}>
-          {fromLiked ? "Back to Liked" : "Back to the feed"}
-        </a>
-        <button type="button" onClick={() => setLabel(themeLabel(toggleTheme()))}>
-          {label}
-        </button>
-        {item && liked !== null ? (
-          <button type="button" class="reader-like" aria-pressed={liked} onClick={toggleLike}>
-            {liked ? "Liked" : "Like"}
-          </button>
-        ) : null}
-      </nav>
       <header>
         <h1 class="reader-title">{item?.title ?? "Article"}</h1>
         {item ? (
-          <>
-            <p class="reader-meta">
-              {[item.domain, item.author, date, minutes ? `${minutes} min read` : ""]
-                .filter(Boolean)
-                .join(" · ")}
-            </p>
-            <p>
-              <a href={item.url} target="_blank" rel="noopener noreferrer">
-                Original article
-              </a>
-            </p>
-          </>
+          <div class="reader-byline">
+            <div class="reader-byline-text">
+              <p class="reader-meta">
+                {[item.domain, item.author, date, minutes ? `${minutes} min read` : ""]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+              <p>
+                <a href={item.url} target="_blank" rel="noopener noreferrer">
+                  Original article
+                </a>
+              </p>
+            </div>
+            {liked !== null ? (
+              <button
+                type="button"
+                class="reader-like"
+                aria-label="Like"
+                aria-pressed={liked}
+                onClick={toggleLike}
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M12 21s-7.5-4.6-9.6-9.2C.9 8.4 3 4.5 6.7 4.5c2 0 3.7 1.1 5.3 3 1.6-1.9 3.3-3 5.3-3 3.7 0 5.8 3.9 4.3 7.3C19.5 16.4 12 21 12 21z" />
+                </svg>
+              </button>
+            ) : null}
+          </div>
         ) : null}
       </header>
       {body.state === "html" ? (

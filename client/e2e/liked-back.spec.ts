@@ -13,7 +13,7 @@ const example = JSON.parse(
   readFileSync(new URL("../../docs/feed.example.json", import.meta.url), "utf-8"),
 ) as FeedBody;
 
-const [first, second] = example.items.filter((i) => i.display === "article") as [Item, Item];
+const [first] = example.items.filter((i) => i.display === "article") as [Item];
 const bodyText = (id: string) => `Invented paragraph for back-link test ${id}.`;
 
 test.use({ viewport: { width: 360, height: 740 } });
@@ -45,7 +45,7 @@ async function openStory(page: Page, item: Item): Promise<void> {
   await expect(page.getByText(bodyText(item.id))).toBeVisible();
 }
 
-test("an article opened from Liked says Back to Liked and returns to Liked at its own scroll position", async ({
+test("an article opened from Liked returns to Liked by going back, at its own scroll position", async ({
   page,
 }) => {
   await stubApi(page);
@@ -53,12 +53,15 @@ test("an article opened from Liked says Back to Liked and returns to Liked at it
   await expect(feedItems(page)).toHaveCount(5);
   await page.evaluate(() => window.scrollTo(0, 150));
   await openStory(page, first);
-  await page.getByRole("button", { name: /^like$/i }).click();
-  await expect(page.getByRole("button", { name: /^liked$/i })).toHaveAttribute(
+  // Going back is faster than the link was, so wait for the like to be sent before leaving.
+  const sent = page.waitForRequest("**/api/feedback");
+  await page.getByRole("button", { name: "Like" }).click();
+  await expect(page.getByRole("button", { name: "Like" })).toHaveAttribute(
     "aria-pressed",
     "true",
   );
-  await page.getByRole("link", { name: "Back to the feed" }).click();
+  await sent;
+  await page.goBack();
   await expect(feedItems(page)).toHaveCount(5);
 
   await page.getByRole("link", { name: "Liked", exact: true }).click();
@@ -66,10 +69,8 @@ test("an article opened from Liked says Back to Liked and returns to Liked at it
   await page.getByRole("link", { name: first.title }).click();
   await expect(page.getByText(bodyText(first.id))).toBeVisible();
 
-  const back = page.getByRole("link", { name: "Back to Liked" });
-  await expect(back).toHaveAttribute("href", "/liked");
-  await expect(page.getByRole("link", { name: "Back to the feed" })).toHaveCount(0);
-  await back.click();
+  await expect(page.getByRole("link", { name: /^back to/i })).toHaveCount(0);
+  await page.goBack();
 
   await expect(page).toHaveURL(/\/liked$/);
   await expect(page.getByRole("heading", { name: "Liked", level: 1 })).toBeVisible();
@@ -78,42 +79,7 @@ test("an article opened from Liked says Back to Liked and returns to Liked at it
   expect(await page.evaluate(() => window.scrollY)).toBe(0);
 });
 
-test("an article opened directly after returning to the feed goes to the feed by the link, not by history", async ({
-  page,
-}) => {
-  await stubApi(page);
-  await page.goto("/");
-  await expect(feedItems(page)).toHaveCount(5);
-  await openStory(page, first);
-  await page.getByRole("link", { name: "Back to the feed" }).click();
-  await expect(feedItems(page)).toHaveCount(5);
-
-  await page.goto(`/article/${second.id}`);
-  await expect(page.getByText(bodyText(second.id))).toBeVisible();
-  const before = await historyLength(page);
-  const back = page.getByRole("link", { name: "Back to the feed" });
-  await expect(back).toHaveAttribute("href", "/");
-  await back.click();
-
-  await expect(page).toHaveURL(/\/$/);
-  await expect(feedItems(page)).toHaveCount(5);
-  expect(await historyLength(page)).toBe(before + 1);
-});
-
-test("an article opened directly in a new tab goes to / by the link", async ({ context }) => {
-  const page = await context.newPage();
-  await stubApi(page);
-  await page.goto(`/article/${first.id}`);
-  await expect(page.getByText(bodyText(first.id))).toBeVisible();
-  const before = await historyLength(page);
-  await page.getByRole("link", { name: "Back to the feed" }).click();
-
-  await expect(page).toHaveURL(/\/$/);
-  await expect(feedItems(page)).toHaveCount(5);
-  expect(await historyLength(page)).toBe(before + 1);
-});
-
-test("after a reload of an article opened from the feed, Back still goes back in history", async ({
+test("after a reload of an article opened from the feed, going back still returns to the feed", async ({
   page,
 }) => {
   await stubApi(page);
@@ -124,7 +90,7 @@ test("after a reload of an article opened from the feed, Back still goes back in
   await page.reload();
   await expect(page.getByText(bodyText(first.id))).toBeVisible();
   const before = await historyLength(page);
-  await page.getByRole("link", { name: "Back to the feed" }).click();
+  await page.goBack();
 
   await expect(page).toHaveURL(/\/$/);
   await expect(feedItems(page)).toHaveCount(5);
