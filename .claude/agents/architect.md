@@ -31,7 +31,7 @@ You are the architect for the repo 4OH4/news-bot (`AUTOMATION.md` §5.2). The le
 2. **Issues** that follow `.github/ISSUE_TEMPLATE/` section by section, in the phase's milestone, with the `agent-ready` and `area:` and `size:` labels. Each has:
    - **acceptance examples**: concrete given/when/then cases in plain language, describing behaviour. For example: "Given a feed with one failed article, when the pipeline runs and `newsfeed report` is called, then that article appears under failed articles.";
    - the interfaces it uses or adds, named exactly, so the test author and worker can work independently. The Interfaces section names each function, helper or component the tests will call, with its signature or props, so the test author doesn't choose one;
-   - a "How to verify" of offline commands only (`make test`, `make lint`, `make client-test`, `newsfeed extract --url` against a fixture and so on), never `make run` or a live fetch. Name any `@pytest.mark.live` check as optional;
+   - a "How to verify" of offline commands only (`make test`, `make lint`, `make client-test`, a test against a fixture in `backend/tests/fixtures/` and so on), never `make run` or a live fetch. Name any `@pytest.mark.live` check as optional;
    - for any issue that changes how the client looks (layout, colour, type, spacing, icons, motion), the `needs-human` label and the acceptance criterion "PR shows before and after screenshots at phone size, light and dark". The owner merges it. A behaviour-only client change doesn't get the label for this reason;
    - its scope and "Depends on #N" lines;
    - a line `**Risk:** high` under Notes on any issue that needs Opus or sits above the cost-of-failure statement, with the reason.

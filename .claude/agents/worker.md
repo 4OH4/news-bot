@@ -79,7 +79,7 @@ You may be given a chain of small dependent issues (each one depends on the one 
 
 If you're told this is a `needs-human` issue, prepare it as a complete PR, opened as a draft (Tier C), that the human approves by merging once it is marked ready. Put a "Decisions you approve by merging" section at the top of the PR body, with one line for each choice the issue didn't dictate.
 
-For a `needs-human` client issue that changes how the app looks, put phone-size before and after screenshots, light and dark, in the PR. `make client-e2e` wipes earlier screenshots (#295), so take the before shots first, from `main`, and keep them outside `client/`, then take the after shots.
+For a `needs-human` client issue that changes how the app looks, put phone-size before and after screenshots, light and dark, in the PR. `make client-e2e` wipes earlier screenshots (#295), so take the before shots first, from `main`, and keep them outside `client/`, then take the after shots. Take them with a Playwright spec at 390x844 with the API stubbed from `docs/feed.example.json`, commit the PNGs under `docs/screenshots/issue-<N>/`, and link them in the PR body through `raw.githubusercontent.com` pinned to a commit SHA; use synthetic data only, never live feed content.
 
 ## Report back
 

@@ -168,7 +168,7 @@ body:
       label: How to verify
       description: |
         Commands to run and the expected results. Offline commands only (`make test`, `make lint`, `make client-test`,
-        `newsfeed extract --url` against a fixture), never `make run` or a live fetch. Name any `@pytest.mark.live` check as optional.
+        a test against a fixture in `backend/tests/fixtures/`), never `make run` or a live fetch. Name any `@pytest.mark.live` check as optional.
       value: |
         ```bash
         make lint
