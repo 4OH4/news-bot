@@ -37,7 +37,7 @@ uv run newsfeed eval
 uv run newsfeed inspect articles|feedback ...   # read-only: filter, sort, group stored records
 ```
 
-**Reading live data.** Agents read Cloud Logging, job executions and stored data as the impersonated development account (already configured locally through `CLOUDSDK_CONFIG`). Once the owner has confirmed the credentials type (see `infra/README.md`, "How agents use it"), use `make inspect-gcp` for stored articles and feedback. Never use `gcloud auth` to check access (it is denied); use `gcloud config get-value project`. Never paste article text from the live store into issues, PRs or commits.
+**Reading live data.** Agents read Cloud Logging, job executions and stored data as the impersonated development account (already configured locally through `CLOUDSDK_CONFIG`). Use `make inspect-gcp` for stored articles and feedback. Never use `gcloud auth` to check access (it is denied); use `gcloud config get-value project`. Never paste article text from the live store into issues, PRs or commits.
 
 The client (`client/`, a Preact and Vite PWA) has no Node on this machine, so its commands run in pinned Docker images through `make`. Never run `npm` or `npx` directly:
 

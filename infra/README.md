@@ -398,12 +398,13 @@ python3 -c "import json,os; print(json.load(open(os.path.expanduser('~/.config/g
 owner's own login. To fix an `authorized_user` file, with
 `CLOUDSDK_CONFIG` set as above, run `gcloud auth application-default revoke`,
 check that `auth/impersonate_service_account` is set, then run
-`gcloud auth application-default login` again and re-check the type. Until the
-owner confirms the type, agents must not use the Python cloud clients (for
-example `NEWSFEED_STORAGE=gcp newsfeed report`) or Terraform.
+`gcloud auth application-default login` again and re-check the type. The owner
+confirmed `impersonated_service_account` on 2026-11-08, so agents may use the
+Python cloud clients (for example `NEWSFEED_STORAGE=gcp newsfeed report`) and
+Terraform. If the file is ever recreated, the owner must run the check again
+before agents use them.
 
-Once the owner has confirmed the credentials type (above), agents read stored
-articles and feedback in the live store with the read-only
+Agents read stored articles and feedback in the live store with the read-only
 `make inspect-gcp ARGS="articles --source <id> --since 24h"`.
 
 ### The risk
