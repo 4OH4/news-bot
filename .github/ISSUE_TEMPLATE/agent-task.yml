@@ -7,7 +7,7 @@ body:
     attributes:
       value: |
         Use this template for work an agent can complete without further input.
-        If you can't fill in every required section, label the issue `needs-human` instead and refine it later.
+        If you can't fill in every required section yet, use the "Idea or bug report" form instead; agents triage it.
         Keep the scope to one area/module where possible so parallel agents don't collide.
 
   - type: dropdown
