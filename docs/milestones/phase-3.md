@@ -180,6 +180,7 @@ Agent-merged PRs, 36 in all (27 product code, 9 docs and design): [#186](https:/
 | Board slips | New cards added to Done (#216, #217), a closed card left in Agent review (#175), two issues missing (#231, #236), promote moving a split parent to Done (#216) | One-line fixes by the lead, all caught at the next look |
 | One-off slips, settled | ADR numbers collided (1); dev-account roles found one 403 at a time (2); your terminal ran as the dev account (1); a credentials gate left unconfirmed (settled by PR #280); a stranger's comment could be acted on (fixed by PRs #285, #287) | Fixed or one-off |
 | Gate oddities | Tripped on the word "skipped" (1); stale header tiers (2); a quoted bold marker counts as real | Rare, and each fails safe |
+| Smaller one-offs | The architect widened #178's scope unasked (1 Nov); a third design review found a new gap in the same threat model (1 Nov); test-author tests passed for the wrong reason at red (#297, caught by the worker); `make client-e2e` wipes before-screenshots (#295) | Each was caught in the same batch at the cost of a retry |
 | Test author can't run e2e with red tests, or append to test files | 3 | The worker runs them; no defect slipped through |
 | Flaky `update.spec.ts` | 6 failures before PR #238, none recorded since | Fixed in effect; the cause stays unconfirmed |
 | Stray worktrees | 2 from before-screenshots, plus the leftovers above | You have the command; a nuisance only |
