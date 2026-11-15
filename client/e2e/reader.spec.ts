@@ -54,7 +54,8 @@ test("hostile markup is removed, no payload runs, and nothing trips the CSP", as
   await open(page, HOSTILE);
   await expect(page.getByText("Safe text after.")).toBeVisible();
 
-  const article = page.locator("article, main").last();
+  // The article text only: the header now holds the Like heart (an inline SVG of ours, #300).
+  const article = page.locator(".reader-body");
   for (const selector of ["script", "iframe", "style", "svg", "[onerror]", "[onload]"]) {
     await expect(article.locator(selector)).toHaveCount(0);
   }
