@@ -156,7 +156,7 @@ test("a table wider than the screen scrolls inside its own box, not the page", a
   expect(overflow).toBeLessThanOrEqual(0);
 });
 
-test("dark mode follows the system and the toggle overrides it after a reload", async ({
+test("dark mode follows the system and a theme chosen in Settings overrides it", async ({
   page,
 }) => {
   const bg = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
@@ -168,8 +168,9 @@ test("dark mode follows the system and the toggle overrides it after a reload", 
   const dark = await bg();
   expect(dark).not.toBe(light);
 
-  // In a dark system, the toggle switches to light; the choice survives a reload.
-  await page.getByRole("button", { name: /theme|dark|light/i }).click();
+  // In a dark system, a stored light choice wins, and the reader has no theme button of its own.
+  await expect(page.getByRole("button", { name: /theme/i })).toHaveCount(0);
+  await page.evaluate(() => localStorage.setItem("newsfeed-theme", "light"));
   await page.reload();
   await expect(page.getByText("First invented paragraph")).toBeVisible();
   expect(await bg()).toBe(light);
@@ -209,7 +210,7 @@ test("returning to the list restores the scroll position", async ({ page }) => {
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(before - 10);
 });
 
-test("the Back to the feed link returns to the list at the same scroll position", async ({
+test("going back returns to the list at the same scroll position", async ({
   page,
 }) => {
   await page.route("**/api/feed?*", (route) => route.fulfill({ json: example }));
@@ -225,7 +226,7 @@ test("the Back to the feed link returns to the list at the same scroll position"
     .first()
     .evaluate((el) => (el as HTMLElement).click());
   await expect(page.getByText("First invented paragraph")).toBeVisible();
-  await page.getByRole("link", { name: /back to the feed/i }).click();
+  await page.goBack();
   await expect(page.locator("[data-testid='feed-item']")).toHaveCount(5);
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(before - 10);
 });
