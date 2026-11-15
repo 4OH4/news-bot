@@ -31,6 +31,7 @@ contract-change issue.
 from __future__ import annotations
 
 import re
+from collections.abc import Collection
 from contextlib import AbstractContextManager
 from datetime import datetime
 from typing import Protocol, runtime_checkable
@@ -106,6 +107,7 @@ class Repository(Protocol):
         status: ExtractionStatus | None = None,
         since: datetime | None = None,
         limit: int | None = None,
+        source_ids: Collection[str] | None = None,
     ) -> list[Article]:
         """Return articles, newest ``fetched_at`` first (ties broken by ``id``).
 
@@ -115,6 +117,11 @@ class Repository(Protocol):
                 timezone-aware; a naive value raises ``ValueError``.
             limit: at most this many articles; None means no limit. Must be
                 non-negative, otherwise ``ValueError`` is raised.
+            source_ids: only articles whose ``source_id`` is in this
+                collection; None means every source. An empty collection
+                returns no articles. A bare ``str`` raises ``TypeError``
+                (it would match single characters). Combines with the other
+                filters as an AND, and ``limit`` applies to the combined result.
         """
         ...
 
