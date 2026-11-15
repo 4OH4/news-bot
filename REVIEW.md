@@ -52,6 +52,7 @@ Failure patterns taken from real defects in this repo. Test authors and workers 
 - A step that reads something later must name where it is stored, because agent reports and lead sessions don't persist. In #138, the milestone review read friction notes that existed in no file, issue or comment.
 - A split PR's body must not carry a closing keyword (such as `Closes`) for an issue that a later part closes.
 - A trailer that a gate reads must sit in the last paragraph of the commit message.
+- An access check on a public repo must check the author's identity (`login` or `author_association`), not the account type. `.user.type` is `User` for every person, so it can't tell the owner from a stranger. Instance: #284.
 
 ## Tests that can fail
 
