@@ -10,7 +10,6 @@ from a window edge, so a slow run can't cross one.
 from __future__ import annotations
 
 import json
-import logging
 import shutil
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
@@ -21,6 +20,7 @@ from typing import Any
 
 import pytest
 import yaml
+from jsonschema import Draft202012Validator
 from typer.testing import CliRunner
 
 from newsfeed import cli, wiring
@@ -115,7 +115,6 @@ def article(
     *,
     age_hours: float,
     score: float | None = 1.0,
-    published: bool = True,
     status: ExtractionStatus = ExtractionStatus.OK,
     muted: bool = False,
 ) -> Article:
@@ -131,7 +130,7 @@ def article(
             "source_id": source_id,
             "title": f"Invented story {name}",
             "fetched_at": at,
-            "published_at": at if published else None,
+            "published_at": at,
             "score": 0.0 if muted else score,
             "score_breakdown": breakdown,
             "extraction": {"status": status, "word_count": 900},
@@ -158,23 +157,6 @@ def configured_sources(env: Env) -> list[Source]:
     return [Source.model_validate(s) for s in raw["sources"]]
 
 
-def prior_view(env: Env, name: str, articles: Sequence[Article], run_id: str = "prev-run") -> None:
-    """Write a previous ``views/<name>.json`` holding ``articles``, as an earlier run would."""
-    every_source = [
-        s.model_copy(update={"enabled": True, "weight": 1.0}) for s in configured_sources(env)
-    ]
-    items = build_feed(
-        articles,
-        every_source,
-        now=now(),
-        run_id=run_id,
-        window_hours=24 * 60,
-        limit=10_000,
-    ).feed["items"]
-    document = {"run_id": run_id, "generated_at": "2026-11-01T00:00:00Z", "items": items}
-    env.blobs.put(f"views/{name}.json", json.dumps(document).encode(), "application/json")
-
-
 def publish() -> None:
     result = runner.invoke(cli.app, ["publish"])
     assert result.exit_code == 0, result.output
@@ -198,10 +180,6 @@ def ids(document: dict[str, Any]) -> list[str]:
 
 def by_id(document: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return {item["id"]: item for item in document["items"]}
-
-
-def seeding_logged(records: list[logging.LogRecord]) -> bool:
-    return any("seed" in r.getMessage().lower() for r in records)
 
 
 # --- Which articles each view holds -------------------------------------------------
@@ -279,9 +257,7 @@ def test_feed_view_holds_all_300_candidates_in_score_order_and_feed_json_is_unch
     publish()
 
     def expected(limit: int) -> list[dict[str, Any]]:
-        built = build_feed(
-            saved, sources, now=now(), run_id="x", has_content=lambda _a: False, limit=limit
-        )
+        built = build_feed(saved, sources, now=now(), run_id="x", limit=limit)
         items: list[dict[str, Any]] = built.feed["items"]
         return items
 
@@ -291,20 +267,94 @@ def test_feed_view_holds_all_300_candidates_in_score_order_and_feed_json_is_unch
     assert read(env, "feed.json")["items"] == expected(200)
 
 
-def test_a_long_form_article_ranked_600th_overall_is_in_longer(env: Env) -> None:
+def test_feed_view_holds_the_top_500_of_700_and_feed_json_the_top_200(env: Env) -> None:
     rows = [
         article("techblog" if n % 2 else "bbc-news", f"s{n}", age_hours=2, score=1000.0 - n)
         for n in range(700)
-        if n != 599
     ]
-    seed(env, rows, content=False)
-    (deep,) = seed(env, [article("aeon", "deep", age_hours=2, score=1000.0 - 599)])
+    saved = seed(env, rows, content=False)
 
     publish()
 
-    assert deep.id in ids(view(env, "longer"))
-    assert ids(view(env, "feed")).index(deep.id) == 599
-    assert deep.id not in ids(read(env, "feed.json"))
+    by_score = [a.id for a in saved]  # scores fall with n, so this is score order
+    assert ids(view(env, "feed")) == by_score[:500]
+    assert ids(read(env, "feed.json")) == by_score[:200]
+
+
+def test_news_holds_the_300_newest_of_400_including_ones_older_than_72_hours(env: Env) -> None:
+    rows = [article("bbc-news", f"n{n}", age_hours=1 + n * 0.3, score=1.0) for n in range(400)]
+    saved = seed(env, rows, content=False)
+
+    publish()
+
+    news = ids(view(env, "news"))
+    assert news == [a.id for a in saved[:300]]  # newest first
+    assert saved[299].fetched_at < now() - timedelta(hours=72)
+
+
+def test_longer_holds_at_most_200_long_form_items_by_stored_score(env: Env) -> None:
+    # 250 essays from 2 to 20 days old; the 200 newest are read, then ordered by score.
+    rows = [
+        article("aeon", f"e{n}", age_hours=48 + n * 1.74, score=float((n * 37) % 250) / 100)
+        for n in range(250)
+    ]
+    saved = seed(env, rows, content=False)
+    seed(env, [article("techblog", "t", age_hours=1, score=9.0)], content=False)
+
+    publish()
+
+    expected = sorted(saved[:200], key=lambda a: (-(a.score or 0.0), a.id))
+    assert ids(view(env, "longer")) == [a.id for a in expected]
+
+
+def test_an_older_long_form_article_with_a_higher_stored_score_ranks_above_a_newer_one(
+    env: Env,
+) -> None:
+    old, new = seed(
+        env,
+        [
+            article("aeon", "ten-days", age_hours=240, score=0.4),
+            article("aeon", "two-days", age_hours=48, score=0.1),
+        ],
+    )
+
+    publish()
+
+    longer = view(env, "longer")
+    assert ids(longer) == [old.id, new.id]
+    assert by_id(longer)[old.id]["score"] == 0.4  # as stored, not recomputed
+
+
+def test_the_previous_view_file_is_not_read_into_the_new_one(env: Env) -> None:
+    gone = {"id": "f" * 16, "story_id": "x", "score": 9.0, "source_id": "aeon"}
+    old = {"run_id": "prev-run", "generated_at": "2026-11-01T00:00:00Z", "items": [gone]}
+    env.blobs.put("views/longer.json", json.dumps(old).encode(), "application/json")
+    (fresh,) = seed(env, [article("aeon", "fresh", age_hours=1)])
+
+    publish()
+
+    assert ids(view(env, "longer")) == [fresh.id]
+
+
+def test_every_view_validates_as_feed_json_items_after_a_real_run(env: Env) -> None:
+    seed(
+        env,
+        [
+            article("bbc-news", "b", age_hours=1),
+            article("aeon", "a", age_hours=100),
+            article("techblog", "t", age_hours=2),
+        ],
+    )
+
+    result = runner.invoke(cli.app, ["run"])
+
+    assert result.exit_code == 0, result.output
+    schema = json.loads((REPO / "docs" / "feed.schema.json").read_text())
+    validator = Draft202012Validator(schema, format_checker=Draft202012Validator.FORMAT_CHECKER)
+    for name in VIEW_NAMES:
+        document = view(env, name)
+        validator.validate({"schema_version": 1, **document})
+        assert document["items"], name
 
 
 def test_muted_articles_and_disabled_or_zero_weight_sources_are_in_no_view(env: Env) -> None:
@@ -316,6 +366,7 @@ def test_muted_articles_and_disabled_or_zero_weight_sources_are_in_no_view(env: 
             article("aeon", "muted-essay", age_hours=1, muted=True),
             article("off-news", "disabled", age_hours=1, score=5.0),
             article("zero-news", "zero", age_hours=1, score=5.0),
+            article("aeon", "unscored", age_hours=1, score=None),
         ],
     )
 
@@ -330,7 +381,7 @@ def test_muted_articles_and_disabled_or_zero_weight_sources_are_in_no_view(env: 
 
 def test_views_come_from_the_views_config(env: Env) -> None:
     (env.config / "views.yaml").write_text(
-        "views:\n  tech:\n    tags: [tech]\n    order: newest\n    window_hours: 72\n"
+        "views:\n  tech:\n    tags: [tech]\n    order: newest\n    max_items: 10\n"
     )
     (tech,) = seed(env, [article("techblog", "t", age_hours=1)])
     seed(env, [article("bbc-news", "b", age_hours=1)])
@@ -339,147 +390,3 @@ def test_views_come_from_the_views_config(env: Env) -> None:
 
     assert ids(view(env, "tech")) == [tech.id]
     assert not env.blobs.exists(env.blobs.ref_for("views/news.json"))
-
-
-# --- Longer's 14-day window: carried forward from the previous file ---------------
-
-
-def test_a_carried_long_form_article_from_5_days_ago_stays_with_its_score(env: Env) -> None:
-    kept = store_content(env, article("aeon", "five-days", age_hours=5 * 24, score=0.37))
-    prior_view(env, "longer", [kept])
-
-    publish()
-
-    item = by_id(view(env, "longer")).get(kept.id)
-    assert item is not None, "the carried article was dropped"
-    assert item["score"] == 0.37
-
-
-def test_a_carried_link_item_needs_no_stored_content(env: Env) -> None:
-    link = article(
-        "aeon", "paywalled", age_hours=5 * 24, score=0.8, status=ExtractionStatus.PAYWALLED
-    )
-    prior_view(env, "longer", [link])
-
-    publish()
-
-    assert link.id in ids(view(env, "longer"))
-
-
-@pytest.mark.parametrize(
-    "case",
-    [
-        "published 15 days ago",
-        "source no longer tagged long-form",
-        "article HTML expired",
-        "no published_at",
-        "source disabled",
-        "source weight zero",
-    ],
-)
-def test_a_carried_item_that_is_no_longer_eligible_is_dropped(env: Env, case: str) -> None:
-    keeper = store_content(env, article("aeon", "keeper", age_hours=5 * 24))
-    stale = {
-        "published 15 days ago": lambda: store_content(
-            env, article("aeon", "old", age_hours=15 * 24)
-        ),
-        "source no longer tagged long-form": lambda: store_content(
-            env, article("former-long", "untagged", age_hours=5 * 24)
-        ),
-        "article HTML expired": lambda: article("aeon", "expired", age_hours=6 * 24),
-        "no published_at": lambda: store_content(
-            env, article("aeon", "undated", age_hours=4 * 24, published=False)
-        ),
-        "source disabled": lambda: store_content(
-            env, article("off-news", "disabled", age_hours=4 * 24)
-        ),
-        "source weight zero": lambda: store_content(
-            env, article("zero-news", "zero", age_hours=4 * 24)
-        ),
-    }[case]()
-    prior_view(env, "longer", [keeper, stale])
-    assert stale.id in ids(read(env, "views/longer.json")), "setup: the old file holds it"
-
-    publish()
-
-    longer = ids(view(env, "longer"))
-    assert keeper.id in longer
-    assert stale.id not in longer
-
-
-def test_a_fresh_row_replaces_the_carried_row_for_the_same_story(env: Env) -> None:
-    old = article("aeon", "again", age_hours=48, score=0.2)
-    prior_view(env, "longer", [store_content(env, old)])
-    (fresh,) = seed(env, [old.model_copy(update={"score": 1.5})])
-
-    publish()
-
-    rows = [i for i in view(env, "longer")["items"] if i["story_id"] == fresh.id]
-    assert len(rows) == 1
-    assert rows[0]["score"] == 1.5
-
-
-def test_without_a_previous_longer_file_publish_seeds_14_days_and_logs_it(
-    env: Env, log_records: list[logging.LogRecord]
-) -> None:
-    recent, ten_days = seed(
-        env,
-        [
-            article("aeon", "recent", age_hours=1),
-            article("aeon", "ten-days", age_hours=10 * 24),
-        ],
-    )
-    (too_old,) = seed(env, [article("aeon", "fifteen-days", age_hours=15 * 24)])
-
-    publish()
-
-    longer = ids(view(env, "longer"))
-    assert recent.id in longer
-    assert ten_days.id in longer
-    assert too_old.id not in longer
-    assert seeding_logged(log_records)
-
-
-def test_an_unparseable_previous_longer_file_is_seeded_again(
-    env: Env, log_records: list[logging.LogRecord]
-) -> None:
-    env.blobs.put("views/longer.json", b"{not json", "application/json")
-    (ten_days,) = seed(env, [article("aeon", "ten-days", age_hours=10 * 24)])
-
-    publish()
-
-    assert ten_days.id in ids(view(env, "longer"))
-    assert seeding_logged(log_records)
-
-
-def test_a_later_run_carries_longer_forward_without_seeding_or_reading_14_days(
-    env: Env, log_records: list[logging.LogRecord]
-) -> None:
-    (ten_days,) = seed(env, [article("aeon", "ten-days", age_hours=10 * 24)])
-    publish()
-    assert seeding_logged(log_records)
-    log_records.clear()
-    # Stored after the seeding run and older than the 72-hour read: only a
-    # 14-day repository read could find it.
-    (unread,) = seed(env, [article("aeon", "nine-days", age_hours=9 * 24)])
-
-    publish()
-
-    longer = ids(view(env, "longer"))
-    assert ten_days.id in longer
-    assert unread.id not in longer
-    assert not seeding_logged(log_records)
-
-
-def test_news_and_feed_are_not_carried_forward(env: Env) -> None:
-    # In the 72-hour window, but no longer in the repository: only carrying
-    # the old file forward could bring it back.
-    gone = store_content(env, article("bbc-news", "gone", age_hours=48))
-    prior_view(env, "news", [gone])
-    prior_view(env, "feed", [gone])
-    (fresh,) = seed(env, [article("bbc-news", "fresh", age_hours=1)])
-
-    publish()
-
-    assert ids(view(env, "news")) == [fresh.id]
-    assert ids(view(env, "feed")) == [fresh.id]

@@ -146,21 +146,15 @@ def test_display_mode_per_extraction_status(
         assert item["word_count"] == words
 
 
-def test_missing_content_shows_as_a_link() -> None:
-    articles = [article("blob"), article("noref", content_ref=None), article("gone")]
+def test_an_article_with_a_content_ref_is_an_article_and_one_without_is_a_link() -> None:
+    feed = build([article("blob"), article("noref", content_ref=None)])
 
-    built = build_feed(
-        articles,
-        SOURCES,
-        now=NOW,
-        run_id=RUN_ID,
-        has_content=lambda a: a.content_ref == "ref/blob",
-    )
-
-    shown = {i["url"].rsplit("/", 1)[1]: i["display"] for i in built.feed["items"]}
-    assert shown == {"blob": "article", "noref": "link", "gone": "link"}
-    assert built.links_for_missing_content == 2
-    assert not list(VALIDATOR.iter_errors(built.feed))
+    shown = {i["url"].rsplit("/", 1)[1]: i for i in feed["items"]}
+    assert shown["blob"]["display"] == "article"
+    assert shown["blob"]["content_path"] == f"articles/{shown['blob']['id']}.html"
+    assert shown["noref"]["display"] == "link"
+    assert shown["noref"]["word_count"] is None
+    assert shown["noref"]["content_path"] is None
 
 
 def test_muted_unscored_and_disabled_sources_are_left_out() -> None:
@@ -279,10 +273,23 @@ def test_publish_writes_the_fixed_key_and_a_timestamped_copy() -> None:
     assert feed == built.feed
     assert {i["title"]: i["display"] for i in feed["items"]} == {
         "Story keep": "article",
-        "Story expired": "link",
+        "Story expired": "article",
     }
     assert isinstance(svc.blobs, InMemoryBlobStore)
     assert svc.blobs.content_type("memory://feed.json") == "application/json"
+
+
+def test_publish_makes_no_blob_exists_call(monkeypatch: pytest.MonkeyPatch) -> None:
+    svc = services()
+    calls: list[str] = []
+    monkeypatch.setattr(svc.blobs, "exists", lambda ref: calls.append(ref) or True)
+    svc.repository.upsert_article(article("gone", content_ref="memory://articles/gone.html"))
+
+    built = publish_feed(svc, SOURCES, run_id=RUN_ID, now=NOW)
+
+    assert calls == []
+    assert [i["display"] for i in built.feed["items"]] == ["article"]
+    assert not hasattr(built, "links_for_missing_content")
 
 
 # --- One item per story (#147) ------------------------------------------------------
