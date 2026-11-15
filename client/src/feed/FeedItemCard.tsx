@@ -111,15 +111,26 @@ export function FeedItemCard({ item }: { item: FeedItem }) {
   return (
     <article class={seen ? "card card-seen" : "card"} data-testid="feed-item">
       {item.lead_image ? (
-        <img
-          class="card-image"
+        // The headline stays the story's one accessible link; this one is a bigger tap target only.
+        <a
+          class="card-image-link"
+          href={isLink ? item.url : `/article/${item.id}`}
+          target={isLink ? "_blank" : undefined}
+          rel={isLink ? "noopener noreferrer" : undefined}
+          tabindex={-1}
+          aria-hidden="true"
           hidden={imageFailed}
-          src={item.lead_image}
-          alt=""
-          loading="lazy"
-          referrerpolicy="no-referrer"
-          onError={() => setImageFailed(true)}
-        />
+          onClick={onOpen}
+        >
+          <img
+            class="card-image"
+            src={item.lead_image}
+            alt=""
+            loading="lazy"
+            referrerpolicy="no-referrer"
+            onError={() => setImageFailed(true)}
+          />
+        </a>
       ) : null}
       <h2 class="card-title">
         {isLink ? (
