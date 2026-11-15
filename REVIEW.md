@@ -8,6 +8,8 @@ Failure patterns taken from real defects in this repo. Test authors and workers 
 - A check on data must be written against what real sources send, not what the fixture happens to contain. Fixtures stay synthetic, but they should copy the structure and quirks of real pages and feeds.
 - A feature that crosses stages needs one test through the real pipeline, with the real `Repository` and `BlobStore` adapters.
 - A claim about what a later run will do needs a test across two runs. In #144, a design note promised a later merge that didn't exist.
+- A URL transform built for identity, such as a dedupe key, must not be reused to fetch pages without checking what else it changes on real links (trailing slashes, query order, AMP form), because each change is a different request to the site. Instance: #274.
+- A cost estimate must count per-request side charges, such as request logging, not only the main service's price. Instance: PR #186.
 
 ## Robust code
 
@@ -66,6 +68,7 @@ Failure patterns taken from real defects in this repo. Test authors and workers 
 - A time-relative test must fix "now" on both sides, the code under test and the data it compares against.
 - When a rework changes which function a hook registers, the tests must register the new one too, or they keep exercising the old path.
 - A flaky-test fix must first show the failure it fixes (a reproduction or a captured failing run) before it claims a cause.
+- A test of a pin that a bot bumps (Dependabot) must not hard-code the version, or every bump fails it; check the shape or that two places agree.
 - In the client every screen is a full page load, so a component's unmount cleanup never runs when the owner leaves. Work that must survive leaving (a reading-time event, a feedback write) must finish before navigating, be handed to the next page by a synchronous `localStorage` write, or sent by `navigator.sendBeacon` or a `keepalive` fetch, all of which survive the page closing; an IndexedDB write or a plain `fetch` started on `pagehide` may not finish. Test it by navigating away in Playwright, not by unmounting. Instances: PR #248, PR #251.
 
 ## Workflows and exemptions

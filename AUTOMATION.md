@@ -532,7 +532,7 @@ Some things are deliberately kept out of the repo:
 
 ## 15. Learnings
 
-What building this way has taught so far, written to be reused on other projects. The delivery manager and milestones have now run once. The architect hasn't, and the test author's value is still unproven (`docs/milestones/phase-2.md`).
+What building this way has taught so far, written to be reused on other projects. Two milestones have run under this model. The architect ran through Phase 3 (the design, two revisions and triage), and the test author was kept after Phase 3: its tests helped, and its cost showed as PR size rather than usage (`docs/milestones/phase-3.md`).
 
 ### Conceptual
 
@@ -552,6 +552,12 @@ What building this way has taught so far, written to be reused on other projects
 - **A human's merge can overtake agents.** PR #160 merged during its review, and PR #167 merged with a comment unactioned. A draft shows the status of a review, but it doesn't stop a comment being missed, so the lead has to check for comments too.
 - **What didn't work:** a rule with no enforcement. The two-review limit was passed twice, because nothing enforced it. A delivery manager brief saying "one report" was also missed in every batch, at no real cost.
 - **Don't shape a design around process friction.** Phase designs briefly moved from a file to an issue, only because nobody owned the file's PR. The fix was to assign an owner.
+- **A batch fixed at its start beats a growing one.** In Phase 3 the lead kept adding issues to one delivery manager, which ran for over 2 hours with about 12 issues and lost track of reviewed PRs. Fixed batches of a few issues, with the next delivery manager started straight away, ended the queue waits.
+- **Rank designs by what they cost to run, not by how much process they need.** The lead put the cheaper views design second because it needed a contract change, and the owner corrected it. A contract change is a one-off; a recurring read is paid every hour.
+- **Ask what already handles the failure before adding a guard.** PR #292's copy check protected against a missing copy that the reader already handled, at about 1,900 reads a run.
+- **On a public repo, trust only the owner's login.** A check on the account type let any GitHub user's comment through (PR #283's review); filtering by author login fixed it.
+- **Write interim habits into the briefs at the milestone.** Several lessons lived only in the lead's handoff note through Phase 3, so each new delivery manager had to be told them again.
+- **What didn't work:** a status check that read only comment headings, which missed a Needs human item until the owner asked (PR #237); and a size limit that counts the test author's tests, which split one fully tested feature after review (#216).
 
 ### Practical
 
@@ -597,7 +603,7 @@ Still unknown:
 - how much usage a large context really costs;
 - whether 150k is the right threshold, as it rests on one session.
 
-The Phase 2 milestone reviewed this: the hook fired on a manual `/compact`, and the approach stays. Evidence goes in the Phase Log. If compaction proves costly, the next step is a spike on restarting from outside the session.
+The Phase 2 milestone reviewed this: the hook fired on a manual `/compact`, and the approach stays. In Phase 3, a manual `/compact` mid-batch (2026-11-07) left the delivery manager, its workers and the recurring status check running. No automatic compaction has happened yet. Evidence goes in the Phase Log. If compaction proves costly, the next step is a spike on restarting from outside the session.
 
 ## Appendix A: the compaction hook
 
