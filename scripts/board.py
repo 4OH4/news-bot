@@ -14,8 +14,9 @@ sets "Agent review" when it opens its PR; the lead sets "Human review" when the 
 waits only for the human (see CLAUDE.md, "Agent automation").
 
 `promote` first moves closed issues to Done, then moves open `agent-ready` issues
-whose every "Depends on #N" issue is closed to Ready. `needs-human` issues are never
-promoted automatically.
+whose every "Depends on #N" issue is closed to Ready. A `needs-human` issue moves only
+if it also has `agent-ready` (agents build it, the owner merges it); one without
+`agent-ready` waits for the owner.
 
 GraphQL budget: GitHub allows 5,000 GraphQL points per user per hour, shared by every
 agent and `gh` itself. `set` costs 2 points (one targeted query plus one mutation);
