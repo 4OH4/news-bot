@@ -67,7 +67,7 @@ These are hard rules. If a task seems to require breaking one, stop and say so i
 
 ## Cost of failure
 
-Use this to judge how much a problem matters. The human confirms it at each milestone (`AUTOMATION.md` §6). Confirmed for Phase 4 by merging the Phase 3 milestone report.
+Use this to judge how much a problem matters. The human confirms it at each milestone (`AUTOMATION.md` §6). Confirmed for Phase 4 by merging PR #308.
 
 - **Stage:** development. The owner is the only user, once the reader client works, and is also a developer. There is no release to roll back to.
 - **Cheap:** a duplicate, stale or missing feed item, poor ranking (including a personalised ranking that does worse than rules), a failed run that the next run recovers, and a data problem that can be repaired or recreated. These are slightly annoying, and can be fixed later.
