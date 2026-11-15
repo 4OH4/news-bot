@@ -19,7 +19,7 @@ const bodyText = (id: string) => `Invented paragraph for back-link test ${id}.`;
 test.use({ viewport: { width: 360, height: 740 } });
 
 async function stubApi(page: Page): Promise<void> {
-  await page.route("**/api/feed", (route) =>
+  await page.route("**/api/feed?*", (route) =>
     route.fulfill({ json: example, headers: { ETag: '"v1"' } }),
   );
   await page.route("**/api/articles/*", (route) => {

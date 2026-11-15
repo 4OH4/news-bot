@@ -42,19 +42,19 @@ test("the shell shows offline after one visit", async ({ page, context }) => {
   await context.setOffline(true);
   await page.reload();
   await expect(page.getByRole("navigation", { name: "Sections" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Newsfeed" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Feed", exact: true })).toBeVisible();
 });
 
 test("an API request fails offline instead of getting index.html", async ({ page, context }) => {
-  await page.route("**/api/feed", (route) => route.fulfill({ json: { items: [] } }));
+  await page.route("**/api/feed?*", (route) => route.fulfill({ json: { items: [] } }));
   await page.goto("/");
   await controlled(page);
-  expect(await page.evaluate(() => fetch("/api/feed").then((r) => r.status))).toBe(200);
+  expect(await page.evaluate(() => fetch("/api/feed?view=feed").then((r) => r.status))).toBe(200);
 
-  await page.unroute("**/api/feed");
+  await page.unroute("**/api/feed?*");
   await context.setOffline(true);
   const outcome = await page.evaluate(() =>
-    fetch("/api/feed").then(
+    fetch("/api/feed?view=feed").then(
       (r) => `status ${r.status}`,
       () => "network error",
     ),

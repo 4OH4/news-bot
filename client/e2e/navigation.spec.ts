@@ -50,7 +50,7 @@ async function box(el: Locator) {
   return b!;
 }
 
-test("the Sections bar sits at the bottom of the viewport with Feed, Liked and Settings", async ({
+test("the Sections bar sits at the bottom of the viewport with News, Feed and Longer", async ({
   page,
 }) => {
   await stubApi(page);
@@ -60,7 +60,7 @@ test("the Sections bar sits at the bottom of the viewport with Feed, Liked and S
   await expect(bar).toBeVisible();
   const b = await box(bar);
   expect(Math.round(b.y + b.height)).toBe(844);
-  await expect(bar.getByRole("link")).toHaveText(["Feed", "Liked", "Settings"]);
+  await expect(bar.getByRole("link")).toHaveText(["News", "Feed", "Longer"]);
   expect(await style(bar, "position")).toBe("fixed");
   await shot(page, "feed-top-light");
 });
@@ -90,10 +90,8 @@ test("on a wide screen the links stay within the 40rem content width", async ({ 
 test.describe("the current tab", () => {
   for (const [path, name] of [
     ["/", "Feed"],
-    ["/liked", "Liked"],
-    ["/liked/", "Liked"],
-    ["/settings", "Settings"],
-    ["/settings/", "Settings"],
+    ["/news", "News"],
+    ["/longer/", "Longer"],
   ] as const) {
     test(`${path} marks only ${name} with aria-current=page`, async ({ page }) => {
       await stubApi(page);
@@ -101,6 +99,16 @@ test.describe("the current tab", () => {
       const current = sections(page).locator('a[aria-current="page"]');
       await expect(current).toHaveCount(1);
       await expect(current).toHaveText(name);
+    });
+  }
+
+  // #289: Liked and Settings are header icons now, so no tab is current there.
+  for (const path of ["/liked", "/liked/", "/settings", "/settings/"]) {
+    test(`${path} keeps the Sections bar with no tab marked`, async ({ page }) => {
+      await stubApi(page);
+      await page.goto(path);
+      await expect(sections(page)).toBeVisible();
+      await expect(sections(page).locator('a[aria-current="page"]')).toHaveCount(0);
     });
   }
 
@@ -119,19 +127,24 @@ test.describe("the current tab", () => {
       return out;
     });
     const links = sections(page).getByRole("link");
-    expect(await style(links.nth(0), "color")).toBe(tokens.accent);
-    expect(await style(links.nth(1), "color")).toBe(tokens.muted);
+    expect(await style(links.nth(0), "color")).toBe(tokens.muted);
+    expect(await style(links.nth(1), "color")).toBe(tokens.accent);
     expect(await style(links.nth(2), "color")).toBe(tokens.muted);
   });
 
   test("tapping a tab goes to that screen", async ({ page }) => {
     await stubApi(page);
     await page.goto("/");
-    await sections(page).getByRole("link", { name: "Liked" }).click();
+    await sections(page).getByRole("link", { name: "News" }).click();
+    await expect(page).toHaveURL(/\/news$/);
+    await expect(sections(page).locator('a[aria-current="page"]')).toHaveText("News");
+    // #289: Liked and Settings are reached by the header icons.
+    await page.locator("header").getByRole("link", { name: "Liked" }).click();
     await expect(page).toHaveURL(/\/liked$/);
-    await expect(sections(page).locator('a[aria-current="page"]')).toHaveText("Liked");
     await shot(page, "liked");
-    await sections(page).getByRole("link", { name: "Settings" }).click();
+    await sections(page).getByRole("link", { name: "Longer" }).click();
+    await expect(page).toHaveURL(/\/longer$/);
+    await page.locator("header").getByRole("link", { name: "Settings" }).click();
     await expect(page).toHaveURL(/\/settings$/);
     await shot(page, "settings");
   });
@@ -212,7 +225,7 @@ test.describe("the compact feed header", () => {
     await expect(page.locator("button", { hasText: /^\s*Refresh\s*$/ })).toHaveCount(0);
 
     const row = page.locator(".top");
-    const heading = page.getByRole("heading", { name: "Newsfeed" });
+    const heading = page.getByRole("heading", { name: "Feed", exact: true });
     const button = refresh(page);
     await expect(row.getByRole("button", { name: "Refresh" })).toHaveCount(1);
     const h = await box(heading);
@@ -231,10 +244,10 @@ test.describe("the compact feed header", () => {
     await page.goto("/");
     const updated = page.locator(".top").getByText(/^Updated /);
     await expect(updated).toBeVisible();
-    const h = await box(page.getByRole("heading", { name: "Newsfeed" }));
+    const h = await box(page.getByRole("heading", { name: "Feed", exact: true }));
     const u = await box(updated);
     expect(u.y).toBeGreaterThanOrEqual(h.y + h.height - 1);
-    const hSize = parseFloat(await style(page.getByRole("heading", { name: "Newsfeed" }), "font-size"));
+    const hSize = parseFloat(await style(page.getByRole("heading", { name: "Feed", exact: true }), "font-size"));
     expect(parseFloat(await style(updated, "font-size"))).toBeLessThan(hSize);
   });
 
@@ -256,7 +269,7 @@ test.describe("the compact feed header", () => {
     const hold = new Promise<void>((r) => (release = r));
     // The first load goes through at once; the tap on Refresh is held.
     let first = true;
-    await page.route("**/api/feed", async (route) => {
+    await page.route("**/api/feed?*", async (route) => {
       if (first) {
         first = false;
         return route.fulfill({ json: feed });
@@ -286,7 +299,7 @@ test.describe("the compact feed header", () => {
     let release!: () => void;
     const hold = new Promise<void>((r) => (release = r));
     let first = true;
-    await page.route("**/api/feed", async (route) => {
+    await page.route("**/api/feed?*", async (route) => {
       if (first) {
         first = false;
         return route.fulfill({ json: feed });

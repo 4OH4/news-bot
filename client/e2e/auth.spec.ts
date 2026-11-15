@@ -13,11 +13,11 @@ async function controlled(page: Page): Promise<void> {
 
 /**
  * Loads the app with `/api/feed` answering `status`. The app is assumed to call
- * `apiFetch("/api/feed")` once when it starts (the issue leaves the first caller open), so the
+ * `apiFetch("/api/feed?view=feed")` once when it starts (the issue leaves the first caller open), so the
  * answer reaches the session-status store the way a real lapse would.
  */
 async function loadWithFeedStatus(page: Page, status: number): Promise<void> {
-  await page.route("**/api/feed", (route) => route.fulfill({ status, body: "" }));
+  await page.route("**/api/feed?*", (route) => route.fulfill({ status, body: "" }));
   await page.goto("/");
   await controlled(page);
   await page.reload();

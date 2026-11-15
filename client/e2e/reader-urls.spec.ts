@@ -24,7 +24,7 @@ const HTML = `
 test.use({ viewport: { width: 360, height: 740 } });
 
 test("data: image and link URLs are removed, and https ones are kept", async ({ page }) => {
-  await page.route("**/api/feed", (route) => route.fulfill({ json: example }));
+  await page.route("**/api/feed?*", (route) => route.fulfill({ json: example }));
   await page.route(`**/api/articles/${item.id}`, (route) =>
     route.fulfill({ status: 200, contentType: "text/html; charset=utf-8", body: HTML }),
   );

@@ -32,7 +32,7 @@ const HOSTILE = `
 
 /** Serves the feed and one article; `html` of null means the article has expired (404). */
 async function serve(page: Page, html: string | null) {
-  await page.route("**/api/feed", (route) => route.fulfill({ json: example }));
+  await page.route("**/api/feed?*", (route) => route.fulfill({ json: example }));
   await page.route(`**/api/articles/${item.id}`, (route) =>
     html === null
       ? route.fulfill({ status: 404, body: "" })
@@ -188,7 +188,7 @@ test("no font or other asset is loaded from another host except article images",
 });
 
 test("returning to the list restores the scroll position", async ({ page }) => {
-  await page.route("**/api/feed", (route) => route.fulfill({ json: example }));
+  await page.route("**/api/feed?*", (route) => route.fulfill({ json: example }));
   await page.route(`**/api/articles/${item.id}`, (route) =>
     route.fulfill({ status: 200, contentType: "text/html", body: NORMAL }),
   );
@@ -212,7 +212,7 @@ test("returning to the list restores the scroll position", async ({ page }) => {
 test("the Back to the feed link returns to the list at the same scroll position", async ({
   page,
 }) => {
-  await page.route("**/api/feed", (route) => route.fulfill({ json: example }));
+  await page.route("**/api/feed?*", (route) => route.fulfill({ json: example }));
   await page.route(`**/api/articles/${item.id}`, (route) =>
     route.fulfill({ status: 200, contentType: "text/html", body: NORMAL }),
   );

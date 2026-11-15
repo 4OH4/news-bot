@@ -13,8 +13,8 @@ const refresh = (page: Page) => page.getByRole("button", { name: /refresh/i });
 
 /** Serves `body` at /api/feed; calling it again replaces the answer. */
 async function serve(page: Page, body: FeedBody, headers: Record<string, string> = {}) {
-  await page.unroute("**/api/feed");
-  await page.route("**/api/feed", (route) => route.fulfill({ json: body, headers }));
+  await page.unroute("**/api/feed?*");
+  await page.route("**/api/feed?*", (route) => route.fulfill({ json: body, headers }));
 }
 
 test.use({ viewport: { width: 360, height: 740 } });
@@ -116,7 +116,7 @@ test("schema_version 2 on refresh keeps the good feed and says an update is need
 test("a 304 on refresh leaves the list and scroll position unchanged", async ({ page }) => {
   let calls = 0;
   let conditional = "";
-  await page.route("**/api/feed", (route) => {
+  await page.route("**/api/feed?*", (route) => {
     calls += 1;
     if (calls === 1) return route.fulfill({ json: example, headers: { ETag: '"v1"' } });
     conditional = route.request().headers()["if-none-match"] ?? "";
@@ -135,7 +135,7 @@ test("a 304 on refresh leaves the list and scroll position unchanged", async ({ 
 
 test("a network failure on refresh keeps the list and shows a notice", async ({ page }) => {
   let calls = 0;
-  await page.route("**/api/feed", (route) => {
+  await page.route("**/api/feed?*", (route) => {
     calls += 1;
     return calls === 1 ? route.fulfill({ json: example }) : route.abort("failed");
   });
@@ -147,7 +147,7 @@ test("a network failure on refresh keeps the list and shows a notice", async ({ 
 });
 
 test("a 503 on first load says the first feed is not ready", async ({ page }) => {
-  await page.route("**/api/feed", (route) => route.fulfill({ status: 503, body: "" }));
+  await page.route("**/api/feed?*", (route) => route.fulfill({ status: 503, body: "" }));
   await page.goto("/");
   await expect(page.getByText(/not ready/i)).toBeVisible();
   await expect(cards(page)).toHaveCount(0);
@@ -155,7 +155,7 @@ test("a 503 on first load says the first feed is not ready", async ({ page }) =>
 
 test("the app makes one startup feed request, replacing the old probe", async ({ page }) => {
   let calls = 0;
-  await page.route("**/api/feed", (route) => {
+  await page.route("**/api/feed?*", (route) => {
     calls += 1;
     return route.fulfill({ json: example });
   });

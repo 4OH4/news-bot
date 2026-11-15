@@ -19,7 +19,7 @@ test.use({ viewport: { width: 360, height: 740 } });
 /** Stubs the API and returns the feedback bodies POSTed, in order. */
 async function stubApi(page: Page): Promise<Record<string, unknown>[]> {
   const posted: Record<string, unknown>[] = [];
-  await page.route("**/api/feed", (route) =>
+  await page.route("**/api/feed?*", (route) =>
     route.fulfill({ json: example, headers: { ETag: '"v1"' } }),
   );
   await page.route("**/api/articles/*", (route) => {
