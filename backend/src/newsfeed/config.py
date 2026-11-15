@@ -16,7 +16,7 @@ from __future__ import annotations
 import re
 from collections import Counter
 from pathlib import Path
-from typing import Any, Self
+from typing import Any, Literal, Self
 
 import yaml
 from pydantic import (
@@ -38,9 +38,12 @@ __all__ = [
     "DomainParamRules",
     "SourcesConfig",
     "UrlParamsConfig",
+    "ViewConfig",
+    "ViewsConfig",
     "load_config",
     "load_sources",
     "load_url_params",
+    "load_views",
 ]
 
 
@@ -276,3 +279,49 @@ def load_url_params(path: Path) -> UrlParamsConfig:
         ConfigError: if the file is missing or invalid (see ``load_config``).
     """
     return load_config(path, UrlParamsConfig)
+
+
+# --- config/views.yaml -------------------------------------------------------
+
+VIEW_NAME = re.compile(r"[a-z0-9-]+")
+"""A view's name, matched with ``fullmatch``; it becomes ``views/<name>.json``."""
+
+
+class ViewConfig(BaseModel):
+    """One view: a ranked list of the feed's candidates for one way of reading (#288).
+
+    ``tags``: a source matches if it has any of them; None means every source.
+    ``order``: ``newest`` (effective time, newest first) or ``score`` (as ``feed.json``).
+    ``window_hours``: how far back, by effective time, the view reaches.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    tags: tuple[str, ...] | None = Field(default=None, min_length=1)
+    order: Literal["newest", "score"]
+    window_hours: float = Field(gt=0, allow_inf_nan=False)
+
+
+class ViewsConfig(ConfigFile):
+    """Schema of ``config/views.yaml``: the views publish writes, by name."""
+
+    views: dict[str, ViewConfig] = Field(default_factory=dict)
+
+    @field_validator("views", mode="after")
+    @classmethod
+    def _valid_names(cls, value: dict[str, ViewConfig]) -> dict[str, ViewConfig]:
+        bad = [repr(name) for name in value if not VIEW_NAME.fullmatch(name)]
+        if bad:
+            raise ValueError(
+                f"invalid view name {', '.join(bad)}: use lowercase letters, digits and '-'"
+            )
+        return value
+
+
+def load_views(path: Path) -> ViewsConfig:
+    """Load the feed views defined in ``path`` (normally ``config/views.yaml``).
+
+    Raises:
+        ConfigError: if the file is missing or invalid (see ``load_config``).
+    """
+    return load_config(path, ViewsConfig)

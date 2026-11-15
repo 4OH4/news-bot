@@ -1,0 +1,17 @@
+# Feed views (#288, ADR-0012): publish writes each as views/<name>.json, feed.json's
+# candidates uncapped; the API pages them (GET /api/feed?view=<name>). Unknown keys
+# are rejected. Names: lowercase letters, digits, '-'. tags: sources with any of
+# them (omit for all). order: newest | score. window_hours: past publish's 72-hour
+# read, the list is carried forward from the previous file each run.
+views:
+  news:
+    tags: [news]
+    order: newest
+    window_hours: 72
+  feed:
+    order: score
+    window_hours: 72
+  longer:
+    tags: [long-form]
+    order: score
+    window_hours: 336   # 14 days

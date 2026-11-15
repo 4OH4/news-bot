@@ -20,8 +20,17 @@
       "type": "string",
       "pattern": "^[A-Za-z0-9._-]+$"
     },
+    "view": {
+      "description": "Only on a page of a view served by GET /api/feed?view=<name> (ADR-0012): the view's name, as in config/views.yaml. Absent from feed.json.",
+      "type": "string",
+      "pattern": "^[a-z0-9-]+$"
+    },
+    "next_cursor": {
+      "description": "Only on a page of a view (ADR-0012): an opaque cursor for the next page, passed back as ?cursor=; null on the last page. Absent from feed.json.",
+      "type": ["string", "null"]
+    },
     "items": {
-      "description": "At most 200 articles, highest score first.",
+      "description": "feed.json: at most 200 articles, highest score first. A page of a view: at most 100 items of the view, in its order.",
       "type": "array",
       "maxItems": 200,
       "items": { "$ref": "#/$defs/item" }

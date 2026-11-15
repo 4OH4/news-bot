@@ -265,16 +265,19 @@ def publish_feed(
     run_id: str,
     now: datetime,
     window_hours: float = FEED_WINDOW_HOURS,
+    articles: Sequence[Article] | None = None,
 ) -> BuiltFeed:
     """Build the feed from stored articles and write it to the ``BlobStore``.
 
+    ``articles``, if given, is the caller's read of the window, so it isn't read twice.
     Writes ``feeds/<run_id>.json`` first and ``feed.json`` second, so a failed
     write leaves the previous ``feed.json`` in place. Errors propagate: the
     caller records the stage as failed.
     """
     since = now - timedelta(hours=window_hours)
     # effective_time <= fetched_at, so anything inside the window was fetched in it.
-    articles = services.repository.list_articles(since=since)
+    if articles is None:
+        articles = services.repository.list_articles(since=since)
     built = build_feed(
         articles,
         sources,

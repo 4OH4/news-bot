@@ -130,7 +130,7 @@ sources:
   - id: bbc-future
     type: rss
     url: https://www.bbc.com/future/feed.rss
-    tags: [science, js-heavy]
+    tags: [science, long-form, js-heavy]
 
   # --- Long-form and magazines ---
   - id: guardian-longread

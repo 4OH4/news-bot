@@ -10,7 +10,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 
-from newsfeed.config import UrlParamsConfig, load_url_params
+from newsfeed.config import UrlParamsConfig, ViewsConfig, load_url_params, load_views
 from newsfeed.extract.chain import ExtractorChain
 from newsfeed.extract.newspaper_extractor import Newspaper4kExtractor
 from newsfeed.extract.overrides import load_extraction_config
@@ -49,6 +49,7 @@ class Services:
     concurrency: int = 8
     dedupe_window_days: int = 14
     retry: RetryPolicy = field(default_factory=RetryPolicy)
+    views: ViewsConfig = field(default_factory=ViewsConfig)
 
 
 def build_ingesters() -> dict[SourceType, SourceIngester]:
@@ -81,6 +82,7 @@ def open_fetcher(settings: Settings) -> Iterator[HttpFetcher]:
 def open_services(settings: Settings) -> Iterator[Services]:
     """Build the services for a run and release the database and HTTP pool afterwards."""
     repository, blobs = open_storage(settings)
+    views = settings.config_dir / "views.yaml"  # without one, publish writes no views
     try:
         with open_fetcher(settings) as fetcher:
             yield Services(
@@ -93,6 +95,7 @@ def open_services(settings: Settings) -> Iterator[Services]:
                 concurrency=settings.concurrency,
                 dedupe_window_days=settings.dedupe_window_days,
                 retry=settings.retry_policy,
+                views=load_views(views) if views.is_file() else ViewsConfig(),
             )
     finally:
         close = getattr(repository, "close", None)  # Firestore's client needs none
