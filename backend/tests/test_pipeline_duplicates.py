@@ -402,9 +402,11 @@ class _LostContentBlobs(LocalBlobStore):
         return self.lost_id not in ref and super().exists(ref)
 
 
-def test_the_copy_is_shown_when_the_targets_content_has_gone(
+def test_the_target_is_still_shown_when_its_content_has_gone(
     tmp_path: Path, repository: SqliteRepository
 ) -> None:
+    """Publish trusts ``content_ref`` and never checks the blob (ADR-0013): an expired copy
+    is the reader's expired state, so the story's canonical target keeps its place."""
     target = _row(TARGET)
     repository.upsert_article(target)
     repository.upsert_article(_pending_alias())
@@ -415,7 +417,9 @@ def test_the_copy_is_shown_when_the_targets_content_has_gone(
 
     _run(services)
 
-    _assert_shows(services, ALIAS, "Copy body.")
+    item = _only_item(services)
+    assert (item["url"], item["display"]) == (TARGET, "article")
+    assert item["content_path"] == f"articles/{target.id}.html"
 
 
 def test_a_dropped_duplicate_does_not_use_up_a_place_in_the_feed(

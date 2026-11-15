@@ -292,14 +292,15 @@ class ViewConfig(BaseModel):
 
     ``tags``: a source matches if it has any of them; None means every source.
     ``order``: ``newest`` (effective time, newest first) or ``score`` (as ``feed.json``).
-    ``window_hours``: how far back, by effective time, the view reaches.
+    ``max_items``: the most items the view holds, and the read limit for a tagged view
+    (ADR-0013). The upper bound caps what a typo costs: 1,000 extra reads a run.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     tags: tuple[str, ...] | None = Field(default=None, min_length=1)
     order: Literal["newest", "score"]
-    window_hours: float = Field(gt=0, allow_inf_nan=False)
+    max_items: int = Field(ge=1, le=1000)
 
 
 class ViewsConfig(ConfigFile):
