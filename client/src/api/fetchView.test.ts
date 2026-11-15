@@ -13,7 +13,7 @@ const page = {
 };
 
 function stubFetch(respond: () => Response) {
-  const spy = vi.fn(async (..._args: unknown[]) => respond());
+  const spy = vi.fn<(input: unknown, init?: RequestInit) => Promise<Response>>(async () => respond());
   vi.stubGlobal("fetch", spy);
   return spy;
 }

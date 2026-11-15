@@ -1,5 +1,5 @@
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
-import type { Feed } from "../feed/types";
+import type { Feed, ViewName } from "../feed/types";
 
 /**
  * The phone's copy of the feed and of article text. It holds nothing that cannot be fetched
@@ -7,7 +7,10 @@ import type { Feed } from "../feed/types";
  */
 export const DB_NAME = "newsfeed";
 const DB_VERSION = 1;
-const FEED_KEY = "current";
+/** The single-feed record from before the tabs (#289), removed on the next save. */
+const OLD_FEED_KEY = "current";
+const VIEWS: readonly ViewName[] = ["news", "feed", "longer"];
+const feedKey = (view: ViewName) => `view:${view}`;
 const KEEP_DAYS = 7;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -47,16 +50,25 @@ function db(): Promise<IDBPDatabase<NewsfeedDB>> {
   return dbPromise;
 }
 
-/** The stored feed with its etag and fetch time, or null when nothing is stored. */
-export async function loadFeed(): Promise<StoredFeed | null> {
-  const record = await (await db()).get("feed", FEED_KEY);
+/** A view's stored list with its etag and fetch time, or null when nothing is stored. */
+export async function loadFeed(view: ViewName = "feed"): Promise<StoredFeed | null> {
+  const record = await (await db()).get("feed", feedKey(view));
   if (!record) return null;
   return { feed: record.feed, etag: record.etag, fetchedAt: record.fetchedAt };
 }
 
-/** Replaces the one feed record. */
-export async function saveFeed(feed: Feed, etag: string): Promise<void> {
-  await (await db()).put("feed", { key: FEED_KEY, feed, etag, fetchedAt: Date.now() });
+/** Every stored view's list, to find an item whichever tab it was opened from. */
+export async function loadAllFeeds(): Promise<Feed[]> {
+  const records = await Promise.all(VIEWS.map((v) => loadFeed(v)));
+  return records.flatMap((r) => (r ? [r.feed] : []));
+}
+
+/** Replaces a view's record. `etag` is its first page's, for the next conditional GET. */
+export async function saveFeed(feed: Feed, etag: string, view: ViewName = "feed"): Promise<void> {
+  const tx = (await db()).transaction("feed", "readwrite");
+  await tx.store.put({ key: feedKey(view), feed, etag, fetchedAt: Date.now() });
+  await tx.store.delete(OLD_FEED_KEY);
+  await tx.done;
 }
 
 /** The stored article text, or null. */
@@ -80,9 +92,10 @@ export async function markKept(id: string, keep: boolean): Promise<void> {
   await tx.done;
 }
 
-/** Drops articles that are not in `feed`, not kept, and stored more than 7 days ago. */
+/** Drops articles in neither `feed` nor any stored view, not kept, and stored over 7 days ago. */
 export async function pruneArticles(feed: Feed): Promise<void> {
-  const inFeed = new Set(feed.items.map((i) => i.id));
+  const lists = [feed, ...(await loadAllFeeds())];
+  const inFeed = new Set(lists.flatMap((f) => f.items.map((i) => i.id)));
   const cutoff = Date.now() - KEEP_DAYS * DAY_MS;
   const tx = (await db()).transaction("articles", "readwrite");
   for (const record of await tx.store.getAll()) {

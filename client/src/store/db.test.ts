@@ -4,6 +4,7 @@ import type { Feed, FeedItem } from "../feed/types";
 import {
   clearAll,
   getArticleHtml,
+  loadAllFeeds,
   loadFeed,
   markKept,
   pruneArticles,
@@ -149,5 +150,23 @@ describe("clearAll", () => {
     expect(await loadFeed()).toBeNull();
     expect((await getArticleHtml("a")) ?? null).toBeNull();
     expect((await getArticleHtml("b")) ?? null).toBeNull();
+  });
+});
+
+describe("per-view records (#289)", () => {
+  it("keeps each view's list apart, and loadAllFeeds returns every stored one", async () => {
+    await saveFeed(feed(["n"]), '"n1"', "news");
+    await saveFeed(feed(["l"]), '"l1"', "longer");
+    expect((await loadFeed("news"))?.feed.items.map((i) => i.id)).toEqual(["n"]);
+    expect((await loadFeed("longer"))?.etag).toBe('"l1"');
+    expect(await loadFeed("feed")).toBeNull();
+    expect((await loadAllFeeds()).map((f) => f.items[0]?.id)).toEqual(["n", "l"]);
+  });
+
+  it("does not prune an old article that another view still lists", async () => {
+    await putAged("old", 8);
+    await saveFeed(feed(["old"]), '"n1"', "news");
+    await pruneArticles(feed(["other"]));
+    expect(await getArticleHtml("old")).not.toBeNull();
   });
 });

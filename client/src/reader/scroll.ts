@@ -1,10 +1,17 @@
 const KEY = "newsfeed-list-scroll";
 const STATE_KEY = "newsfeedListOrigin";
 
-export type ListPath = "/" | "/liked";
+/** The lists an article can be opened from: the three tabs (#289) and Liked. */
+const LISTS = ["/", "/news", "/longer", "/liked"] as const;
+export type ListPath = (typeof LISTS)[number];
+
+function isList(value: unknown): value is ListPath {
+  return (LISTS as readonly unknown[]).includes(value);
+}
 
 function currentList(): ListPath {
-  return location.pathname.replace(/\/+$/, "") === "/liked" ? "/liked" : "/";
+  const path = location.pathname.replace(/\/+$/, "") || "/";
+  return isList(path) ? path : "/";
 }
 const FROM_LIST = "newsfeed-from-list";
 
@@ -52,7 +59,7 @@ export function listOrigin(): ListPath | null {
     origin = state?.[STATE_KEY] ?? null;
     if (origin === null) {
       origin = sessionStorage.getItem(FROM_LIST);
-      if (origin === "/" || origin === "/liked") {
+      if (isList(origin)) {
         history.replaceState({ ...state, [STATE_KEY]: origin }, "");
       }
     }
@@ -61,5 +68,5 @@ export function listOrigin(): ListPath | null {
     return null;
   }
   if (history.length <= 1) return null;
-  return origin === "/" || origin === "/liked" ? origin : null;
+  return isList(origin) ? origin : null;
 }

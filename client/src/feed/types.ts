@@ -22,10 +22,17 @@ export interface FeedItem {
   content_path: string | null;
 }
 
+/** The views the API serves (ADR-0012); each is one of the app's tabs. */
+export type ViewName = "news" | "feed" | "longer";
+
 export interface Feed {
   schema_version: number;
   generated_at: string;
   run_id: string;
+  /** Which view this page belongs to (ADR-0012); absent from the old unparameterised route. */
+  view?: string;
+  /** The cursor for the next page, or null on the last one (ADR-0012). */
+  next_cursor?: string | null;
   items: FeedItem[];
 }
 

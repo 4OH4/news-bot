@@ -263,7 +263,7 @@ describe("shared story state", () => {
     await loadStores();
     await open("/news");
     await waitText("Invented shared story");
-    buttonsNamed(root, /^Dismiss$/)[0]!.click();
+    buttonsNamed(root, /^\s*Dismiss$/)[0]!.click();
     await vi.waitFor(() => expect(root.textContent).toMatch(/undo/i));
     await open("/");
     await waitText("Invented f2 story");

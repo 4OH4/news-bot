@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
 //
 // The compact feed header (#272): the title with "Updated ..." under it, and a round icon
-// Refresh button on the right. Sizes and animations are checked in e2e/navigation.spec.ts,
-// because happy-dom computes no layout.
+// Refresh button on the right; since #289 the title is the view name. Sizes and animations
+// are checked in e2e/navigation.spec.ts, because happy-dom computes no layout.
 import { h, render } from "preact";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installRouter, loadStores, makeFeed, makeItem } from "../../test/test-env";
@@ -48,7 +48,7 @@ describe("compact feed header", () => {
     const row = root.querySelector("header.top")!;
     expect(row).not.toBeNull();
     const title = row.querySelector("h1")!;
-    expect(title.textContent).toBe("Newsfeed");
+    expect(title.textContent).toBe("Feed");
     const updated = [...row.querySelectorAll("*")].find((e) => /^Updated /.test(e.textContent ?? "") && e.children.length === 0);
     expect(updated).toBeDefined();
     // Same block as the heading, and after it.

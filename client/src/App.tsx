@@ -14,24 +14,32 @@ import { SettingsScreen } from "./settings/SettingsScreen";
 applyStoredTheme();
 applyStoredFontSize();
 
+/** The path without trailing slashes, so `/news/` and `/news` are the same screen. */
+function clean(path: string): string {
+  return path.replace(/\/+$/, "") || "/";
+}
+
 function Screen({ path }: { path: string }) {
   if (path.startsWith("/article/")) return <ReaderScreen />;
-  if (path === "/liked" || path === "/liked/") return <LikedScreen />;
-  if (path === "/settings" || path === "/settings/") return <SettingsScreen />;
-  return <FeedScreen />;
+  const p = clean(path);
+  if (p === "/liked") return <LikedScreen />;
+  if (p === "/settings") return <SettingsScreen />;
+  if (p === "/news") return <FeedScreen view="news" />;
+  if (p === "/longer") return <FeedScreen view="longer" />;
+  return <FeedScreen view="feed" />;
 }
 
 const TABS = [
+  { href: "/news", label: "News" },
   { href: "/", label: "Feed" },
-  { href: "/liked", label: "Liked" },
-  { href: "/settings", label: "Settings" },
+  { href: "/longer", label: "Longer" },
 ];
 
-/** The current section's href; trailing-slash variants count as the same screen, as in `Screen`. */
-function currentTab(path: string): string {
-  if (path === "/liked" || path === "/liked/") return "/liked";
-  if (path === "/settings" || path === "/settings/") return "/settings";
-  return "/";
+/** The current tab's href, or null on Liked and Settings, which are not tabs (#289). */
+function currentTab(path: string): string | null {
+  const p = clean(path);
+  if (p === "/liked" || p === "/settings") return null;
+  return p === "/news" || p === "/longer" ? p : "/";
 }
 
 function TabBar({ path }: { path: string }) {

@@ -8,8 +8,16 @@
   color: var(--muted);
 }
 
-.refresh {
+/* Liked, Settings and Refresh: one row of round 44px icon controls (#272, #289). */
+.top-actions {
   flex: none;
+  display: flex;
+  gap: 8px;
+}
+
+.icon-button {
+  flex: none;
+  box-sizing: border-box;
   width: 44px;
   height: 44px;
   padding: 0;
@@ -24,6 +32,34 @@
 
 .refresh:disabled {
   opacity: 0.6;
+}
+
+.empty {
+  color: var(--muted);
+}
+
+.load-more {
+  padding: var(--space) 0;
+  text-align: center;
+}
+
+.load-more button {
+  width: 100%;
+  border-radius: 6px;
+  border: 1px solid var(--divider);
+  background: var(--bg);
+  color: var(--accent);
+  font-size: var(--fs-meta);
+}
+
+.load-more button:disabled {
+  color: var(--muted);
+}
+
+.load-more-note {
+  margin: 0.5rem 0 0;
+  font-size: var(--fs-meta);
+  color: var(--muted);
 }
 
 .refresh-icon.spinning {
