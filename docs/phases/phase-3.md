@@ -142,6 +142,45 @@ A drift that these tests miss, such as a renamed route, shows on the phone as a 
 - `client/package.json` and `client/package-lock.json`: #182 (DOMPurify), #183 and #184 (`idb`, `fake-indexeddb`). On a conflict, take `main`'s files and re-run `make client-add` for your own packages, never hand-editing the lockfile.
 - Each issue's e2e tests go in their own new spec file.
 
+## Revision: simpler feed views (2026-11-15)
+
+The owner decided (Phase Log on #187, about 12:15 UTC) that PR #292's views were too complex: per-view time windows, Longer's carry-forward from the previous file with a one-off 14-day seed, and a stored-copy check for every item shown as an article. The copy check guards nothing the client doesn't: when a copy is missing, the reader shows the summary and "Read it on the original site" (`ReaderScreen.tsx`, expired state).
+
+**Approach.** A view is `tags`, `order` (`newest` or `score`) and `max_items`: News `[news]` newest 300, Feed (every source) score 500, Longer `[long-form]` score 200. A tagged view makes one call, `list_articles(source_ids=<its enabled, weighted sources>, limit=max_items)`, with no time limit. The Feed view reuses `feed.json`'s 72-hour read, so it costs no extra read. All views then pass `feed.json`'s eligibility rules (scored, not muted, live source, valid item, one per story), are ordered and cut to `max_items`. Publish no longer checks that copies exist, for views or for `feed.json`: an item with a `content_ref` is an `article`, and one without is a `link`. The view file shape, the paging API and `docs/feed.schema.json` don't change, so the client tabs (#289, PR #295) are unaffected. #293 and PR #294, which patched the carry-forward, are superseded.
+
+**Issues.**
+
+```
+#296 store: list_articles source filter + Firestore indexes ──► #297 api: views rework + ADR-0013
+     (lead applies the indexes after merge)                         (deploy once indexes are READY)
+```
+
+| Issue | Depends on | Tier | Risk |
+|---|---|---|---|
+| #296 `Repository.list_articles(source_ids=...)` in SQLite, Firestore and the fake; two composite indexes in `firestore.tf` | - | B | |
+| #297 views as `tags`, `order`, `max_items`; delete carry-forward, seed, windows and copy checks; ADR-0013 | #296 | B | |
+
+They share no files. #297 can't start until #296 merges, because its tests call the new parameter on the fake. Neither is high risk: a wrong view is cheap, and the cost is bounded by `max_items` (at most 1,000 a view).
+
+**Firestore and the index.** Firestore's `in` filter takes at most 30 values and the largest tag has 10 sources. The adapter splits a longer list into groups of 30, runs one query per group with the same `limit` and merges, which stays exact, so every adapter behaves alike; refusing would make the port depend on the adapter. The new indexes are `source_id`, `fetched_at` DESC, `id`, and the same with `extraction.status` first. They are inside the agents' development scope (ADR-0007): after #296 merges, the lead runs `terraform plan` (expect two adds and nothing else) and applies it. The owner isn't needed unless the plan shows more or the apply is refused for permissions. #297 shouldn't deploy before the indexes report `READY`; if it does, News and Longer fail each run until they do, without touching `feed.json`.
+
+**Scores.** The rank stage stores `score` and re-scores only articles fetched in the last 72 hours; publish never recomputes. An older long-form piece keeps the score it had at about 72 hours old, with its recency factor frozen there (0.125 at the 24-hour half-life). In Longer, the last three days' pieces sit above older ones of similar relevance, and older ones order among themselves by topic relevance and source weight. Recomputing at publish would need article text from the blob store and the rank stage's scoring inside publish, against architecture rule 3. A per-view ranking recipe is already in `DEFERRED_WORK.md`.
+
+**Cost** (for ADR-0013). About 2,000 Firestore reads per hourly run: about 1,500 for `feed.json` (unchanged) plus at most 500 for News and Longer, so about $0.0002 a run, roughly $0.15 a month, for the extra 500. Removing the copy checks saves up to about 1,900 Cloud Storage metadata reads a run (about $0.0008 a run, $0.55 a month). The change is a net saving.
+
+**Demo and first use.** No change to the milestone demo. After #297 deploys, the owner's tabs (once #289 lands) show News as the 300 newest news items and Longer as the 200 newest long-form pieces, about 15 days of them.
+
+**Confirm later.**
+
+| Decision | To undo |
+|---|---|
+| `list_articles` gains `source_ids` (contract change, #296) | Remove the parameter; views read everything and filter in publish |
+| Firestore splits more than 30 sources into groups and merges, rather than refusing | Raise `ValueError` above 30 |
+| An extra index for `status` with `source_ids`, unused today | Remove it from `firestore.tf` |
+| Views use the stored score; publish never recomputes | A per-view ranking recipe (`DEFERRED_WORK.md`) |
+| No copy check in `feed.json` either: an expired copy shows as an `article` that opens the reader's expired state | Restore `_content_exists` in `publish_feed`, about 200 Cloud Storage reads a run |
+| `max_items` is 1 to 1,000; sizes 300, 500 and 200 | Change `config.py` or `config/views.yaml` |
+
 ## Contract changes and ADRs
 
 - `ports.py`: `BlobStore.ref_for(key)`, `TokenVerifier` and `TokenRejectedError` (#172, merged in PR #198, signatures unchanged by this revision). The IAP JWT is the token `TokenVerifier.verify` takes. #175 fixes the `TokenVerifier` docstring, which still names a Firebase adapter, and adds that any exception other than `TokenRejectedError` means the check couldn't be made.
@@ -150,7 +189,7 @@ A drift that these tests miss, such as a renamed route, shows on the phone as a 
 - `docs/feedback.example.json` (new, #215): three valid `POST /api/feedback` bodies, the shared fixture that #176's pytest test and #184's Vitest test both read. It documents #176's request spec and changes no model.
 - ADR-0009: reader client stack. ADR-0010: client access through IAP and feedback identity, which also amends ADR-0005 decision 6. (ADR-0008 was taken by the development-scope decision.)
 - ADR-0011 ([docs/adr/0011](../adr/0011-render-sanitised-article-html-on-the-app-origin.md)): the reader shows sanitised third-party article HTML on the app origin, with the guards, the residual risk the owner accepted and when to revisit it (#229).
-- Views, an owner-requested Phase 3 addition (2026-11-15, #288): News, Feed and Longer lists written beside `feed.json` and served in pages by `GET /api/feed?view=`, with additive `view` and `next_cursor` in `docs/feed.schema.json` ([ADR-0012](../adr/0012-feed-views.md)).
+- Views, an owner-requested Phase 3 addition (2026-11-15, #288): News, Feed and Longer lists written beside `feed.json` and served in pages by `GET /api/feed?view=`, with additive `view` and `next_cursor` in `docs/feed.schema.json` ([ADR-0012](../adr/0012-feed-views.md)). Simplified the same day (see "Revision: simpler feed views"): `ports.py` gains `Repository.list_articles(source_ids=...)` (#296), and ADR-0013 supersedes ADR-0012's windows, carry-forward and content check (#297).
 
 ## Check against later phases
 
