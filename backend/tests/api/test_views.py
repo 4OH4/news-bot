@@ -141,6 +141,20 @@ def test_a_view_shorter_than_one_page_has_no_next_cursor(blobs: RecordingBlobSto
     assert body["next_cursor"] is None
 
 
+def test_a_view_of_exactly_two_pages_ends_with_a_null_next_cursor(
+    blobs: RecordingBlobStore,
+) -> None:
+    store(blobs, "longer", view_bytes(RUN_A, 100))
+    client = client_for(make_app(blobs))
+
+    first = ok_json(page(client, view="longer", limit=50))
+    second = ok_json(page(client, view="longer", limit=50, cursor=first["next_cursor"]))
+
+    assert [len(first["items"]), len(second["items"])] == [50, 50]
+    assert second["next_cursor"] is None
+    assert [i["id"] for i in second["items"]] == view_ids(view_bytes(RUN_A, 100))[50:]
+
+
 def test_an_empty_view_is_an_empty_page(blobs: RecordingBlobStore) -> None:
     store(blobs, "news", view_bytes(RUN_A, 0))
 

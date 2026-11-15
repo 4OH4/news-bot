@@ -1130,7 +1130,7 @@ def publish_stage(
     now: datetime,
     window_hours: float,
 ) -> None:
-    """Write ``feed.json``, then the views, from one read of the repository.
+    """Write ``feed.json``, then the views; the untagged view shares ``feed.json``'s read.
 
     A failure is logged and counted, and keeps that file's previous version; a
     failed view never undoes ``feed.json``.
@@ -1158,13 +1158,10 @@ def publish_stage(
         tally.count(PipelineStage.PUBLISH, "duplicates", built.duplicates)
     if built.dropped:
         tally.count(PipelineStage.PUBLISH, "dropped", built.dropped)
-    if built.links_for_missing_content:
-        tally.count(PipelineStage.PUBLISH, "missing_content", built.links_for_missing_content)
     outcomes = publish_views(
         services,
         sources,
         articles=articles,
-        read_window_hours=window_hours,
         run_id=run_id,
         now=now,
         generated_at=built.feed["generated_at"],

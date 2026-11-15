@@ -2,6 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-18
+- **Amended by:** [ADR-0013](0013-feed-views-by-source-query.md): publish no longer checks that a copy is stored; an item with a `content_ref` whose blob has expired is an `article`, and the reader shows its expired state.
 - **Related:** #82 (this decision); #83 (publish stage, built to it); #81 (rank stage, writes `score` and `score_breakdown`); ADR-0001 (ports, blob store); ADR-0003 decision 1 (non-clean items are links); FR-8, NFR-4; `PROJECT_PLAN.md` §5.1, §5.3, §6 Phases 2–3. Schema: `docs/feed.schema.json`. Example: `docs/feed.example.json`.
 
 ## Context

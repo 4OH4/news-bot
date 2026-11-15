@@ -1,6 +1,6 @@
 # ADR-0012: Feed views served in pages by the API
 
-- **Status:** Accepted
+- **Status:** Accepted. Partly superseded by [ADR-0013](0013-feed-views-by-source-query.md): its windows, carry-forward and content check; the paging contract stands.
 - **Date:** 2026-11-15
 - **Related:** #288 (this change), #289 (client tabs); [ADR-0006](0006-feed-json-schema.md) (`feed.json`, "Versioning"); [ADR-0005](0005-content-retention.md) (article HTML kept 30 days); `config/views.yaml`; `docs/feed.schema.json`.
 

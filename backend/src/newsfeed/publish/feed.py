@@ -11,7 +11,7 @@ import json
 import math
 import re
 from collections import defaultdict
-from collections.abc import Callable, Collection, Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -57,7 +57,6 @@ class BuiltFeed:
     feed: dict[str, Any]
     candidates: int
     dropped: int
-    links_for_missing_content: int
     duplicates: int = 0
 
 
@@ -79,6 +78,11 @@ def _domain(url: str) -> str:
 
 
 def _is_article(article: Article) -> bool:
+    """Whether the item shows as an article: its extraction qualifies (ADR-0006) and it
+    has stored content. The blob itself isn't checked (ADR-0013): an expired copy is the
+    reader's expired state, not a link."""
+    if article.content_ref is None:
+        return False
     status = article.extraction.status
     if status is ExtractionStatus.OK:
         return True
@@ -139,9 +143,7 @@ def _story_end(article: Article, by_address: Mapping[str, Article]) -> str:
 
 
 def _one_per_story(
-    ranked: Sequence[Article],
-    articles: Sequence[Article],
-    has_content: Callable[[Article], bool],
+    ranked: Sequence[Article], articles: Sequence[Article]
 ) -> list[tuple[Article, str]]:
     """``ranked`` with one row per story, in the same order (#147).
 
@@ -165,7 +167,7 @@ def _one_per_story(
     def shown(end: str, rows: list[Article]) -> Article:
         if len(rows) == 1:
             return rows[0]
-        return max(rows, key=lambda a: (_is_article(a) and has_content(a), a.id == end))
+        return max(rows, key=lambda a: (_is_article(a), a.id == end))
 
     kept = {shown(end, rows).id: end for end, rows in stories.items()}
     return [(a, kept[a.id]) for a in ranked if a.id in kept]
@@ -177,16 +179,14 @@ def build_feed(
     *,
     now: datetime,
     run_id: str,
-    has_content: Callable[[Article], bool] = lambda _article: True,
-    window_hours: float = FEED_WINDOW_HOURS,
+    window_hours: float | None = FEED_WINDOW_HOURS,
     limit: int = FEED_LIMIT,
 ) -> BuiltFeed:
     """Select, order and render the feed (ADR-0006).
 
     Candidates are scored, unmuted articles from enabled sources with weight
-    above zero whose effective time is within ``window_hours`` of ``now``.
-    ``has_content`` says whether an article's cleaned HTML is still stored; it
-    is only asked about articles that would otherwise be shown as articles.
+    above zero whose effective time is within ``window_hours`` of ``now``
+    (None: no window, as for views, ADR-0013).
     Articles that can't form a valid item are dropped and logged, so one bad
     article never blocks the feed. Rows linked by the canonical their page
     declared are one story and take one place (``_one_per_story``).
@@ -194,14 +194,14 @@ def build_feed(
     if not _RUN_ID.fullmatch(run_id):
         raise ValueError(f"invalid run id {run_id!r}")
     live = {s.id for s in sources if s.enabled and s.weight > 0}
-    cutoff = now - timedelta(hours=window_hours)
+    cutoff = None if window_hours is None else now - timedelta(hours=window_hours)
     candidates = [
         a
         for a in articles
         if a.score is not None
         and "muted" not in a.score_breakdown
         and a.source_id in live
-        and effective_time(a) >= cutoff
+        and (cutoff is None or effective_time(a) >= cutoff)
     ]
     # NaN would make the sort order undefined, so sort valid articles only.
     valid: list[Article] = []
@@ -222,40 +222,15 @@ def build_feed(
             },
         )
     valid.sort(key=lambda a: (-(a.score or 0.0), -effective_time(a).timestamp(), a.id))
-    stories = _one_per_story(valid, articles, has_content)
-    items: list[dict[str, Any]] = []
-    missing = 0
-    for article, story_id in stories[:limit]:
-        as_article = _is_article(article)
-        if as_article and not has_content(article):
-            as_article = False
-            missing += 1
-        items.append(_item(article, story_id, as_article=as_article))
+    stories = _one_per_story(valid, articles)
+    items = [_item(a, story_id, as_article=_is_article(a)) for a, story_id in stories[:limit]]
     feed = {
         "schema_version": SCHEMA_VERSION,
         "generated_at": _timestamp(now),
         "run_id": run_id,
         "items": items,
     }
-    return BuiltFeed(feed, len(candidates), dropped, missing, len(valid) - len(stories))
-
-
-def _content_exists(services: Services, article: Article) -> bool:
-    if not article.content_ref:
-        return False
-    try:
-        return services.blobs.exists(article.content_ref)
-    except Exception as exc:
-        log.warning(
-            "couldn't check article content; showing as a link",
-            extra={
-                "stage": _STAGE,
-                "source_id": article.source_id,
-                "url": article.canonical_url,
-                "error": str(exc),
-            },
-        )
-        return False
+    return BuiltFeed(feed, len(candidates), dropped, len(valid) - len(stories))
 
 
 def publish_feed(
@@ -283,7 +258,6 @@ def publish_feed(
         sources,
         now=now,
         run_id=run_id,
-        has_content=lambda a: _content_exists(services, a),
         window_hours=window_hours,
     )
     data = json.dumps(built.feed, ensure_ascii=False, allow_nan=False, indent=1).encode("utf-8")
