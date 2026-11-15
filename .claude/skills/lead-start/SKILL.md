@@ -23,7 +23,7 @@ Read its "Kept back" list. A worktree that is unmerged or has uncommitted change
 
 Also check for an open deploy alert: `gh issue list --repo 4OH4/news-bot --state open --search '"Deploy failed: the Cloud Run Job is running an older image" in:title'` (the title is set in `.github/workflows/deploy.yml`). One means the last deploy failed and the Cloud Run Job runs an older image, so treat it as work to handle before the next batch. It is not on the board.
 
-Check for owner requests waiting for triage (see "Triage" under step 3).
+Unless a usage pause is under way, check for owner requests waiting for triage (see "Triage" under step 3).
 
 Read the comments on PRs merged since the last check (the commands are in step 4; the handoff note records the last PR checked), because the owner may have commented before or while merging, and turn any unactioned one into a follow-up issue.
 
