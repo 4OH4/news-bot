@@ -17,6 +17,7 @@ Failure patterns taken from real defects in this repo. Test authors and workers 
 - A regex that reads one line must not use `\W` or `\s`, which match a newline: an empty field would take its text from the next line. In #133 an empty `Reason:` passed the merge gate this way. Use `[^\w\n]` and `[^\S\n]`.
 - A retry loop or single-flight lock (one holder at a time) must limit how long one attempt can wait.
 - An empty environment variable that holds a path becomes `Path('.')`, the current directory. Treat empty as unset.
+- State carried forward from a previous output must pass the same clamps as fresh input. (PR #292 review)
 
 ## Polite fetching and safety
 

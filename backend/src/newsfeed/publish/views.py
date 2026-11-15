@@ -63,6 +63,7 @@ def _carried(
     *,
     live: Collection[str],
     cutoff: datetime,
+    now: datetime,
     has_key: Callable[[str], bool],
     read_ids: Collection[str],
     stories: set[str],
@@ -89,6 +90,7 @@ def _carried(
             or not (isinstance(story, str) and isinstance(item.get("id"), str))
             or not isinstance(breakdown, dict)
             or published < cutoff
+            or published > now  # fresh items are capped at fetch time; same clamp here
             or item.get("source_id") not in live
             or "muted" in breakdown
             or item["id"] in read_ids
@@ -139,6 +141,7 @@ def build_view(
         previous,
         live={s.id for s in matching},
         cutoff=now - timedelta(hours=view.window_hours),
+        now=now,
         has_key=has_key,
         read_ids=times.keys(),
         stories={item["story_id"] for item in fresh},
