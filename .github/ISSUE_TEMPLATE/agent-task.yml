@@ -141,7 +141,9 @@ body:
     id: interfaces
     attributes:
       label: Interfaces touched
-      description: Contracts this uses or implements, named exactly. Any change to models.py / ports.py must be its own issue.
+      description: |
+        Contracts this uses or implements, named exactly. Any change to models.py / ports.py must be its own issue.
+        Also name each function, helper or component the tests will call, with its signature or props, so the test author doesn't choose one.
       placeholder: |
         Implements: `Extractor` protocol (ports.py)
         Uses: `ExtractionResult` (models.py)
@@ -164,7 +166,9 @@ body:
     id: verify
     attributes:
       label: How to verify
-      description: Commands to run and the expected results.
+      description: |
+        Commands to run and the expected results. Offline commands only (`make test`, `make lint`, `make client-test`,
+        `newsfeed extract --url` against a fixture), never `make run` or a live fetch. Name any `@pytest.mark.live` check as optional.
       value: |
         ```bash
         make lint
@@ -177,6 +181,9 @@ body:
     id: notes
     attributes:
       label: Notes / hints
-      description: Optional. Known gotchas, useful references, example inputs.
+      description: |
+        Optional. Known gotchas, useful references, example inputs. An issue that changes how the client looks
+        (layout, colour, type, spacing, icons, motion) gets the `needs-human` label and an
+        acceptance criterion requiring before and after screenshots at phone size, light and dark.
     validations:
       required: false

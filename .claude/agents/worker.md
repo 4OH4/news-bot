@@ -79,6 +79,8 @@ You may be given a chain of small dependent issues (each one depends on the one 
 
 If you're told this is a `needs-human` issue, prepare it as a complete PR, opened as a draft (Tier C), that the human approves by merging once it is marked ready. Put a "Decisions you approve by merging" section at the top of the PR body, with one line for each choice the issue didn't dictate.
 
+For a `needs-human` client issue that changes how the app looks, put phone-size before and after screenshots, light and dark, in the PR. `make client-e2e` wipes earlier screenshots (#295), so take the before shots first, from `main`, and keep them outside `client/`, then take the after shots.
+
 ## Report back
 
 Give the PR URL, the commit SHAs, the result of each verification command, and every judgement call you made.
