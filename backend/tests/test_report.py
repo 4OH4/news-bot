@@ -525,3 +525,22 @@ def test_report_ignores_a_backup_day_without_a_manifest() -> None:
     text = render_text(build_report(InMemoryRepository(), [], now=BACKUP_NOW, blobs=blobs))
 
     assert "Latest feedback backup: 2026-11-15" in text
+
+
+def test_report_command_shows_the_latest_backup_through_the_local_adapters(
+    data_dir: Path,
+) -> None:
+    from newsfeed.settings import load_settings
+    from newsfeed.wiring import open_storage
+
+    today = datetime.now(UTC).date()
+    repository, blobs = open_storage(load_settings())
+    write_backup(repository, blobs, day=today, run_id=None)
+    close = getattr(repository, "close", None)
+    if close is not None:
+        close()
+
+    result = runner.invoke(cli.app, ["report"])
+
+    assert result.exit_code == 0, result.output
+    assert f"Latest feedback backup: {today.isoformat()}" in result.output

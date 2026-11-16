@@ -450,7 +450,8 @@ backups.
 2. Check it without writing anything, against the live store:
 
    ```bash
-   NEWSFEED_STORAGE=gcp NEWSFEED_GCS_BUCKET=<project-id>-content \
+   NEWSFEED_STORAGE=gcp NEWSFEED_GCP_PROJECT=<project-id> \
+     NEWSFEED_GCS_BUCKET=<project-id>-content \
      uv run --project backend newsfeed restore-backup YYYY-MM-DD --dry-run
    ```
 
@@ -460,9 +461,13 @@ backups.
 3. Restore for real. Against Firestore the command refuses without `--yes`:
 
    ```bash
-   NEWSFEED_STORAGE=gcp NEWSFEED_GCS_BUCKET=<project-id>-content \
+   NEWSFEED_STORAGE=gcp NEWSFEED_GCP_PROJECT=<project-id> \
+     NEWSFEED_GCS_BUCKET=<project-id>-content \
      uv run --project backend newsfeed restore-backup YYYY-MM-DD --yes
    ```
+
+A `.env` file in the repo root can override these settings and point the
+command at another store, so check it has no `NEWSFEED_` lines first.
 
 Warning: restore saves each backed-up event over the stored record with the
 same id, so it replaces those records with the backup's copy. It never deletes

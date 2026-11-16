@@ -206,6 +206,12 @@ def restore_backup(repository: Repository, blobs: BlobStore, *, day: date, dry_r
     began = time.perf_counter()
     manifest = _read_manifest(blobs, day)
     loaded: list[tuple[_Collection, list[BaseModel]]] = []
+    for unknown in sorted(set(manifest.counts) - set(COLLECTIONS)):
+        # Written by a newer version of the code; nothing here can read it back.
+        log.warning(
+            "restore skips a collection this version doesn't know",
+            extra={"stage": "backup", "day": day.isoformat(), "collection": unknown},
+        )
     for collection in _COLLECTIONS:
         if collection.name not in manifest.counts:
             log.info(

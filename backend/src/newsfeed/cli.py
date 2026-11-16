@@ -336,9 +336,11 @@ def report(
     settings = load_settings()
     try:
         source_ids = [s.id for s in load_sources(settings.sources_path)]
-        repository, _ = open_storage(settings)
+        repository, blobs = open_storage(settings)
         try:
-            summary = build_run_report(repository, source_ids, run_id=run, since=_aware(since))
+            summary = build_run_report(
+                repository, source_ids, run_id=run, since=_aware(since), blobs=blobs
+            )
         finally:
             close = getattr(repository, "close", None)  # Firestore's client needs none
             if close is not None:

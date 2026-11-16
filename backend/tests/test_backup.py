@@ -26,6 +26,7 @@ from newsfeed.backup import (
     write_backup,
 )
 from newsfeed.models import Feedback, FeedbackEvent, RankingArm
+from tests.fakes import InMemoryBlobStore, InMemoryRepository
 
 DAY = date(2026, 11, 16)
 SECRET_ARTICLE_IDS = ("art-private-alpha", "art-private-beta", "art-private-gamma")
@@ -274,3 +275,21 @@ def test_cli_restore_into_firestore_needs_yes(
     assert confirmed.exit_code == 0, confirmed.output
     with SqliteRepository(target) as repo:
         assert len(repo.list_feedback()) == 3
+
+
+def test_restore_logs_collections_it_skips(caplog: pytest.LogCaptureFixture) -> None:
+    blobs = InMemoryBlobStore()
+    manifest = {
+        "day": DAY.isoformat(),
+        "run_id": None,
+        "written_at": "2026-11-16T09:00:00Z",
+        "counts": {"future": 2},
+    }
+    blobs.put(backup_key(DAY, "manifest.json"), json.dumps(manifest).encode(), "application/json")
+
+    with caplog.at_level(logging.INFO):
+        restore_backup(InMemoryRepository(), blobs, day=DAY, dry_run=False)
+
+    messages = [r.getMessage() for r in caplog.records]
+    assert any("doesn't know" in m for m in messages)  # in the manifest, not in the code
+    assert any("backup lacks" in m for m in messages)  # in the code, not in the manifest
