@@ -14,11 +14,12 @@ import re
 import statistics
 from collections import defaultdict
 from collections.abc import Sequence
-from datetime import UTC, datetime, timedelta
+from dataclasses import dataclass, field
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from newsfeed.extract.overrides import normalise_domain, url_domain
-from newsfeed.models import Article, ExtractionStatus, FeedbackEvent
+from newsfeed.models import Article, ExtractionStatus, Feedback, FeedbackEvent, RankingArm
 from newsfeed.ports import Repository
 
 _words = str.split  # field lists written as words, one line each
@@ -254,3 +255,169 @@ def render(rows: Sequence[dict[str, Any]], columns: Sequence[str], fmt: str) -> 
         return "  ".join(t.ljust(w) for t, w in zip(row, widths, strict=True)).rstrip()
 
     return "\n".join(pad(r) for r in table)
+
+
+# --- A/B results (ADR-0015) -------------------------------------------------------
+
+AB_COLUMNS = ["row", "rules", "personal", "share_personal", "ci_low", "ci_high", "p_value", "note"]
+
+
+@dataclass(frozen=True)
+class ArmCounts:
+    """Credited events per arm, the personalised share and how far it is from chance."""
+
+    rules: int
+    personal: int
+    share_personal: float | None
+    ci_low: float | None
+    ci_high: float | None
+    p_value: float | None
+
+
+@dataclass(frozen=True)
+class AbSummary:
+    """Everything ``newsfeed inspect ab`` reports; holds counts only, never article ids."""
+
+    opens: ArmCounts
+    reads: ArmCounts
+    likes: dict[RankingArm, int]
+    days: dict[date, tuple[int, int]] = field(default_factory=dict)  # day -> (rules, personal)
+    days_won: tuple[int, int] = (0, 0)  # (rules, personal)
+    opens_per_day: float = 0.0
+    projected: date | None = None
+    verdict: str = ""
+
+
+def binomial_p_value(k: int, n: int) -> float | None:
+    """Exact two-sided p-value of ``k`` successes in ``n`` fair trials (None when n is 0)."""
+    if n == 0:
+        return None
+    observed = math.comb(n, k)
+    # Two-sided: every outcome at most as likely as the observed one; the small
+    # tolerance keeps ties (k and n-k) together; integers avoid float overflow.
+    limit = observed * (10**9 + 1)
+    tail: int = sum(c for i in range(n + 1) if (c := math.comb(n, i)) * 10**9 <= limit)
+    return min(1.0, tail / (1 << n))
+
+
+def wilson_interval(k: int, n: int, z: float = 1.96) -> tuple[float, float] | None:
+    """Wilson 95% interval for a share of ``k`` in ``n`` (None when n is 0)."""
+    if n == 0:
+        return None
+    p = k / n
+    denom = 1 + z * z / n
+    centre = (p + z * z / (2 * n)) / denom
+    half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / denom
+    return max(0.0, centre - half), min(1.0, centre + half)
+
+
+def _arm_counts(rules: int, personal: int) -> ArmCounts:
+    n = rules + personal
+    interval = wilson_interval(personal, n)
+    return ArmCounts(
+        rules=rules,
+        personal=personal,
+        share_personal=personal / n if n else None,
+        ci_low=interval[0] if interval else None,
+        ci_high=interval[1] if interval else None,
+        p_value=binomial_p_value(personal, n),
+    )
+
+
+def _count_arms(arms: Sequence[RankingArm]) -> tuple[int, int]:
+    return arms.count(RankingArm.RULES), arms.count(RankingArm.PERSONAL)
+
+
+def ab_summary(
+    events: Sequence[Feedback],
+    *,
+    now: datetime,
+    since: datetime,
+    min_credited: int = 200,
+    min_days: int = 21,
+    read_seconds: float = 30,
+) -> AbSummary:
+    """Count credited opens and reads per arm and judge them against ADR-0015's stopping rule."""
+    open_seen: set[tuple[str, RankingArm]] = set()
+    read_seen: dict[str, RankingArm] = {}
+    like_seen: set[tuple[str, RankingArm]] = set()
+    open_arms: list[tuple[date, RankingArm]] = []
+    for e in sorted(events, key=lambda f: (f.created_at, f.id)):
+        if e.arm is None or e.created_at < since:
+            continue
+        if e.event is FeedbackEvent.OPEN and (e.article_id, e.arm) not in open_seen:
+            open_seen.add((e.article_id, e.arm))
+            open_arms.append((e.created_at.astimezone(UTC).date(), e.arm))
+        elif e.event is FeedbackEvent.READ and (e.value or 0) >= read_seconds:
+            read_seen.setdefault(e.article_id, e.arm)
+        elif e.event is FeedbackEvent.LIKE:
+            like_seen.add((e.article_id, e.arm))
+
+    opens = _arm_counts(*_count_arms([a for _, a in open_arms]))
+    reads = _arm_counts(*_count_arms(list(read_seen.values())))
+    likes = {arm: sum(1 for _, a in like_seen if a is arm) for arm in RankingArm}
+
+    per_day: dict[date, list[RankingArm]] = defaultdict(list)
+    for day, arm in open_arms:
+        per_day[day].append(arm)
+    days = {d: _count_arms(arms) for d, arms in sorted(per_day.items())}
+    days_won = (
+        sum(1 for r, p in days.values() if r > p),
+        sum(1 for r, p in days.values() if p > r),
+    )
+
+    total = opens.rules + opens.personal
+    rate = 0.0
+    elapsed = 0
+    projected: date | None = None
+    if days:
+        today = now.astimezone(UTC).date()
+        elapsed = max(1, (today - min(days)).days + 1)  # calendar days since first open
+        rate = total / elapsed
+        wait_opens = math.ceil(max(0, min_credited - total) / rate)
+        projected = today + timedelta(days=max(wait_opens, min_days - elapsed, 0))
+
+    if total < min_credited or elapsed < min_days:
+        verdict = (
+            f"collecting: {total} of {min_credited} credited opens, {elapsed} of {min_days} days"
+        )
+    elif opens.ci_low is not None and opens.ci_low > 0.5:
+        verdict = "personalised ahead"
+    elif opens.ci_high is not None and opens.ci_high < 0.5:
+        verdict = "rules ahead"
+    else:
+        verdict = "no clear difference"
+    return AbSummary(opens, reads, likes, days, days_won, rate, projected, verdict)
+
+
+def _ab_row(name: str, rules: Any = None, personal: Any = None, **rest: Any) -> dict[str, Any]:
+    return dict.fromkeys(AB_COLUMNS) | {"row": name, "rules": rules, "personal": personal} | rest
+
+
+def _counts_row(name: str, c: ArmCounts) -> dict[str, Any]:
+    return _ab_row(
+        name,
+        c.rules,
+        c.personal,
+        share_personal=c.share_personal,
+        ci_low=c.ci_low,
+        ci_high=c.ci_high,
+        p_value=c.p_value,
+    )
+
+
+def ab_rows(summary: AbSummary) -> list[dict[str, Any]]:
+    """The summary as table rows, one shape for the text, JSON lines and CSV outputs."""
+    projected = summary.projected.isoformat() if summary.projected else "unknown"
+    likes = summary.likes
+    rows = [
+        _counts_row("credited opens", summary.opens),
+        _counts_row("credited reads", summary.reads),
+        _ab_row("likes (not tested)", likes[RankingArm.RULES], likes[RankingArm.PERSONAL]),
+        _ab_row("days won", *summary.days_won),
+    ]
+    rows += [_ab_row(f"day {d.isoformat()}", r, p) for d, (r, p) in summary.days.items()]
+    rows.append(_ab_row("opens per day", note=f"{summary.opens_per_day:.1f}"))
+    rows.append(_ab_row("stopping rule met by", note=projected))
+    rows.append(_ab_row("verdict", note=summary.verdict))
+    return rows
