@@ -205,6 +205,10 @@ TEST_PATHS = (
     "client/*.test.*",
     "client/*.spec.*",
     "client/*__tests__/*",
+    # Playwright specs, plus the helpers and fixtures only they import.
+    "client/e2e/*",
+    # A Vitest set-up helper that sits beside the code it tests.
+    "client/*/test-env.*",
     "client/test/*",
     "client/tests/*",
 )
