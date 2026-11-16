@@ -71,20 +71,14 @@ function clickable(text: string): HTMLElement {
 }
 
 describe("/lab/preferences", () => {
-  it("opens on variant a with a switcher for a, b and c and no tab bar", async () => {
+  it("opens with no tab bar and the Sport control", async () => {
     await open("/lab/preferences");
     expect(root.querySelector('nav[aria-label="Sections"]')).toBeNull();
-    for (const v of ["a", "b", "c"]) {
-      const hit = [...root.querySelectorAll<HTMLElement>("a,button")].some((el) =>
-        new RegExp(`^(variant )?${v}\\b`, "i").test((el.textContent || el.getAttribute("aria-label") || "").trim()),
-      );
-      expect(hit, `switcher entry ${v}`).toBe(true);
-    }
     expect(group("Sport")).toBeDefined();
   });
 
-  it.each(["a", "b", "c"])("variant %s shows the Hide / Fewer / More note", async (v) => {
-    await open("/lab/preferences", `?v=${v}`);
+  it("shows the Hide / Fewer / More note", async () => {
+    await open("/lab/preferences");
     expect(root.textContent).toContain(NOTE);
   });
 
@@ -108,34 +102,6 @@ describe("/lab/preferences", () => {
     pick(fresh, "more");
     await settle();
     expect(selected(fresh)).toMatch(/more/i);
-  });
-
-  it("variant b: tapping BBC News opens a sheet; choosing More closes it and the row shows +", async () => {
-    await open("/lab/preferences", "?v=b");
-    clickable("BBC News").click();
-    await settle();
-    const sheet = root.querySelector<HTMLElement>('[role="dialog"]');
-    expect(sheet).not.toBeNull();
-    pick(sheet?.querySelector<HTMLElement>('[role="radiogroup"]') as HTMLElement, "more");
-    await settle();
-    expect(root.querySelector('[role="dialog"]')).toBeNull();
-    expect(clickable("BBC News").textContent).toContain("+");
-  });
-
-  it("variant c: UK set to Fewer leaves the sources beneath it on Show", async () => {
-    await open("/lab/preferences", "?v=c");
-    pick(group("UK"), "fewer");
-    await settle();
-    expect(selected(group("UK"))).toMatch(/fewer/i);
-    const regions = ["UK", "Europe", "US", "World"];
-    const sources = groups().filter((g) => !regions.includes(g.getAttribute("aria-label") ?? ""));
-    expect(sources.length).toBeGreaterThan(0);
-    for (const g of sources) {
-      const label = g.getAttribute("aria-label") ?? "";
-      if (label === "Everywhere") continue;
-      // Topic and source controls are untouched by the region change.
-      expect(selected(g), label).toMatch(/show/i);
-    }
   });
 
   it("?setup=1 shows the welcome and the starter set, and Start reading confirms", async () => {

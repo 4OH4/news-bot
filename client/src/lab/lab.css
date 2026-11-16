@@ -13,13 +13,6 @@
 .lab h4 { margin: 12px 0 2px; font-size: var(--fs-meta); color: var(--muted); text-transform: uppercase; }
 .lab button { font: inherit; color: inherit; }
 
-.lab-switch { display: flex; gap: 6px; position: sticky; top: 0; padding: 8px 0; background: var(--bg); z-index: 2; }
-.lab-switch button {
-  flex: 1; min-height: 44px; border: 1px solid var(--border); border-radius: 8px;
-  background: var(--surface); font-weight: 600; line-height: 1.1;
-}
-.lab-switch button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent); color: var(--bg); }
-.lab-switch small { display: block; font-weight: 400; font-size: 0.7rem; }
 .lab-banner { margin: 0; font-size: var(--fs-meta); color: var(--muted); }
 .lab-note { font-size: var(--fs-meta); color: var(--text-secondary); background: var(--surface); padding: 8px 10px; border-radius: 8px; }
 
@@ -44,25 +37,8 @@
 .lab-more, .lab-link {
   min-height: 44px; padding: 0 4px; border: 0; background: none; color: var(--link); cursor: pointer; text-align: left;
 }
-.lab-tabs { display: flex; border-bottom: 1px solid var(--divider); margin: 8px 0; }
-.lab-tabs button { flex: 1; min-height: 44px; border: 0; background: none; border-bottom: 3px solid transparent; }
-.lab-tabs button[aria-selected="true"] { border-bottom-color: var(--accent); font-weight: 600; }
-.lab-tap {
-  width: 100%; min-height: 48px; display: flex; align-items: center; justify-content: space-between;
-  border: 0; border-bottom: 1px solid var(--divider); background: none; text-align: left; cursor: pointer;
-}
-.lab-tap .lab-name { margin: 0; }
-.lab-state { width: 2rem; text-align: center; font-size: 1.1rem; color: var(--accent); }
-.lab-state.pref-hide { color: var(--muted); }
 
-.lab-backdrop { position: fixed; inset: 0; background: rgb(0 0 0 / 0.45); display: flex; align-items: flex-end; z-index: 5; }
-.lab-sheet {
-  width: 100%; max-width: 40rem; margin: 0 auto; box-sizing: border-box; padding: 16px;
-  background: var(--bg); border-radius: 16px 16px 0 0; border: 1px solid var(--border);
-}
-.lab-explain { font-size: var(--fs-meta); color: var(--text-secondary); }
 
-.lab-group-head h2 { margin-bottom: 6px; }
 .lab-foot { margin-top: 24px; border-top: 1px solid var(--divider); padding-top: 8px; }
 .lab-summary { font-weight: 600; margin: 4px 0; }
 .lab-start {
