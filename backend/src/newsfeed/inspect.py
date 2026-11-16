@@ -368,16 +368,18 @@ def ab_summary(
 
     total = opens.rules + opens.personal
     rate = 0.0
+    elapsed = 0
     projected: date | None = None
     if days:
         today = now.astimezone(UTC).date()
-        rate = total / ((today - min(days)).days + 1)  # calendar days since the first credited open
+        elapsed = max(1, (today - min(days)).days + 1)  # calendar days since first open
+        rate = total / elapsed
         wait_opens = math.ceil(max(0, min_credited - total) / rate)
-        projected = today + timedelta(days=max(wait_opens, min_days - len(days), 0))
+        projected = today + timedelta(days=max(wait_opens, min_days - elapsed, 0))
 
-    if total < min_credited or len(days) < min_days:
+    if total < min_credited or elapsed < min_days:
         verdict = (
-            f"collecting: {total} of {min_credited} credited opens, {len(days)} of {min_days} days"
+            f"collecting: {total} of {min_credited} credited opens, {elapsed} of {min_days} days"
         )
     elif opens.ci_low is not None and opens.ci_low > 0.5:
         verdict = "personalised ahead"

@@ -444,7 +444,7 @@ def inspect_feedback(
 
 @inspect_app.command("ab")
 def inspect_ab(
-    since: Annotated[str, typer.Option(help="Created at or after: 24h, 21d, a date")] = "21d",
+    since: Annotated[str, typer.Option(help="Created at or after: 24h, 21d, a date")] = "365d",
     fmt: FormatOption = "text",
 ) -> None:
     """Summarise the A/B check: credited opens and reads per arm and the stopping rule."""
