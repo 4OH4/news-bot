@@ -347,7 +347,11 @@ def test_an_article_the_owner_opened_or_read_gets_no_similarity_lift(
     repo.save_profile(
         preseeded_profile(built_ago=timedelta(hours=1), feedback_ago=timedelta(hours=2))
     )
-    seen, unseen = article("alpha", "seen"), article("alpha", "unseen")  # same vector, top raw
+    # Same vector, top raw. The unseen one is fetched too long before to share the seen one's
+    # story (#367), but published at the same time so the other factors match.
+    published = NOW - timedelta(hours=1)
+    seen = article("alpha", "seen", published_at=published)
+    unseen = article("alpha", "unseen", age=timedelta(hours=60), published_at=published)
     for a in (seen, unseen, article("beta", "1"), article("beta", "2")):
         repo.upsert_article(a)
     seconds = 60 if event is FeedbackEvent.READ else None
