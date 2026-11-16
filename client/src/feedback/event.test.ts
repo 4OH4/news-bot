@@ -7,7 +7,8 @@ const examples = JSON.parse(
   readFileSync(new URL("../../../docs/feedback.example.json", import.meta.url), "utf8"),
 ) as Record<string, unknown>[];
 
-const HEX32 = /^[0-9a-f]{32}$/;
+const OPTIONAL_KEYS = new Set(["view", "arm"]);
+const HEX32 =/^[0-9a-f]{32}$/;
 const ISO_MS = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
 afterEach(() => {
@@ -31,7 +32,9 @@ describe("buildEvent against docs/feedback.example.json", () => {
         value,
         new Date(String(ex.created_at)),
       );
-      expect(Object.keys(built).sort()).toEqual(Object.keys(ex).sort());
+      // view and arm are optional (#326); the client starts sending them in #327.
+      const required = Object.keys(ex).filter((key) => !OPTIONAL_KEYS.has(key));
+      expect(Object.keys(built).sort()).toEqual(required.sort());
       expect(String(ex.id)).toMatch(HEX32);
       expect(built.id).toMatch(HEX32);
       expect(built.article_id).toBe(ex.article_id);

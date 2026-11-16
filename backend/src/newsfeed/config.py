@@ -294,6 +294,9 @@ class ViewConfig(BaseModel):
     ``order``: ``newest`` (effective time, newest first) or ``score`` (as ``feed.json``).
     ``max_items``: the most items the view holds, and the read limit for a tagged view
     (ADR-0013). The upper bound caps what a typo costs: 1,000 extra reads a run.
+    ``ranking``: how the API orders a ``score`` view when serving it (#326): ``rules``
+    (stored score, with source diversity) or ``ab`` (rules and personal orders
+    interleaved for the A/B check, ADR-0015). Only a ``score`` view may set it.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -301,6 +304,13 @@ class ViewConfig(BaseModel):
     tags: tuple[str, ...] | None = Field(default=None, min_length=1)
     order: Literal["newest", "score"]
     max_items: int = Field(ge=1, le=1000)
+    ranking: Literal["ab", "rules"] = "rules"
+
+    @model_validator(mode="after")
+    def _ranking_needs_score(self) -> Self:
+        if "ranking" in self.model_fields_set and self.order != "score":
+            raise ValueError("ranking is allowed only with order: score")
+        return self
 
 
 class ViewsConfig(ConfigFile):
