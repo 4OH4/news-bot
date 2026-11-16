@@ -1,4 +1,4 @@
-"""Command-line entry point: ``newsfeed run|ingest|extract|rank|preview|report|serve|eval``."""
+"""Command-line entry point: ``newsfeed run``, single stages, ``backup`` and the tools."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ import typer
 from pydantic import ValidationError
 
 from newsfeed import inspect as q
+from newsfeed.backup import BackupError, backup_due, backup_key, restore_backup, write_backup
 from newsfeed.config import ConfigError, load_sources, load_url_params
 from newsfeed.eval.report import (
     build_report,
@@ -48,7 +49,7 @@ from newsfeed.pipeline import (
     inspect_url,
     run_pipeline,
 )
-from newsfeed.ports import Fetcher, Repository
+from newsfeed.ports import BlobStore, Fetcher, Repository
 from newsfeed.preview import PreviewDirError, generate_preview
 from newsfeed.rank.stage import DEFAULT_WINDOW_HOURS, load_rank_config
 from newsfeed.report import UnknownRunError, render_text
@@ -454,6 +455,71 @@ def inspect_ab(
         events = repository.list_feedback(since=since_at)
     summary = q.ab_summary(events, now=datetime.now(UTC), since=since_at)
     typer.echo(q.render(q.ab_rows(summary), q.AB_COLUMNS, fmt))
+
+
+@contextmanager
+def _storage(settings: Settings) -> Iterator[tuple[Repository, BlobStore]]:
+    """Open the repository and blob store, closing the repository afterwards."""
+    try:
+        repository, blobs = open_storage(settings)
+    except (ConfigError, ValidationError) as exc:
+        _fail(str(exc))
+    try:
+        yield repository, blobs
+    finally:
+        close = getattr(repository, "close", None)  # Firestore's client needs none
+        if close is not None:
+            close()
+
+
+@app.command()
+def backup(
+    day: Annotated[
+        datetime | None,
+        typer.Option(
+            "--day", formats=["%Y-%m-%d"], help="Date to file it under (default: today, UTC)."
+        ),
+    ] = None,
+    force: Annotated[
+        bool, typer.Option("--force", help="Replace that day's backup if it already has one.")
+    ] = False,
+) -> None:
+    """Back up every feedback event to backups/<day>/ in the blob store."""
+    target = day.date() if day is not None else datetime.now(UTC).date()
+    with _storage(load_settings()) as (repository, blobs):
+        # Replacing a good backup with one taken after a loss would lose it for good.
+        if not force and not backup_due(blobs, target):
+            _fail(f"{target.isoformat()} already has a backup; pass --force to replace it")
+        manifest = write_backup(repository, blobs, day=target, run_id=None)
+    counts = ", ".join(f"{name}={n}" for name, n in manifest.counts.items())
+    typer.echo(f"backed up {counts} to {backup_key(target, '')}")
+
+
+@app.command("restore-backup")
+def restore_backup_command(
+    day: Annotated[
+        datetime, typer.Argument(formats=["%Y-%m-%d"], metavar="YYYY-MM-DD", show_default=False)
+    ],
+    dry_run: Annotated[
+        bool, typer.Option("--dry-run", help="Read and check the backup; write nothing.")
+    ] = False,
+    yes: Annotated[
+        bool, typer.Option("--yes", help="Confirm a restore into the cloud store (Firestore).")
+    ] = False,
+) -> None:
+    """Save a day's backed-up feedback back into the store. Never deletes anything."""
+    settings = load_settings()
+    # NEWSFEED_STORAGE=gcp is what selects Firestore (newsfeed.storage), so it is the check.
+    if settings.storage == "gcp" and not dry_run and not yes:
+        _fail("this writes to the live Firestore store; run with --dry-run first, then --yes")
+    target = day.date()
+    with _storage(settings) as (repository, blobs):
+        try:
+            n = restore_backup(repository, blobs, day=target, dry_run=dry_run)
+        except BackupError as exc:
+            _fail(str(exc))
+    verb = "would restore" if dry_run else "restored"
+    typer.echo(f"{verb} {n} item(s) from {backup_key(target, '')}")
 
 
 embed_app = typer.Typer(help="The local embedding model (ADR-0014).", no_args_is_help=True)
