@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import random
 from datetime import timedelta
 from pathlib import Path
 
@@ -127,10 +128,17 @@ def test_two_separated_groups_give_ceil_n_over_15_centroids(tmp_path: Path) -> N
 
 
 def test_the_same_inputs_give_equal_profiles(tmp_path: Path) -> None:
-    vectors = group_vectors(20, 0) | group_vectors(20, 2)
+    # Diffuse vectors have many k-means optima, so an unseeded start lands on
+    # different ones; two well-separated groups would converge to one answer
+    # whatever the seed, and the test couldn't fail.
+    rng = random.Random(7)
+    vectors = {f"d{i:02d}": unit(*(rng.gauss(0, 1) for _ in range(4))) for i in range(40)}
     weights = {k: 1.0 for k in vectors}
 
-    assert build(weights, vectors, tmp_path) == build(weights, vectors, tmp_path)
+    first = build(weights, vectors, tmp_path)
+    assert len(first.centroids) == 3  # ceil(40 / 15)
+    assert build(weights, vectors, tmp_path) == first
+    assert build(weights, vectors, tmp_path) == first
 
 
 def test_a_dismissed_story_forms_the_negative_vector_not_a_centroid(tmp_path: Path) -> None:

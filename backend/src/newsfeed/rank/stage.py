@@ -13,6 +13,9 @@ before reading the window it rebuilds the profile from recent feedback when
 there is new feedback and the last build is old enough, and after every
 article is embedded it adds ``similarity`` and ``similarity_raw`` to the
 breakdown of each one with a current embedding. ``score`` stays the rule score.
+An article the owner has opened or read gets similarity 1.0 and an
+``already_read`` entry instead (#363): it is the closest to the profile by
+definition, and a lift would fill the personal order with stories already seen.
 The profile is the owner's personal history, so its logs carry counts only.
 
 Also with an ``Embedder``, the stage groups the window's embedded articles into
@@ -34,7 +37,15 @@ from pathlib import Path
 import lxml.html
 
 from newsfeed.logging import get_logger
-from newsfeed.models import DEFAULT_USER_ID, Article, PipelineStage, Profile, Source, article_id
+from newsfeed.models import (
+    DEFAULT_USER_ID,
+    Article,
+    FeedbackEvent,
+    PipelineStage,
+    Profile,
+    Source,
+    article_id,
+)
 from newsfeed.ports import Embedder, EmbeddingError
 from newsfeed.rank.cluster import ClusterInput, cluster_articles, coverage_factor
 from newsfeed.rank.embedding import embedding_text, needs_embedding, vector_problem
@@ -59,6 +70,9 @@ MAX_PROFILE_BACKFILL = 200
 """Feedback articles a profile rebuild embeds at most, so the history fills in over runs."""
 
 _STAGE = PipelineStage.RANK.value
+
+_SEEN_EVENTS = frozenset({FeedbackEvent.OPEN, FeedbackEvent.READ})
+"""Feedback that means the owner has already seen the article (#363)."""
 
 
 @dataclass(frozen=True)
@@ -210,6 +224,8 @@ def _rebuild_due(
     """True when there is no usable profile, or feedback newer than it, and the build is old.
 
     The age check comes first, so a run between rebuilds reads no feedback.
+    Event times are capped at ``now``, so a phone clock set ahead can't make
+    ``last_feedback_at`` a future time that later feedback never passes (#363).
     """
     if profile is None or profile.built_at is None:
         return True
@@ -220,7 +236,7 @@ def _rebuild_due(
     last = profile.last_feedback_at
     since = last or now - timedelta(days=config.profile.window_days)
     events = services.repository.list_feedback(since)
-    return any(last is None or f.created_at > last for f in events)
+    return any(last is None or min(f.created_at, now) > last for f in events)
 
 
 def _feedback_stories(
@@ -301,7 +317,7 @@ def _rebuild_profile(
         config=config,
         now=now,
         model=embedder.model,
-        last_feedback_at=max((f.created_at for f in events), default=None),
+        last_feedback_at=max((min(f.created_at, now) for f in events), default=None),
     )
     repo.save_profile(profile)
     log.info(
@@ -341,21 +357,37 @@ def _current_profile(
     return rebuilt, True
 
 
+def _seen_ids(services: Services, since: datetime) -> set[str]:
+    """Ids of articles the owner opened or read at or after ``since``."""
+    return {
+        f.article_id
+        for f in services.repository.list_feedback(since)
+        if f.user_id == DEFAULT_USER_ID and f.event in _SEEN_EVENTS
+    }
+
+
 def _similarity(
     ready: list[tuple[Article, dict[str, object], bool]],
     profile: Profile,
     model: str,
     config: PersonalisationConfig,
+    seen: Collection[str] = frozenset(),
 ) -> dict[str, tuple[float, float]]:
-    """Per article id in ``ready`` with an embedding from ``model``: (factor, raw)."""
+    """Per article id in ``ready`` with an embedding from ``model``: (factor, raw).
+
+    Articles in ``seen`` get factor 1.0 and are left out of the percentile
+    ranking, so they don't push unread articles down it.
+    """
     vectors: dict[str, list[float]] = {}
     for article, data, _ in ready:
         vector = data.get("embedding")
         if data.get("embedding_model") == model and isinstance(vector, list):
             vectors[article.id] = vector
     raw = similarity_scores(vectors, profile, config.similarity.negative_weight)
-    factors = similarity_factors(raw, config.similarity.beta)
-    return {k: (factors[k], raw[k]) for k in raw}
+    factors = similarity_factors(
+        {k: r for k, r in raw.items() if k not in seen}, config.similarity.beta
+    )
+    return {k: (factors.get(k, 1.0), raw[k]) for k in raw}
 
 
 def _cluster(
@@ -517,19 +549,32 @@ def rank_recent(
 
     # Similarity ranks each article among all of this run's, so it waits for every batch.
     similarity: dict[str, tuple[float, float]] = {}
+    seen: set[str] = set()
     if (
         embedder is not None
         and profile is not None
         and profile.centroids
         and profile.embedding_model == embedder.model
     ):
-        similarity = _similarity(ready, profile, embedder.model, personalisation)
+        try:
+            seen = _seen_ids(services, since)
+        except Exception as exc:
+            # Without the list, a seen article would get a lift; skip similarity instead.
+            errors += 1
+            log.warning(
+                "couldn't read feedback for already-read articles; ranking without similarity",
+                extra={"stage": _STAGE, "error_type": type(exc).__name__},
+            )
+        else:
+            similarity = _similarity(ready, profile, embedder.model, personalisation, seen)
     for article, data, new_vector in ready:
         breakdown = data["score_breakdown"]
         assert isinstance(breakdown, dict)
         if article.id in similarity:
             factor, raw = similarity[article.id]
             breakdown |= {"similarity": factor, "similarity_raw": raw}
+            if article.id in seen:
+                breakdown["already_read"] = 1.0
         try:
             services.repository.upsert_article(Article.model_validate(data))
         except Exception as exc:

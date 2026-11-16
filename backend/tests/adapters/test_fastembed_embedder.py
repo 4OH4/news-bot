@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import importlib.abc
+import importlib.machinery
+import importlib.util
 import math
 import os
+import sys
 import time
+import types
 from pathlib import Path
 
 import pytest
@@ -43,6 +48,51 @@ def test_an_empty_folder_fails_without_downloading(tmp_path: Path) -> None:
 
 def test_no_texts_need_no_model(tmp_path: Path) -> None:
     assert FastembedEmbedder(tmp_path / "absent").embed([]) == []
+
+
+class _ImportSpy(importlib.abc.MetaPathFinder, importlib.abc.Loader):
+    """Serves stand-ins for fastembed and onnxruntime, noting the telemetry switch at import."""
+
+    NAMES = ("fastembed", "onnxruntime")
+
+    def __init__(self) -> None:
+        self.switch_at_import: dict[str, str | None] = {}
+
+    def find_spec(
+        self, fullname: str, path: object = None, target: object = None
+    ) -> importlib.machinery.ModuleSpec | None:
+        if fullname not in self.NAMES:
+            return None
+        self.switch_at_import.setdefault(fullname, os.environ.get("ORT_DISABLE_TELEMETRY"))
+        return importlib.util.spec_from_loader(fullname, self)
+
+    def create_module(self, spec: importlib.machinery.ModuleSpec) -> None:
+        return None
+
+    def exec_module(self, module: types.ModuleType) -> None:
+        class TextEmbedding:
+            @staticmethod
+            def get_embedding_size(model_name: str) -> int:
+                return 384
+
+        module.TextEmbedding = TextEmbedding  # type: ignore[attr-defined]
+        module.disable_telemetry_events = lambda: None  # type: ignore[attr-defined]
+
+
+def test_dimensions_called_first_turns_telemetry_off_before_onnxruntime_loads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("ORT_DISABLE_TELEMETRY", raising=False)
+    for name in list(sys.modules):
+        if name.split(".")[0] in _ImportSpy.NAMES:
+            monkeypatch.delitem(sys.modules, name)
+    spy = _ImportSpy()
+    monkeypatch.setattr(sys, "meta_path", [spy, *sys.meta_path])
+
+    assert FastembedEmbedder(tmp_path).dimensions == 384
+
+    assert spy.switch_at_import  # the embedder did import one of them
+    assert set(spy.switch_at_import.values()) == {"1"}
 
 
 def test_wiring_builds_one_only_when_the_folder_is_set(tmp_path: Path) -> None:
