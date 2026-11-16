@@ -34,6 +34,7 @@ from typing import Annotated, Any, Self
 from pydantic import AfterValidator, BaseModel, BeforeValidator, ConfigDict, Field, model_validator
 
 __all__ = [
+    "DEFAULT_USER_ID",
     "Article",
     "ArticleExtraction",
     "ErrorType",
@@ -43,13 +44,17 @@ __all__ = [
     "Feedback",
     "FeedbackEvent",
     "FetchResult",
+    "FiniteVector",
+    "InterestCentroid",
     "LenientUtcDatetime",
     "PipelineStage",
     "Profile",
+    "RankingArm",
     "RunStats",
     "Source",
     "SourceState",
     "SourceType",
+    "UserId",
     "UtcDatetime",
     "VerifiedIdentity",
     "article_id",
@@ -128,6 +133,24 @@ unparseable values become None instead of failing validation.
 
 NonNegativeInt = Annotated[int, Field(ge=0)]
 NonNegativeFloat = Annotated[float, Field(ge=0)]
+
+FiniteVector = Annotated[list[Annotated[float, Field(allow_inf_nan=False)]], Field(min_length=1)]
+"""A non-empty list of finite floats, such as an embedding or a profile centroid.
+
+Adapters may store vectors as float32, so a value read back can differ from the
+one saved by about 1e-7 relative; compare vectors within a tolerance.
+"""
+
+DEFAULT_USER_ID = "owner"
+"""The user id of the single owner (ADR-0010). Never the owner's email address."""
+
+UserId = Annotated[str, Field(pattern=r"^[a-z0-9][a-z0-9_-]{0,63}$")]
+"""A user id: a lowercase slug of 1 to 64 characters, such as ``owner``.
+
+Profiles and feedback are keyed by it, so adding a user later means adding a
+key, not migrating data. An email address can't match the pattern, which keeps
+private addresses out of stored keys and logs.
+"""
 
 
 class _Model(BaseModel):
@@ -362,6 +385,17 @@ class Article(_Model):
         default_factory=dict, description="Named components of the score, for transparency."
     )
     cluster_id: str | None = None
+    embedding: FiniteVector | None = Field(
+        default=None,
+        description=(
+            "Unit-length vector placing the article by meaning, from the Embedder "
+            "named in embedding_model; None until embedded."
+        ),
+    )
+    embedding_model: str | None = Field(
+        default=None,
+        description="Embedder.model that produced embedding, e.g. 'BAAI/bge-small-en-v1.5'.",
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -379,6 +413,14 @@ class Article(_Model):
             )
         return self
 
+    @model_validator(mode="after")
+    def _embedding_needs_model(self) -> Self:
+        # Vectors from different models aren't comparable, so an embedding is
+        # useless without the name of the model that made it.
+        if self.embedding is not None and not self.embedding_model:
+            raise ValueError("embedding requires embedding_model")
+        return self
+
 
 # --- Feedback and profile ----------------------------------------------------
 
@@ -393,14 +435,36 @@ class FeedbackEvent(StrEnum):
     MUTE_SOURCE = "mute_source"
 
 
+class RankingArm(StrEnum):
+    """Which ordering placed a feed item, for the A/B check (ADR-0015)."""
+
+    RULES = "rules"
+    PERSONAL = "personal"
+
+
 class Feedback(_Model):
-    """One feedback event from the reader client."""
+    """One feedback event from the reader client.
+
+    ``user_id``, ``view`` and ``arm`` let the A/B check (ADR-0015) credit an
+    open or read to the ordering that showed the article. They default to the
+    owner and "unknown", so events stored before they existed still load.
+    """
 
     id: str = Field(default_factory=lambda: uuid.uuid4().hex)
     article_id: str
     event: FeedbackEvent
     value: float | None = Field(default=None, description="E.g. seconds read for 'read'.")
     created_at: UtcDatetime
+    user_id: UserId = Field(default=DEFAULT_USER_ID, description="Whose event this is.")
+    view: str | None = Field(
+        default=None,
+        pattern=r"^[a-z0-9-]{1,40}$",
+        description="View the article was opened from, e.g. 'feed'; None if unknown.",
+    )
+    arm: RankingArm | None = Field(
+        default=None,
+        description="A/B side that placed the article; None outside an A/B view or if unknown.",
+    )
 
 
 class VerifiedIdentity(_Model):
@@ -412,14 +476,50 @@ class VerifiedIdentity(_Model):
     email_verified: bool
 
 
-class Profile(_Model):
-    """The reader's learned interest profile: an empty placeholder until Phase 4.
+class InterestCentroid(_Model):
+    """One centre point of the reader's interests among article embeddings."""
 
-    Rule-based interests are configuration, not stored data: they live in
-    ``config/interests.yaml`` and load into ``newsfeed.rank.interests``
-    (CLAUDE.md, rule 5). The fields learned from feedback, such as embedding
-    centroids, are designed in Phase 4, when the profile starts to be stored.
+    vector: FiniteVector
+    weight: Annotated[float, Field(ge=0, allow_inf_nan=False)] = Field(
+        description="Total decayed signal weight of the events behind this centroid."
+    )
+    size: NonNegativeInt = Field(description="Number of feedback events behind this centroid.")
+
+
+class Profile(_Model):
+    """A reader's interest profile learned from feedback, keyed by ``user_id`` (ADR-0014).
+
+    Built by the rank stage from feedback and article embeddings, and
+    recreated from them at will, so it needs no backup. Rule-based interests
+    are configuration, not part of the profile: they live in
+    ``config/interests.yaml`` (CLAUDE.md, rule 5). All vectors (every centroid
+    and ``negative``) have the same length, that of ``embedding_model``.
     """
+
+    user_id: UserId = DEFAULT_USER_ID
+    embedding_model: str | None = Field(
+        default=None, description="Embedder.model the vectors come from; None for an empty profile."
+    )
+    centroids: list[InterestCentroid] = Field(
+        default_factory=list, description="Centres of positive interest, from reads, opens, likes."
+    )
+    negative: FiniteVector | None = Field(
+        default=None, description="Average of dismissed articles' embeddings; None if none."
+    )
+    built_at: UtcDatetime | None = Field(default=None, description="When the profile was built.")
+    events_used: NonNegativeInt = Field(default=0, description="Feedback events it was built from.")
+    last_feedback_at: UtcDatetime | None = Field(
+        default=None, description="created_at of the newest event used; None if none."
+    )
+
+    @model_validator(mode="after")
+    def _vectors_share_a_length(self) -> Self:
+        lengths = {len(c.vector) for c in self.centroids}
+        if self.negative is not None:
+            lengths.add(len(self.negative))
+        if len(lengths) > 1:
+            raise ValueError(f"profile vectors differ in length: {sorted(lengths)}")
+        return self
 
 
 # --- Run statistics ----------------------------------------------------------

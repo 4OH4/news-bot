@@ -243,6 +243,30 @@ def test_schema_rejects_a_muted_key_and_unknown_fields() -> None:
     assert list(VALIDATOR.iter_errors(feed))
 
 
+@pytest.mark.parametrize(
+    ("fields", "valid"),
+    [
+        ({"coverage": 2}, True),
+        ({"coverage": 5, "arm": "personal"}, True),
+        ({"arm": "rules"}, True),
+        ({"coverage": 1}, False),
+        ({"coverage": 2.5}, False),
+        ({"arm": "random"}, False),
+    ],
+)
+def test_schema_allows_optional_coverage_and_arm(fields: dict[str, Any], valid: bool) -> None:
+    # Additive under ADR-0006 (#320): schema_version stays 1.
+    feed = build([article("a")])
+    feed["items"][0].update(fields)
+    assert bool(list(VALIDATOR.iter_errors(feed))) is not valid
+
+
+def test_example_shows_coverage_and_arm() -> None:
+    items = json.loads(EXAMPLE_PATH.read_text())["items"]
+    assert any("coverage" in item for item in items)
+    assert any("arm" in item for item in items)
+
+
 # --- publish_feed -------------------------------------------------------------
 
 

@@ -18,6 +18,10 @@ Timestamps are stored as fixed-width ISO 8601 UTC text with microseconds
 (``2026-10-11T12:00:00.000000Z``), so string order is time order in ``ORDER BY``
 and range filters. Pydantic's own JSON form drops zero microseconds, which would
 make ``12:00:00Z`` sort after ``12:00:00.5Z``.
+
+``Article.embedding`` is a BLOB of packed little-endian float32
+(``adapters/vectors.py``), so it reads back rounded to float32. A ``Profile``
+is one row in ``profiles``, with its centroids as JSON text.
 """
 
 from __future__ import annotations
@@ -32,10 +36,12 @@ from pathlib import Path
 from types import TracebackType
 from typing import TYPE_CHECKING, Any, Self
 
+from newsfeed.adapters.vectors import pack_vector, unpack_vector
 from newsfeed.models import (
     Article,
     ExtractionStatus,
     Feedback,
+    Profile,
     RunStats,
     SourceState,
 )
@@ -122,6 +128,27 @@ _MIGRATIONS: tuple[tuple[str, ...], ...] = (
         "ALTER TABLE run_stats ADD COLUMN median_word_count_by_domain TEXT NOT NULL DEFAULT '{}'",
         "CREATE INDEX run_stats_started_at ON run_stats (started_at DESC, run_id)",
     ),
+    # 2 -> 3 (#320): article embeddings, the A/B fields on feedback and the
+    # interest profile. Existing rows load with no embedding and as the
+    # owner's feedback from an unknown view, matching the model defaults.
+    (
+        "ALTER TABLE articles ADD COLUMN embedding BLOB",
+        "ALTER TABLE articles ADD COLUMN embedding_model TEXT",
+        "ALTER TABLE feedback ADD COLUMN user_id TEXT NOT NULL DEFAULT 'owner'",
+        "ALTER TABLE feedback ADD COLUMN view TEXT",
+        "ALTER TABLE feedback ADD COLUMN arm TEXT",
+        """
+        CREATE TABLE profiles (
+            user_id TEXT PRIMARY KEY,
+            embedding_model TEXT,
+            centroids TEXT NOT NULL,
+            negative TEXT,
+            built_at TEXT,
+            events_used INTEGER NOT NULL,
+            last_feedback_at TEXT
+        )
+        """,
+    ),
 )
 
 SCHEMA_VERSION = len(_MIGRATIONS)
@@ -143,6 +170,8 @@ _ARTICLE_COLUMNS = (
     "score",
     "score_breakdown",
     "cluster_id",
+    "embedding",
+    "embedding_model",
 )
 _ARTICLE_JSON = frozenset({"extraction", "score_breakdown"})
 
@@ -156,7 +185,17 @@ _SOURCE_STATE_COLUMNS = (
     "last_error",
     "last_success_at",
 )
-_FEEDBACK_COLUMNS = ("id", "article_id", "event", "value", "created_at")
+_FEEDBACK_COLUMNS = ("id", "article_id", "event", "value", "created_at", "user_id", "view", "arm")
+_PROFILE_COLUMNS = (
+    "user_id",
+    "embedding_model",
+    "centroids",
+    "negative",
+    "built_at",
+    "events_used",
+    "last_feedback_at",
+)
+_PROFILE_JSON = frozenset({"centroids", "negative"})
 _RUN_STATS_COLUMNS = (
     "run_id",
     "started_at",
@@ -356,6 +395,7 @@ class SqliteRepository:
         row = _to_row(data, json_fields=_ARTICLE_JSON)
         row["published_at"] = _format_time(article.published_at)
         row["fetched_at"] = _format_time(article.fetched_at)
+        row["embedding"] = None if article.embedding is None else pack_vector(article.embedding)
         self._connection().execute(_upsert_sql("articles", _ARTICLE_COLUMNS), row)
 
     def get_article(self, article_id: str) -> Article | None:
@@ -411,7 +451,10 @@ class SqliteRepository:
 
     @staticmethod
     def _article(row: sqlite3.Row) -> Article:
-        return Article.model_validate(_from_row(row, json_fields=_ARTICLE_JSON))
+        data = _from_row(row, json_fields=_ARTICLE_JSON)
+        if data["embedding"] is not None:
+            data["embedding"] = unpack_vector(data["embedding"])
+        return Article.model_validate(data)
 
     # --- Source state --------------------------------------------------------
 
@@ -450,6 +493,26 @@ class SqliteRepository:
         sql += " ORDER BY created_at ASC, id ASC"
         rows = self._connection().execute(sql, params).fetchall()
         return [Feedback.model_validate(dict(row)) for row in rows]
+
+    # --- Profiles ------------------------------------------------------------
+
+    def get_profile(self, user_id: str) -> Profile | None:
+        """Return the profile saved for ``user_id``, or None."""
+        row = (
+            self._connection()
+            .execute("SELECT * FROM profiles WHERE user_id = ?", (user_id,))
+            .fetchone()
+        )
+        if row is None:
+            return None
+        return Profile.model_validate(_from_row(row, json_fields=_PROFILE_JSON))
+
+    def save_profile(self, profile: Profile) -> None:
+        """Insert or replace the profile for ``profile.user_id``."""
+        row = _to_row(profile.model_dump(mode="json"), json_fields=_PROFILE_JSON)
+        row["built_at"] = _format_time(profile.built_at)
+        row["last_feedback_at"] = _format_time(profile.last_feedback_at)
+        self._connection().execute(_upsert_sql("profiles", _PROFILE_COLUMNS), row)
 
     # --- Run stats -----------------------------------------------------------
 

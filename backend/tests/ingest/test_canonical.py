@@ -343,6 +343,16 @@ def test_with_canonical_url_rebuilds_article_with_new_id() -> None:
     )
 
 
+def test_with_canonical_url_keeps_the_embedding() -> None:
+    # Re-keying replaces the stored row, so it must carry the embedding (#320).
+    article = Article.model_validate(
+        {**make_article().model_dump(), "embedding": [0.6, 0.8], "embedding_model": "m-1"}
+    )
+    updated = with_canonical_url(article, normalise_url(article.url))
+    assert updated.id != article.id
+    assert (updated.embedding, updated.embedding_model) == ([0.6, 0.8], "m-1")
+
+
 def test_with_canonical_url_returns_same_article_when_unchanged() -> None:
     article = make_article("https://example.com/news/story")
     assert with_canonical_url(article, article.canonical_url) is article

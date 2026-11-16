@@ -125,13 +125,18 @@ Article      id (hash of canonical_url), canonical_url, url, source_id, title,
              author, published_at, fetched_at, summary, lead_image,
              extraction: {status, method, error, error_type, word_count,
                           attempts, last_attempt_at, declared_canonical},
-             content_ref (blob path), score, score_breakdown, cluster_id
+             content_ref (blob path), score, score_breakdown, cluster_id,
+             embedding (384 floats, stored as float32), embedding_model
 Feedback     id, article_id, event (open|read|like|dismiss|mute_source),
              value (e.g. read seconds; 1 or 0 for like, dismiss and
-             mute_source, where 0 retracts), created_at
-Profile      empty placeholder; learned fields such as embedding centroids
-             are designed in Phase 4 (interest rules are config, in
-             config/interests.yaml, not part of the profile)
+             mute_source, where 0 retracts), created_at, user_id
+             (default "owner"), view (e.g. feed), arm (rules|personal,
+             the A/B side that showed the article; ADR-0015)
+Profile      user_id (default "owner"), embedding_model, centroids
+             [{vector, weight, size}], negative (from dismissals),
+             built_at, events_used, last_feedback_at; built from
+             feedback (ADR-0014). Interest rules are config, in
+             config/interests.yaml, not part of the profile
 SourceState  source_id, etag, last_modified, last_fetched_at, last_status,
              consecutive_failures, last_error, last_success_at
 RunStats     run_id, started_at, finished_at, counts per stage,
@@ -344,4 +349,4 @@ Once 6 and 7 are merged, issues 8–10, 12 and 13 can run in parallel. 11, 14, 1
 | **Decided:** PWA framework | Preact, TypeScript, Vite and `vite-plugin-pwa`, served by the Cloud Run service ([ADR-0009](docs/adr/0009-reader-client-stack.md)); client access through IAP ([ADR-0010](docs/adr/0010-client-access-and-feedback-identity.md)) |
 | **Decided:** Terraform vs scripted gcloud | Terraform, after a one-off `gcloud` bootstrap of the project and state bucket ([ADR-0004](docs/adr/0004-infrastructure-as-code.md)); agents apply changes inside a limited development scope, and production is out of scope for now ([ADR-0007](docs/adr/0007-agent-infrastructure-scope.md)) |
 | **Decided:** content retention period | Metadata and run stats kept indefinitely; article content deleted after 30 days by a Cloud Storage lifecycle rule, then shown as headline and link ([ADR-0005](docs/adr/0005-content-retention.md)) |
-| **Open:** embedding provider (Vertex AI vs local) | Decide in Phase 4 based on cost and quality |
+| **Decided:** embedding provider (Vertex AI vs local) | Local: `BAAI/bge-small-en-v1.5` through `fastembed` on the job's CPU, behind the `Embedder` port; no per-call bill and no third party sees the owner's reading history ([ADR-0014](docs/adr/0014-personal-ranking.md)) |

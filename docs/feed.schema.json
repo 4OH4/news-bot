@@ -145,6 +145,16 @@
             { "type": "string", "pattern": "^articles/[0-9a-f]{16}\\.html$" },
             { "type": "null" }
           ]
+        },
+        "coverage": {
+          "description": "Optional: number of distinct sources covering this story (Phase 4 clustering, ADR-0014); absent when one.",
+          "type": "integer",
+          "minimum": 2
+        },
+        "arm": {
+          "description": "Optional: which side of the A/B check placed this item (ADR-0015); present only in an A/B view. The client sends it back with feedback on the item.",
+          "type": "string",
+          "enum": ["rules", "personal"]
         }
       },
       "allOf": [

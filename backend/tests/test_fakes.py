@@ -480,3 +480,25 @@ def test_fake_token_verifier_rejects_unknown_token() -> None:
         verifier.verify("other-token")
     with pytest.raises(TokenRejectedError):
         verifier.verify("")
+
+
+def test_fake_embedder_gives_deterministic_unit_float32_vectors() -> None:
+    import math
+    import struct
+
+    from newsfeed.ports import Embedder
+    from tests.fakes import FakeEmbedder
+
+    embedder = FakeEmbedder(dimensions=8)
+    assert isinstance(embedder, Embedder)
+    assert embedder.dimensions == 8
+    assert isinstance(embedder.model, str) and embedder.model
+    first, again, other = embedder.embed(["Invented story", "Invented story", "Another one"])
+    assert first == again
+    assert first != other
+    for vector in (first, other):
+        assert len(vector) == 8
+        assert math.isclose(math.sqrt(math.fsum(v * v for v in vector)), 1.0, abs_tol=1e-9)
+        assert list(struct.unpack("<8f", struct.pack("<8f", *vector))) == vector
+    assert embedder.calls == [["Invented story", "Invented story", "Another one"]]
+    assert FakeEmbedder(dimensions=8).embed(["Invented story"]) == [first]
