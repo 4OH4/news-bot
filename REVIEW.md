@@ -70,6 +70,7 @@ Failure patterns taken from real defects in this repo. Test authors and workers 
 - A flaky-test fix must first show the failure it fixes (a reproduction or a captured failing run) before it claims a cause.
 - A test of a pin that a bot bumps (Dependabot) must not hard-code the version, or every bump fails it; check the shape or that two places agree.
 - In the client every screen is a full page load, so a component's unmount cleanup never runs when the owner leaves. Work that must survive leaving (a reading-time event, a feedback write) must finish before navigating, be handed to the next page by a synchronous `localStorage` write, or sent by `navigator.sendBeacon` or a `keepalive` fetch, all of which survive the page closing; an IndexedDB write or a plain `fetch` started on `pagehide` may not finish. Test it by navigating away in Playwright, not by unmounting. Instances: PR #248, PR #251.
+- A Playwright locator by role (`getByRole`) leaves out elements with `aria-hidden`, so `toBeHidden()` on it passes whether or not the element shows, and the test cannot fail. Check the hidden state with a CSS or test-id locator, and confirm the test fails when the element is forced visible. Instance: PR #319.
 
 ## Workflows and exemptions
 
