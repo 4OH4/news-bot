@@ -35,6 +35,7 @@ runner = CliRunner()
 REPO = Path(__file__).parents[3]
 DOMAINS = {
     "bbc-news": "news.example.com",
+    "guardian-news": "paper.example.com",
     "aeon": "essays.example.org",
     "techblog": "blog.example.net",
     "off-news": "off.example.com",
@@ -46,6 +47,10 @@ sources:
   - id: bbc-news
     type: rss
     url: https://news.example.com/rss
+    tags: [news]
+  - id: guardian-news
+    type: rss
+    url: https://paper.example.com/rss
     tags: [news]
   - id: aeon
     type: rss
@@ -117,6 +122,7 @@ def article(
     score: float | None = 1.0,
     status: ExtractionStatus = ExtractionStatus.OK,
     muted: bool = False,
+    cluster_id: str | None = None,
 ) -> Article:
     url = f"https://{DOMAINS[source_id]}/{name}"
     at = now() - timedelta(hours=age_hours)
@@ -134,6 +140,7 @@ def article(
             "score": 0.0 if muted else score,
             "score_breakdown": breakdown,
             "extraction": {"status": status, "word_count": 900},
+            "cluster_id": cluster_id,
         }
     )
 
@@ -390,3 +397,37 @@ def test_views_come_from_the_views_config(env: Env) -> None:
 
     assert ids(view(env, "tech")) == [tech.id]
     assert not env.blobs.exists(env.blobs.ref_for("views/news.json"))
+
+
+# --- One item per story cluster (#325) ------------------------------------------------
+
+
+def test_a_cluster_is_one_item_with_coverage_in_feed_json_and_each_view(env: Env) -> None:
+    # The best-scored row is the oldest, so the News view must place it by its own time.
+    bbc, paper, tech = seed(
+        env,
+        [
+            article("bbc-news", "story-b", age_hours=1, score=2.0, cluster_id="c1"),
+            article("guardian-news", "story-g", age_hours=4, score=3.5, cluster_id="c1"),
+            article("techblog", "story-t", age_hours=3, score=1.0, cluster_id="c1"),
+        ],
+    )
+    (solo,) = seed(env, [article("bbc-news", "solo", age_hours=2, score=0.5)])
+
+    publish()
+
+    feed_items = by_id(read(env, "feed.json"))
+    assert set(feed_items) == {paper.id, solo.id}
+    assert feed_items[paper.id]["coverage"] == 3
+    assert "coverage" not in feed_items[solo.id]
+    assert by_id(view(env, "feed"))[paper.id]["coverage"] == 3
+    assert not {bbc.id, tech.id} & set(ids(view(env, "feed")))
+    # The News view holds only news sources, so it counts two sources, and the shown
+    # row sits at its own (older) time, after the unclustered article.
+    news = view(env, "news")
+    assert ids(news) == [solo.id, paper.id]
+    assert by_id(news)[paper.id]["coverage"] == 2
+    schema = json.loads((REPO / "docs" / "feed.schema.json").read_text())
+    Draft202012Validator(schema, format_checker=Draft202012Validator.FORMAT_CHECKER).validate(
+        read(env, "feed.json")
+    )
