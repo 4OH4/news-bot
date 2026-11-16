@@ -22,12 +22,13 @@ from newsfeed.ingest.google_news import GoogleNewsIngester
 from newsfeed.ingest.hn import HackerNewsIngester
 from newsfeed.ingest.rss import RssIngester
 from newsfeed.models import SourceType
-from newsfeed.ports import BlobStore, Extractor, Fetcher, Repository, SourceIngester
+from newsfeed.ports import BlobStore, Embedder, Extractor, Fetcher, Repository, SourceIngester
 from newsfeed.settings import Settings
 from newsfeed.storage import open_storage
 
 __all__ = [
     "Services",
+    "build_embedder",
     "build_extractor",
     "build_ingesters",
     "open_fetcher",
@@ -50,6 +51,7 @@ class Services:
     dedupe_window_days: int = 14
     retry: RetryPolicy = field(default_factory=RetryPolicy)
     views: ViewsConfig = field(default_factory=ViewsConfig)
+    embedder: Embedder | None = None
 
 
 def build_ingesters() -> dict[SourceType, SourceIngester]:
@@ -69,6 +71,18 @@ def build_extractor(settings: Settings) -> Extractor:
         [TrafilaturaExtractor(), ReadabilityExtractor(), Newspaper4kExtractor()],
         load_extraction_config(settings.extraction_path),
     )
+
+
+def build_embedder(settings: Settings) -> Embedder | None:
+    """The local embedding model, or None when ``embed_model_dir`` is unset.
+
+    The model loads on first use, so commands that never embed don't pay for it.
+    """
+    if settings.embed_model_dir is None:
+        return None
+    from newsfeed.adapters.fastembed_embedder import FastembedEmbedder
+
+    return FastembedEmbedder(settings.embed_model_dir)
 
 
 @contextmanager
@@ -96,6 +110,7 @@ def open_services(settings: Settings) -> Iterator[Services]:
                 dedupe_window_days=settings.dedupe_window_days,
                 retry=settings.retry_policy,
                 views=load_views(views) if views.is_file() else ViewsConfig(),
+                embedder=build_embedder(settings),
             )
     finally:
         close = getattr(repository, "close", None)  # Firestore's client needs none

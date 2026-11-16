@@ -98,6 +98,13 @@ class Settings(BaseSettings):
     client_dir: Path | None = Field(
         default=None, description="The built client the API serves; none when unset."
     )
+    embed_model_dir: Path | None = Field(
+        default=None,
+        description=(
+            "Folder holding the embedding model (``newsfeed embed download``); embeddings "
+            "are off when unset."
+        ),
+    )
     api_port: int = Field(
         default=8080,
         ge=1,
@@ -106,9 +113,9 @@ class Settings(BaseSettings):
         description="Port the API listens on.",
     )
 
-    @field_validator("client_dir", mode="before")
+    @field_validator("client_dir", "embed_model_dir", mode="before")
     @classmethod
-    def _blank_client_dir_is_unset(cls, value: object) -> object:
+    def _blank_dir_is_unset(cls, value: object) -> object:
         # An empty NEWSFEED_CLIENT_DIR= would otherwise become Path("."), serving the
         # working directory and its .env (#230).
         if isinstance(value, str) and not value.strip():

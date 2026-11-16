@@ -46,6 +46,14 @@ from newsfeed.report import build_report
 from newsfeed.wiring import Services, build_ingesters
 from tests.fakes import FakeExtractor, FakeFetcher, FakeResponse, FakeSourceIngester
 
+
+def _warnings(records: list[logging.LogRecord]) -> list[logging.LogRecord]:
+    """Warnings outside the rank stage, which here warns once that embeddings are off (#321)."""
+    return [
+        r for r in records if r.levelno >= logging.WARNING and getattr(r, "stage", None) != "rank"
+    ]
+
+
 FIXTURES = Path(__file__).parent / "fixtures"
 FEED_URL = "https://news.example.com/feed.xml"
 BRIDGE_URL = "https://news.example.com/2026/10/bridge?utm_source=rss"
@@ -222,7 +230,7 @@ def test_failing_article_is_recorded_logged_and_counted(
     assert missing.extraction.error is not None
     assert "404" in missing.extraction.error
     assert stats.error_count == 1
-    warnings = [r for r in log_records if r.levelno == logging.WARNING]
+    warnings = _warnings(log_records)
     assert len(warnings) == 1
     record = warnings[0]
     assert record.stage == "extract"  # type: ignore[attr-defined]
@@ -299,7 +307,7 @@ def test_failing_source_is_logged_counted_and_does_not_stop_others(
         1,
         "ValueError: feed is broken",
     )
-    (record,) = [r for r in log_records if r.levelno == logging.WARNING]
+    (record,) = _warnings(log_records)
     assert record.stage == "ingest"  # type: ignore[attr-defined]
     assert record.source_id == "bad"  # type: ignore[attr-defined]
     assert record.url == "https://bad.example.com/feed"  # type: ignore[attr-defined]
@@ -330,7 +338,7 @@ def test_unusable_entry_url_is_logged_and_counted(
 
     assert stats.error_count == 1
     assert repository.list_articles() == []
-    (record,) = [r for r in log_records if r.levelno == logging.WARNING]
+    (record,) = _warnings(log_records)
     assert (record.stage, record.source_id, record.url) == ("ingest", "s", "/relative")  # type: ignore[attr-defined]
     assert record.error_type == "ValueError"  # type: ignore[attr-defined]
 
@@ -350,7 +358,7 @@ def test_extractor_reported_failure_is_logged_and_counted(
     assert stored is not None
     assert stored.extraction.status is ExtractionStatus.FAILED
     assert stats.error_count == 1
-    (record,) = [r for r in log_records if r.levelno == logging.WARNING]
+    (record,) = _warnings(log_records)
     assert record.error == "no main content found"  # type: ignore[attr-defined]
     assert (record.stage, record.url) == ("extract", article.url)  # type: ignore[attr-defined]
 
@@ -1129,7 +1137,7 @@ def test_payment_required_and_paywall_domain_403_are_stored_paywalled(
     assert counted is ExtractionStatus.PAYWALLED
     # Respecting a paywall is not an error (rule 6).
     assert errors == 0
-    assert not [r for r in log_records if r.levelno >= logging.WARNING]
+    assert not _warnings(log_records)
     (finished,) = [r for r in log_records if r.getMessage() == "extraction finished"]
     assert (finished.status, finished.error) == ("paywalled", reason)  # type: ignore[attr-defined]
 

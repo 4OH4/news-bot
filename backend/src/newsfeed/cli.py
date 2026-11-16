@@ -442,6 +442,60 @@ def inspect_feedback(
         typer.echo(q.render(q.group_feedback(rows, group_by), [group_by, "count"], fmt))
 
 
+embed_app = typer.Typer(help="The local embedding model (ADR-0014).", no_args_is_help=True)
+app.add_typer(embed_app, name="embed")
+
+
+@embed_app.command("download")
+def embed_download(
+    model_dir: Annotated[
+        Path | None,
+        typer.Option(help="Where to put it. Default: NEWSFEED_EMBED_MODEL_DIR, else data/models."),
+    ] = None,
+) -> None:
+    """Fetch the embedding model once from the model hub into a local folder.
+
+    A dependency fetch, like ``uv sync``: it doesn't touch news sites, so it
+    doesn't go through the polite fetcher.
+    """
+    from newsfeed.adapters.fastembed_embedder import DEFAULT_MODEL, download_model
+
+    settings = load_settings()
+    target = model_dir or settings.embed_model_dir or settings.data_dir / "models"
+    revision = download_model(target, DEFAULT_MODEL)
+    typer.echo(f"downloaded {DEFAULT_MODEL} (revision {revision or 'unknown'}) to {target}")
+    if settings.embed_model_dir is None or settings.embed_model_dir != target:
+        typer.echo(f"to use it, set NEWSFEED_EMBED_MODEL_DIR={target.resolve()}")
+
+
+@embed_app.command("backfill")
+def embed_backfill(
+    since: Annotated[str, typer.Option(help="Feedback at or after: 180d, 24h, a date")] = "180d",
+    dry_run: Annotated[bool, typer.Option(help="Count what would be embedded; write nothing.")] = (
+        False
+    ),
+) -> None:
+    """Embed the stored articles that past feedback points at, where they lack one.
+
+    Prints counts only: which articles the owner read is private.
+    """
+    from newsfeed.rank.stage import backfill_embeddings
+
+    try:
+        since_at = q.parse_since(since)
+    except q.InspectError as exc:
+        raise typer.BadParameter(str(exc), param_hint="--since") from exc
+    settings = load_settings()
+    with open_services(settings) as services:
+        if services.embedder is None:
+            _fail("NEWSFEED_EMBED_MODEL_DIR is not set; run `newsfeed embed download` first")
+        summary = backfill_embeddings(services, services.embedder, since=since_at, dry_run=dry_run)
+    label = "would embed" if dry_run else "embedded"
+    counts = summary.counts()
+    counts[label] = counts.pop("embedded")
+    typer.echo(", ".join(f"{k}={v}" for k, v in counts.items()))
+
+
 @app.command()
 def serve() -> None:
     """Serve the feed, articles and client to the owner only (behind IAP in the cloud)."""
