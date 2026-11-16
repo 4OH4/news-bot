@@ -1,0 +1,25 @@
+# How the rank stage learns the owner's interests from feedback (#323, ADR-0014).
+#
+# The profile is a few centre points among the embeddings of the stories the
+# owner reads. Each article in the rank window gets a similarity factor of 1 or
+# more; the personalised order multiplies the rule score by it. The rule score
+# itself is unchanged. These values match the code's defaults.
+
+signals:            # weight of one event, before time decay
+  read: 1.0         # times min(seconds / read_full_seconds, 1)
+  read_full_seconds: 120
+  open: 0.3
+  like: 2.0
+  dismiss: -1.0     # goes to the negative vector
+
+profile:
+  window_days: 180
+  half_life_days: 45
+  max_centroids: 4
+  events_per_centroid: 15
+  min_events: 10    # fewer positive stories than this: no profile
+  rebuild_min_hours: 6
+
+similarity:
+  beta: 2.0         # top article's factor is 1 + beta
+  negative_weight: 0.5
