@@ -36,11 +36,14 @@ def _disable_telemetry() -> None:
     """Switch off library telemetry before ``fastembed`` or ``onnxruntime`` load.
 
     The design keeps what the owner reads from third parties (ADR-0014). The
-    Hugging Face client and onnxruntime each report usage by default; both honour
-    these switches. Variables the operator set are left alone. Even with the
-    onnxruntime call, its native library still writes a local device-id file
-    under ``~/.cache/Microsoft``; nothing is sent from it in the image (#359).
+    Hugging Face client reports usage by default, and onnxruntime's native
+    library (``onnxruntime_pybind11_state``) uploads device details (CPU, OS,
+    memory, a device id) to a Microsoft collector about 9 s after the model
+    loads, then hourly (#359). ``ORT_DISABLE_TELEMETRY`` is the switch that
+    stops it; it is read when onnxruntime is imported, so it is set first.
+    Variables the operator set are left alone.
     """
+    os.environ.setdefault("ORT_DISABLE_TELEMETRY", "1")
     os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
     os.environ.setdefault("DO_NOT_TRACK", "1")
     try:

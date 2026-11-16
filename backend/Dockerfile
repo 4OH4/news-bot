@@ -32,9 +32,13 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # and it has no ADD or secret.
 FROM python-base AS model
 COPY --from=uv /uv /bin/uv
+# Telemetry off here too (#359); the hub stays reachable, as the download needs it.
 ENV UV_LINK_MODE=copy \
     UV_PYTHON_DOWNLOADS=0 \
-    UV_PROJECT_ENVIRONMENT=/app/.venv
+    UV_PROJECT_ENVIRONMENT=/app/.venv \
+    ORT_DISABLE_TELEMETRY=1 \
+    HF_HUB_DISABLE_TELEMETRY=1 \
+    DO_NOT_TRACK=1
 WORKDIR /build
 COPY backend/pyproject.toml backend/uv.lock backend/.python-version ./
 RUN --mount=type=cache,target=/root/.cache/uv \
@@ -78,6 +82,7 @@ ENV NEWSFEED_EMBED_MODEL_DIR=/app/models \
     HF_HUB_OFFLINE=1 \
     HF_HUB_DISABLE_TELEMETRY=1 \
     DO_NOT_TRACK=1 \
+    ORT_DISABLE_TELEMETRY=1 \
     PATH=/app/.venv/bin:$PATH \
     PYTHONUNBUFFERED=1 \
     NEWSFEED_CONFIG_DIR=/app/config \
