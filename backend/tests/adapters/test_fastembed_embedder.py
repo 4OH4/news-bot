@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import math
 import os
+import sys
 import time
+import types
 from pathlib import Path
 
 import pytest
@@ -39,6 +41,44 @@ def test_an_empty_folder_fails_without_downloading(tmp_path: Path) -> None:
         FastembedEmbedder(tmp_path).embed(["text"])
 
     assert list(tmp_path.glob("**/*.onnx")) == []
+
+
+def test_loading_turns_telemetry_off_first(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+    fake = types.ModuleType("onnxruntime")
+    fake.disable_telemetry_events = lambda: calls.append("disabled")  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "onnxruntime", fake)
+    monkeypatch.delenv("HF_HUB_DISABLE_TELEMETRY", raising=False)
+    monkeypatch.delenv("DO_NOT_TRACK", raising=False)
+
+    with pytest.raises(EmbeddingError):  # no model in the folder; the load was attempted
+        FastembedEmbedder(tmp_path).embed(["text"])
+
+    assert calls == ["disabled"]
+    assert os.environ["HF_HUB_DISABLE_TELEMETRY"] == "1"
+    assert os.environ["DO_NOT_TRACK"] == "1"
+
+
+def test_telemetry_settings_the_operator_chose_are_kept(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DO_NOT_TRACK", "0")
+    monkeypatch.setitem(sys.modules, "onnxruntime", types.ModuleType("onnxruntime"))
+
+    with pytest.raises(EmbeddingError):
+        FastembedEmbedder(tmp_path).embed(["text"])
+
+    assert os.environ["DO_NOT_TRACK"] == "0"
+
+
+def test_the_image_sets_telemetry_off_and_the_hub_offline_at_run_time() -> None:
+    dockerfile = (Path(__file__).parents[3] / "backend" / "Dockerfile").read_text("utf-8")
+    base = dockerfile.split("FROM python-base AS base")[1].split("\nFROM ")[0]
+    model = dockerfile.split("FROM python-base AS model")[1].split("\nFROM ")[0]
+
+    for setting in ("HF_HUB_OFFLINE=1", "HF_HUB_DISABLE_TELEMETRY=1", "DO_NOT_TRACK=1"):
+        assert setting in base
+    assert "HF_HUB_OFFLINE" not in model  # the build-time download needs the hub
 
 
 def test_no_texts_need_no_model(tmp_path: Path) -> None:

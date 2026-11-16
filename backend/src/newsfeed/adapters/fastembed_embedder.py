@@ -12,6 +12,7 @@ commands that never embed don't pay for the import.
 from __future__ import annotations
 
 import math
+import os
 import threading
 from collections.abc import Sequence
 from pathlib import Path
@@ -29,6 +30,26 @@ log = get_logger(__name__)
 
 DEFAULT_MODEL = "BAAI/bge-small-en-v1.5"
 """MIT licence, 384 dimensions (ADR-0014). fastembed serves Qdrant's ONNX conversion."""
+
+
+def _disable_telemetry() -> None:
+    """Switch off library telemetry before ``fastembed`` or ``onnxruntime`` load.
+
+    The design keeps what the owner reads from third parties (ADR-0014). The
+    Hugging Face client and onnxruntime each report usage by default; both honour
+    these switches. Variables the operator set are left alone. Even with the
+    onnxruntime call, its native library still writes a local device-id file
+    under ``~/.cache/Microsoft``; nothing is sent from it in the image (#359).
+    """
+    os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
+    os.environ.setdefault("DO_NOT_TRACK", "1")
+    try:
+        import onnxruntime  # type: ignore[import-untyped]  # ships no stubs
+    except ImportError:  # fastembed's own import reports the real problem
+        return
+    disable = getattr(onnxruntime, "disable_telemetry_events", None)
+    if disable is not None:
+        disable()
 
 
 class FastembedEmbedder:
@@ -77,6 +98,7 @@ class FastembedEmbedder:
         if not self._model_dir.is_dir():
             # Checked first: fastembed would create the folder and then fail less clearly.
             raise EmbeddingError(f"model folder {self._model_dir} doesn't exist; {hint}")
+        _disable_telemetry()
         from fastembed import TextEmbedding
 
         try:
@@ -123,6 +145,7 @@ def download_model(model_dir: Path, model_name: str = DEFAULT_MODEL) -> str | No
     the revision downloaded is returned (the snapshot folder name) for the record,
     or None if it can't be found.
     """
+    _disable_telemetry()
     from fastembed import TextEmbedding
 
     model_dir.mkdir(parents=True, exist_ok=True)

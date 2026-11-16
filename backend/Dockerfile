@@ -72,7 +72,12 @@ RUN useradd --create-home --uid 10001 newsfeed \
     && mkdir /data && chown newsfeed:newsfeed /data
 COPY config /app/config
 COPY --from=model /app/models /app/models
+# Telemetry off and the hub never contacted at run time: the model is baked in
+# (#359). Set here, not in the `model` stage, whose build download needs the hub.
 ENV NEWSFEED_EMBED_MODEL_DIR=/app/models \
+    HF_HUB_OFFLINE=1 \
+    HF_HUB_DISABLE_TELEMETRY=1 \
+    DO_NOT_TRACK=1 \
     PATH=/app/.venv/bin:$PATH \
     PYTHONUNBUFFERED=1 \
     NEWSFEED_CONFIG_DIR=/app/config \
