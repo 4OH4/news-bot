@@ -289,7 +289,10 @@ def test_a_rebuild_embeds_at_most_200_old_feedback_articles(tmp_path: Path) -> N
 
     rank(s, cfg)
     assert embedded() == 200
-    repo.save_feedback(feedback(old("gamma", "000", embedded=False).id, FeedbackEvent.OPEN, None))
+    # Newer than every event the first rebuild used, so the second run sees new feedback.
+    repo.save_feedback(
+        feedback(old("gamma", "000", embedded=False).id, FeedbackEvent.OPEN, None, at=NOW)
+    )
     rank(s, cfg, now=NOW + timedelta(hours=7))
     assert embedded() == 250
 
