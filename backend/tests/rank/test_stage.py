@@ -81,6 +81,18 @@ def test_source_weight_comes_from_sources() -> None:
     assert s.repository.list_articles()[0].score_breakdown["source"] == 3.0
 
 
+def test_ranking_keeps_a_stored_embedding() -> None:
+    # Rank rewrites the whole row, so it must not drop the embedding (#320).
+    s = services()
+    s.repository.upsert_article(article("a", embedding=[0.6, 0.8], embedding_model="m-1"))
+
+    rank_recent(s, CONFIG, since=DAY_AGO, clock=lambda: NOW)
+
+    stored = s.repository.list_articles()[0]
+    assert stored.score is not None
+    assert (stored.embedding, stored.embedding_model) == ([0.6, 0.8], "m-1")
+
+
 def test_muted_articles_are_stored_with_muted_in_the_breakdown() -> None:
     s = services()
     s.repository.upsert_article(article("a"))

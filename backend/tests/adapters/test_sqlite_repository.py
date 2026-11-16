@@ -7,7 +7,9 @@ connection lifecycle.
 
 from __future__ import annotations
 
+import math
 import sqlite3
+import struct
 import threading
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -27,6 +29,7 @@ from newsfeed.models import (
     ExtractionStatus,
     Feedback,
     PipelineStage,
+    Profile,
     RunStats,
     SourceState,
 )
@@ -302,3 +305,77 @@ def test_in_memory_databases_are_not_supported() -> None:
     # separate, empty database, so the adapter needs a file.
     with pytest.raises(sqlite3.OperationalError, match="WAL"):
         SqliteRepository(":memory:")
+
+
+# --- Personalisation fields (#320) ---------------------------------------------
+
+
+def test_embedding_is_a_blob_of_little_endian_float32(db_path: Path) -> None:
+    values = [math.sin(0.37 * i) for i in range(384)]
+    article = Article.model_validate(
+        {
+            **make_article(1).model_dump(),
+            "embedding": values,
+            "embedding_model": "BAAI/bge-small-en-v1.5",
+        }
+    )
+    with SqliteRepository(db_path) as repo:
+        repo.upsert_article(article)
+    ((blob, model),) = raw(db_path, "SELECT embedding, embedding_model FROM articles")
+    assert isinstance(blob, bytes)
+    assert len(blob) == 4 * 384
+    assert list(struct.unpack("<384f", blob)) == pytest.approx(values, abs=1e-6)
+    assert model == "BAAI/bge-small-en-v1.5"
+
+
+def test_a_database_from_before_personalisation_gains_the_new_fields(db_path: Path) -> None:
+    # A developer's data/ at schema version 2, the last before #320: rows have
+    # no embedding, user_id, view or arm, and there is no profiles table.
+    db_path.parent.mkdir(parents=True)
+    connection = sqlite3.connect(db_path)
+    connection.execute("CREATE TABLE schema_version (version INTEGER)")
+    connection.execute("INSERT INTO schema_version (version) VALUES (2)")
+    for migration in _MIGRATIONS[:2]:
+        for statement in migration:
+            connection.execute(statement)
+    article = make_article(1)
+    connection.execute(
+        "INSERT INTO articles (id, canonical_url, url, source_id, title, fetched_at,"
+        " extraction, score_breakdown) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            article.id,
+            article.canonical_url,
+            article.url,
+            article.source_id,
+            article.title,
+            "2026-10-11T12:00:00.000000Z",
+            '{"method": "trafilatura", "status": "ok"}',
+            '{"topic": 0.5}',
+        ),
+    )
+    connection.execute(
+        "INSERT INTO feedback (id, article_id, event, value, created_at) VALUES (?, ?, ?, ?, ?)",
+        ("f1", article.id, "open", None, "2026-10-11T12:00:00.000000Z"),
+    )
+    connection.commit()
+    connection.close()
+
+    with SqliteRepository(db_path) as repo:
+        assert repo.schema_version() == SCHEMA_VERSION
+        stored = repo.get_article(article.id)
+        assert stored == article
+        assert stored is not None
+        assert (stored.embedding, stored.embedding_model) == (None, None)
+        (feedback,) = repo.list_feedback()
+        assert (feedback.user_id, feedback.view, feedback.arm) == ("owner", None, None)
+        # The migrated database stores the new fields and profiles.
+        newer = Feedback.model_validate(
+            {**feedback.model_dump(), "id": "f2", "view": "feed", "arm": "personal"}
+        )
+        repo.save_feedback(newer)
+        assert repo.list_feedback() == [feedback, newer]
+        profile = Profile.model_validate(
+            {"centroids": [{"vector": [0.5, 0.25], "weight": 1.0, "size": 2}]}
+        )
+        repo.save_profile(profile)
+        assert repo.get_profile("owner") == profile
