@@ -37,7 +37,7 @@ beforeEach(() => {
     x: 0, y: 0, top: 0, left: 0, right: 360, bottom: HEADER, width: 360, height: HEADER,
     toJSON: () => ({}),
   });
-  scrollTo = vi.fn((_opts?: unknown) => {});
+  scrollTo = vi.fn();
   window.scrollTo = scrollTo as unknown as typeof window.scrollTo;
   setScroll(0);
   root = document.createElement("div");

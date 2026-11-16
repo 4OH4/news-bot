@@ -252,7 +252,7 @@ test.describe("the compact feed header", () => {
     expect(parseFloat(await style(updated, "font-size"))).toBeLessThan(hSize);
   });
 
-  test("the row stays stuck to the top when scrolled", async ({
+  test("the row stays stuck to the top, sliding away down the page and back on scrolling up", async ({
     page,
   }) => {
     await stubApi(page);
@@ -260,7 +260,13 @@ test.describe("the compact feed header", () => {
     await expect(page.getByTestId("feed-item").first()).toBeVisible();
     const row = page.locator(".top");
     await page.evaluate(() => window.scrollTo(0, 400));
-    expect(Math.round((await box(row)).y)).toBe(0);
+    // #307: it moves with the scroll, so it is out of view going down...
+    await expect.poll(async () => (await box(row)).y + (await box(row)).height).toBeLessThanOrEqual(0);
+    // ...and 30px of it is back after scrolling up 30px, still stuck to the top edge.
+    await page.mouse.wheel(0, -30);
+    await expect
+      .poll(async () => Math.round((await box(row)).y + (await box(row)).height))
+      .toBe(30);
   });
 
   test("while refreshing the button is disabled and spins; afterwards it is enabled again", async ({

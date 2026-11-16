@@ -56,13 +56,13 @@ test("the tab bar has News, Feed and Longer, each 44px tall, and a tap opens the
   expect(seen).toContain("news");
 });
 
-test("the Liked and Settings icons are round, 44px at least, named, and open their screens", async ({
+test("the Settings icon is round, 44px at least, named, and open their screens", async ({
   page,
 }) => {
   await stubApi(page);
   await page.goto("/longer");
   await expect(cards(page).first()).toBeVisible();
-  for (const name of ["Liked", "Settings"]) {
+  for (const name of ["Settings"]) {
     const icon = page.locator("header").getByRole("link", { name });
     const b = (await icon.boundingBox())!;
     expect(b.width).toBeGreaterThanOrEqual(44);
@@ -75,9 +75,11 @@ test("the Liked and Settings icons are round, 44px at least, named, and open the
   await expect(page).toHaveURL(/\/settings$/);
   // The bar stays, with no tab current.
   await expect(sections(page).locator('a[aria-current="page"]')).toHaveCount(0);
-  await page.goBack();
-  await page.locator("header").getByRole("link", { name: "Liked" }).click();
+  await page.getByRole("link", { name: "Liked articles" }).click();
   await expect(page).toHaveURL(/\/liked$/);
+  // #307: the header has no Liked heart.
+  await page.goto("/longer");
+  await expect(page.locator("header").getByRole("link", { name: "Liked" })).toHaveCount(0);
 });
 
 test("Longer returns to its scroll position after an article; Feed is unaffected", async ({
