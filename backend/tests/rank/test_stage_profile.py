@@ -336,3 +336,46 @@ def test_a_second_run_reuses_the_saved_profile_in_the_real_repository(tmp_path: 
         assert repo.get_profile(DEFAULT_USER_ID) == saved
         assert saved is not None
         assert saved.embedding_model == MODEL
+
+
+@pytest.mark.parametrize("event", [FeedbackEvent.OPEN, FeedbackEvent.READ])
+def test_an_article_the_owner_opened_or_read_gets_no_similarity_lift(
+    tmp_path: Path, event: FeedbackEvent
+) -> None:
+    repo = InMemoryRepository()
+    repo.save_profile(
+        preseeded_profile(built_ago=timedelta(hours=1), feedback_ago=timedelta(hours=2))
+    )
+    seen, unseen = article("alpha", "seen"), article("alpha", "unseen")  # same vector, top raw
+    for a in (seen, unseen, article("beta", "1"), article("beta", "2")):
+        repo.upsert_article(a)
+    seconds = 60 if event is FeedbackEvent.READ else None
+    repo.save_feedback(feedback(seen.id, event, seconds, ago=timedelta(minutes=30)))
+
+    counts = rank(services(repo), config(tmp_path, SMALL_PROFILE))
+
+    assert counts["profile_rebuilt"] == 0  # the preseeded profile is used as it is
+    got = by_title(repo)
+    seen_row, unseen_row = got["Story alpha seen"], got["Story alpha unseen"]
+    assert seen_row.score_breakdown["similarity"] == 1.0
+    assert "already_read" in seen_row.score_breakdown
+    assert seen_row.score == unseen_row.score  # its other factors are unchanged
+    assert unseen_row.score_breakdown["similarity"] > 1.0
+    assert "already_read" not in unseen_row.score_breakdown
+
+
+def test_feedback_dated_in_the_future_does_not_stop_later_rebuilds(tmp_path: Path) -> None:
+    repo = InMemoryRepository()
+    seen = [old("alpha", "1"), old("alpha", "2")]
+    read_all(repo, seen)
+    # The phone's clock is a day ahead.
+    repo.save_feedback(feedback(seen[0].id, FeedbackEvent.OPEN, None, at=NOW + timedelta(days=1)))
+    s = services(repo)
+    cfg = config(tmp_path, "profile: {min_events: 2, rebuild_min_hours: 0.5}\n")
+
+    assert rank(s, cfg)["profile_rebuilt"] == 1
+    later = NOW + timedelta(hours=1)
+    repo.save_feedback(
+        feedback(seen[1].id, FeedbackEvent.OPEN, None, at=later - timedelta(minutes=30))
+    )
+    assert rank(s, cfg, now=later)["profile_rebuilt"] == 1
