@@ -12,6 +12,7 @@ from typer.testing import CliRunner
 
 from newsfeed import cli
 from newsfeed.adapters.sqlite_repository import SqliteRepository
+from newsfeed.backup import write_backup
 from newsfeed.models import (
     Article,
     ArticleExtraction,
@@ -22,7 +23,7 @@ from newsfeed.models import (
     SourceState,
 )
 from newsfeed.report import UnknownRunError, build_report, render_text
-from tests.fakes import InMemoryRepository
+from tests.fakes import InMemoryBlobStore, InMemoryRepository
 
 T0 = datetime(2026, 10, 18, 12, 0, tzinfo=UTC)
 
@@ -481,3 +482,46 @@ def test_build_report_since_counts_only_feedback_from_that_time() -> None:
     assert report.feedback is not None
     assert report.feedback.total == 1
     assert sum(d.counts["open"] for d in report.feedback.days) == 1
+
+
+# --- Latest feedback backup line (#356) --------------------------------------
+
+BACKUP_NOW = datetime(2026, 11, 16, 9, 0, tzinfo=UTC)
+
+
+def _backup_line(days_ago: list[int]) -> str:
+    """Render the report with backups made ``days_ago`` days before BACKUP_NOW."""
+    repo = InMemoryRepository()
+    blobs = InMemoryBlobStore()
+    for n in days_ago:
+        write_backup(repo, blobs, day=(BACKUP_NOW - timedelta(days=n)).date(), run_id=None)
+    text = render_text(build_report(repo, [], now=BACKUP_NOW, blobs=blobs))
+    (line,) = [ln for ln in text.splitlines() if "Latest feedback backup" in ln]
+    return line.strip()
+
+
+@pytest.mark.parametrize(
+    ("days_ago", "expected"),
+    [
+        pytest.param([1, 0], "Latest feedback backup: 2026-11-16", id="today-and-yesterday"),
+        pytest.param([2], "Latest feedback backup: 2026-11-14", id="two-days-not-stale"),
+        pytest.param([3], "Latest feedback backup: 2026-11-13 STALE", id="three-days-stale"),
+        pytest.param([], "Latest feedback backup: none found", id="none"),
+    ],
+)
+def test_report_shows_latest_feedback_backup_and_flags_stale(
+    days_ago: list[int], expected: str
+) -> None:
+    assert _backup_line(days_ago) == expected
+
+
+def test_report_ignores_a_backup_day_without_a_manifest() -> None:
+    blobs = InMemoryBlobStore()
+    write_backup(
+        InMemoryRepository(), blobs, day=BACKUP_NOW.date() - timedelta(days=1), run_id=None
+    )
+    blobs.put("backups/2026-11-16/feedback.jsonl", b"", "application/x-ndjson")  # no manifest
+
+    text = render_text(build_report(InMemoryRepository(), [], now=BACKUP_NOW, blobs=blobs))
+
+    assert "Latest feedback backup: 2026-11-15" in text
