@@ -11,6 +11,7 @@ conforms to its Protocol; this module is listed in ``[tool.mypy] files``.
 
 from __future__ import annotations
 
+import hashlib
 import mimetypes
 import threading
 from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
@@ -27,6 +28,7 @@ from newsfeed.models import (
     ExtractionStatus,
     Feedback,
     FetchResult,
+    Profile,
     RunStats,
     Source,
     SourceState,
@@ -43,6 +45,7 @@ from newsfeed.ports import (
 if TYPE_CHECKING:
     from newsfeed.ports import (
         BlobStore,
+        Embedder,
         Extractor,
         Fetcher,
         Repository,
@@ -51,6 +54,7 @@ if TYPE_CHECKING:
     )
 
 __all__ = [
+    "FakeEmbedder",
     "FakeExtractor",
     "FakeFetcher",
     "FakeResponse",
@@ -79,6 +83,7 @@ class InMemoryRepository:
         self._source_states: dict[str, SourceState] = {}
         self._feedback: dict[str, Feedback] = {}
         self._run_stats: dict[str, RunStats] = {}
+        self._profiles: dict[str, Profile] = {}
 
     def upsert_article(self, article: Article) -> None:
         """Insert or replace ``article`` by id."""
@@ -150,6 +155,17 @@ class InMemoryRepository:
             matches.sort(key=lambda f: (f.created_at, f.id))
             return [f.model_copy(deep=True) for f in matches]
 
+    def get_profile(self, user_id: str) -> Profile | None:
+        """Return a copy of the profile for ``user_id``, or None."""
+        with self._lock:
+            profile = self._profiles.get(user_id)
+            return profile.model_copy(deep=True) if profile else None
+
+    def save_profile(self, profile: Profile) -> None:
+        """Insert or replace the profile for ``profile.user_id``."""
+        with self._lock:
+            self._profiles[profile.user_id] = profile.model_copy(deep=True)
+
     def save_run_stats(self, stats: RunStats) -> None:
         """Insert or replace run statistics by run id."""
         with self._lock:
@@ -178,6 +194,56 @@ class InMemoryRepository:
             if limit is not None:
                 matches = matches[:limit]
             return [s.model_copy(deep=True) for s in matches]
+
+
+# --- Embedder ----------------------------------------------------------------
+
+
+class FakeEmbedder:
+    """An ``Embedder`` giving each text a deterministic unit vector from its hash.
+
+    With ``dimensions`` of 5 or more, a vector has one value of +-0.75, one of
+    +-0.5 and three of +-0.25 at positions chosen by the hash, and zeros
+    elsewhere: 9/16 + 4/16 + 3/16 = 1, so it is exactly unit length, and every
+    value is exact in float32, so it survives storage unchanged. Fewer
+    dimensions give +-0.5 in each of 4, or +-1 in one of 1 to 3. The same text
+    always gets the same vector; different texts almost always differ. Each
+    ``embed`` call is recorded in ``calls`` as its list of texts, so tests can
+    count batches.
+    """
+
+    _MAGNITUDES = (0.75, 0.5, 0.25, 0.25, 0.25)
+
+    def __init__(self, dimensions: int = 8, *, model: str = "fake-embedder") -> None:
+        if dimensions < 1:
+            raise ValueError("dimensions must be at least 1")
+        self.dimensions = dimensions
+        self.model = model
+        self._lock = threading.Lock()
+        self.calls: list[list[str]] = []
+
+    def embed(self, texts: Sequence[str]) -> list[list[float]]:
+        """Return one deterministic unit vector per text, in order."""
+        with self._lock:
+            self.calls.append(list(texts))
+        return [self._vector(text) for text in texts]
+
+    def _vector(self, text: str) -> list[float]:
+        def digest(salt: str) -> bytes:
+            return hashlib.sha256(f"{salt}\x00{text}".encode()).digest()
+
+        if self.dimensions >= len(self._MAGNITUDES):
+            magnitudes: tuple[float, ...] = self._MAGNITUDES
+        elif self.dimensions == 4:
+            magnitudes = (0.5, 0.5, 0.5, 0.5)
+        else:
+            magnitudes = (1.0,)
+        positions = sorted(range(self.dimensions), key=lambda i: digest(str(i)))
+        signs = digest("sign")
+        vector = [0.0] * self.dimensions
+        for n, (position, magnitude) in enumerate(zip(positions, magnitudes, strict=False)):
+            vector[position] = -magnitude if signs[n] & 1 else magnitude
+        return vector
 
 
 # --- BlobStore ---------------------------------------------------------------
@@ -570,3 +636,4 @@ if TYPE_CHECKING:
     _extractor: Extractor = FakeExtractor()
     _ingester: SourceIngester = FakeSourceIngester()
     _verifier: TokenVerifier = FakeTokenVerifier({})
+    _embedder: Embedder = FakeEmbedder()

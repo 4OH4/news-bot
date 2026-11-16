@@ -23,15 +23,12 @@ Conventions (rationale in docs/adr/0001-ports-and-adapters.md):
 * The Protocols are ``runtime_checkable`` for convenience in tests, but
   ``isinstance`` only checks that members exist. Conformance proper is checked
   statically by the type checker.
-
-The ``Embedder`` port is deferred to Phase 4 and arrives through its own
-contract-change issue.
 """
 
 from __future__ import annotations
 
 import re
-from collections.abc import Collection
+from collections.abc import Collection, Sequence
 from contextlib import AbstractContextManager
 from datetime import datetime
 from typing import Protocol, runtime_checkable
@@ -42,6 +39,7 @@ from newsfeed.models import (
     ExtractionStatus,
     Feedback,
     FetchResult,
+    Profile,
     RunStats,
     Source,
     SourceState,
@@ -52,6 +50,8 @@ from newsfeed.models import (
 __all__ = [
     "BlobNotFoundError",
     "BlobStore",
+    "Embedder",
+    "EmbeddingError",
     "Extractor",
     "FetchNotAllowedError",
     "Fetcher",
@@ -70,6 +70,10 @@ class BlobNotFoundError(LookupError):
     """Raised by ``BlobStore.get`` when no blob exists for a ref."""
 
 
+class EmbeddingError(Exception):
+    """Raised by ``Embedder.embed`` when it can't embed the texts it was given."""
+
+
 class FetchNotAllowedError(Exception):
     """Raised by ``Fetcher.permit`` when robots.txt forbids fetching a URL."""
 
@@ -83,7 +87,7 @@ class TokenRejectedError(Exception):
 
 @runtime_checkable
 class Repository(Protocol):
-    """Persist and query article metadata, source state, feedback and run stats.
+    """Persist and query article metadata, source state, feedback, profiles and run stats.
 
     Implementations: SQLite (dev/CI), Firestore (prod), ``InMemoryRepository``
     (tests). All of them must pass the shared contract tests (#8).
@@ -152,6 +156,17 @@ class Repository(Protocol):
         ``since=None`` returns all feedback. A naive ``since`` raises
         ``ValueError``. Ties on ``created_at`` are broken by ``id``.
         """
+        ...
+
+    def get_profile(self, user_id: str) -> Profile | None:
+        """Return the interest profile saved for ``user_id``, or None if none yet.
+
+        Vectors may come back rounded to float32 (within about 1e-7 relative).
+        """
+        ...
+
+    def save_profile(self, profile: Profile) -> None:
+        """Insert or replace the interest profile, keyed by ``profile.user_id``."""
         ...
 
     def save_run_stats(self, stats: RunStats) -> None:
@@ -260,6 +275,40 @@ class TokenVerifier(Protocol):
         malformed, expired or wrongly signed tokens. Any other exception means
         the check couldn't be made, such as when signing keys can't be fetched.
         Must be thread-safe.
+        """
+        ...
+
+
+# --- Embedder ----------------------------------------------------------------
+
+
+@runtime_checkable
+class Embedder(Protocol):
+    """Turn texts into embeddings: vectors that place each text by meaning.
+
+    Texts about the same thing get vectors that point the same way, so cosine
+    similarity (a dot product, since vectors are unit length) measures how
+    close two articles are. Implementations: the local model adapter (#321,
+    ADR-0014), ``FakeEmbedder`` (tests). Must be thread-safe.
+    """
+
+    @property
+    def model(self) -> str:
+        """Name of the model, stored as ``Article.embedding_model``, e.g. 'BAAI/bge-small-en-v1.5'.
+
+        Vectors from different models are not comparable.
+        """
+        ...
+
+    @property
+    def dimensions(self) -> int:
+        """Length of every vector ``embed`` returns, e.g. 384."""
+        ...
+
+    def embed(self, texts: Sequence[str]) -> list[list[float]]:
+        """Return one unit-length vector of ``dimensions`` floats per text, in order.
+
+        Raises ``EmbeddingError`` if it can't embed the batch.
         """
         ...
 

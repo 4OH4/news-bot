@@ -1,10 +1,10 @@
 """Firestore implementation of the ``Repository`` port, for production.
 
 Each model is one document, in one collection per model: ``articles`` (keyed by
-``Article.id``), ``source_state`` (``source_id``), ``feedback`` (``id``) and
-``run_stats`` (``run_id``). An optional ``prefix`` is put in front of every
-collection name, so tests and environments can share a database without seeing
-each other's data (``prefix="test-ab12-"`` gives ``test-ab12-articles``).
+``Article.id``), ``source_state`` (``source_id``), ``feedback`` (``id``),
+``profiles`` (``user_id``) and ``run_stats`` (``run_id``). An optional ``prefix``
+is put in front of every collection name, so tests and environments can share a
+database without seeing each other's data (``prefix="test-ab12-"`` gives ``test-ab12-articles``).
 
 Documents hold ``model_dump(mode="json")`` and are validated on read, so they
 match what SQLite stores. The one difference is the three timestamps that are
@@ -12,6 +12,12 @@ queried or ordered on (``Article.fetched_at``, ``Feedback.created_at``,
 ``RunStats.started_at``): they are stored as native Firestore timestamps, whose
 order is time order. Pydantic's JSON text drops zero microseconds, so as text it
 would not sort by instant. Other datetimes stay ISO 8601 text.
+
+Vectors (``Article.embedding``, each profile centroid's ``vector`` and the
+profile's ``negative``) are stored as packed little-endian float32 ``bytes``
+(``adapters/vectors.py``), not arrays: Firestore indexes every array element
+separately, which would be 384 index entries per article. They read back
+rounded to float32. No query filters or orders on them, so no index is needed.
 
 Indexes
 -------
@@ -60,10 +66,12 @@ from google.api_core.exceptions import NotFound
 from google.cloud.firestore_v1.base_query import FieldFilter
 from google.cloud.firestore_v1.query import Query
 
+from newsfeed.adapters.vectors import pack_vector, unpack_vector
 from newsfeed.models import (
     Article,
     ExtractionStatus,
     Feedback,
+    Profile,
     RunStats,
     SourceState,
 )
@@ -111,6 +119,45 @@ def _with_time(data: dict[str, Any], field: str, value: datetime) -> dict[str, A
     return data
 
 
+def _article_document(article: Article) -> dict[str, Any]:
+    """Return the document stored for ``article``."""
+    data = _with_time(article.model_dump(mode="json"), "fetched_at", article.fetched_at)
+    if article.embedding is not None:
+        data["embedding"] = pack_vector(article.embedding)
+    return data
+
+
+def _article_from(data: dict[str, Any] | None) -> Article:
+    """Return the article stored in a document's data."""
+    data = dict(data or {})
+    if isinstance(data.get("embedding"), bytes):
+        data["embedding"] = unpack_vector(data["embedding"])
+    return Article.model_validate(data)
+
+
+def _profile_document(profile: Profile) -> dict[str, Any]:
+    """Return the document stored for ``profile``, with each vector packed."""
+    data = profile.model_dump(mode="json")
+    data["centroids"] = [
+        {**stored, "vector": pack_vector(centroid.vector)}
+        for stored, centroid in zip(data["centroids"], profile.centroids, strict=True)
+    ]
+    if profile.negative is not None:
+        data["negative"] = pack_vector(profile.negative)
+    return data
+
+
+def _profile_from(data: dict[str, Any] | None) -> Profile:
+    """Return the profile stored in a document's data."""
+    data = dict(data or {})
+    data["centroids"] = [
+        {**c, "vector": unpack_vector(c["vector"])} for c in data.get("centroids") or []
+    ]
+    if isinstance(data.get("negative"), bytes):
+        data["negative"] = unpack_vector(data["negative"])
+    return Profile.model_validate(data)
+
+
 class FirestoreRepository:
     """A ``Repository`` stored in Firestore (Native mode).
 
@@ -125,19 +172,19 @@ class FirestoreRepository:
         self._articles = client.collection(f"{prefix}articles")
         self._source_state = client.collection(f"{prefix}source_state")
         self._feedback = client.collection(f"{prefix}feedback")
+        self._profiles = client.collection(f"{prefix}profiles")
         self._run_stats = client.collection(f"{prefix}run_stats")
 
     # --- Articles ------------------------------------------------------------
 
     def upsert_article(self, article: Article) -> None:
         """Insert ``article``, or replace the stored article with the same id."""
-        data = _with_time(article.model_dump(mode="json"), "fetched_at", article.fetched_at)
-        self._articles.document(_doc_id(article.id)).set(data)
+        self._articles.document(_doc_id(article.id)).set(_article_document(article))
 
     def get_article(self, article_id: str) -> Article | None:
         """Return the article with ``article_id``, or None."""
         snapshot = self._articles.document(_doc_id(article_id)).get()
-        return Article.model_validate(snapshot.to_dict()) if snapshot.exists else None
+        return _article_from(snapshot.to_dict()) if snapshot.exists else None
 
     def list_articles(
         self,
@@ -188,7 +235,7 @@ class FirestoreRepository:
         )
         if limit is not None:
             query = query.limit(limit)
-        return [Article.model_validate(doc.to_dict()) for doc in query.stream()]
+        return [_article_from(doc.to_dict()) for doc in query.stream()]
 
     def delete_article(self, article_id: str) -> bool:
         """Delete the article with ``article_id``; True if it existed."""
@@ -228,6 +275,17 @@ class FirestoreRepository:
             "id", direction=Query.ASCENDING
         )
         return [Feedback.model_validate(doc.to_dict()) for doc in query.stream()]
+
+    # --- Profiles ------------------------------------------------------------
+
+    def get_profile(self, user_id: str) -> Profile | None:
+        """Return the profile saved for ``user_id``, or None."""
+        snapshot = self._profiles.document(_doc_id(user_id)).get()
+        return _profile_from(snapshot.to_dict()) if snapshot.exists else None
+
+    def save_profile(self, profile: Profile) -> None:
+        """Insert or replace the profile for ``profile.user_id``."""
+        self._profiles.document(_doc_id(profile.user_id)).set(_profile_document(profile))
 
     # --- Run stats -----------------------------------------------------------
 

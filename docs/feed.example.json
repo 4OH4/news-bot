@@ -46,7 +46,8 @@
       "extraction_status": "ok",
       "display": "article",
       "word_count": 433,
-      "content_path": "articles/1c472b87a4a7f210.html"
+      "content_path": "articles/1c472b87a4a7f210.html",
+      "coverage": 3
     },
     {
       "id": "4cb59e059e0a84b8",
@@ -68,7 +69,8 @@
       "extraction_status": "paywalled",
       "display": "link",
       "word_count": null,
-      "content_path": null
+      "content_path": null,
+      "arm": "personal"
     },
     {
       "id": "045dd3914407e7c3",
