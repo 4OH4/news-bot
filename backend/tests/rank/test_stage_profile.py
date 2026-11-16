@@ -16,6 +16,7 @@ from newsfeed.models import (
     DEFAULT_USER_ID,
     Article,
     ExtractionStatus,
+    Feedback,
     FeedbackEvent,
     InterestCentroid,
     Profile,
@@ -379,3 +380,28 @@ def test_feedback_dated_in_the_future_does_not_stop_later_rebuilds(tmp_path: Pat
         feedback(seen[1].id, FeedbackEvent.OPEN, None, at=later - timedelta(minutes=30))
     )
     assert rank(s, cfg, now=later)["profile_rebuilt"] == 1
+
+
+class FeedbackDownRepository(InMemoryRepository):
+    """A store whose feedback can't be read."""
+
+    def list_feedback(self, since: datetime | None = None) -> list[Feedback]:
+        raise OSError("feedback store unavailable")
+
+
+def test_unreadable_feedback_skips_similarity_rather_than_lifting_read_articles(
+    tmp_path: Path,
+) -> None:
+    repo = FeedbackDownRepository()
+    repo.save_profile(
+        preseeded_profile(built_ago=timedelta(hours=1), feedback_ago=timedelta(hours=2))
+    )
+    for a in (article("alpha", "1"), article("beta", "1")):
+        repo.upsert_article(a)
+
+    counts = rank(services(repo), config(tmp_path, SMALL_PROFILE))
+
+    assert counts["scored"] == 2
+    assert counts["errors"] == 1
+    assert counts["with_similarity"] == 0
+    assert all("similarity" not in a.score_breakdown for a in repo.list_articles())
