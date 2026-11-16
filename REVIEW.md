@@ -19,6 +19,7 @@ Failure patterns taken from real defects in this repo. Test authors and workers 
 - A regex that reads one line must not use `\W` or `\s`, which match a newline: an empty field would take its text from the next line. In #133 an empty `Reason:` passed the merge gate this way. Use `[^\w\n]` and `[^\S\n]`.
 - A retry loop or single-flight lock (one holder at a time) must limit how long one attempt can wait.
 - An empty environment variable that holds a path becomes `Path('.')`, the current directory. Treat empty as unset.
+- Matching items by a key must handle a missing or duplicate key, or items vanish silently. Instance: PR #349, where `ab` mode collapsed items without a unique `id`.
 
 ## Polite fetching and safety
 
@@ -68,6 +69,8 @@ Failure patterns taken from real defects in this repo. Test authors and workers 
 - A time-relative test must fix "now" on both sides, the code under test and the data it compares against.
 - When a rework changes which function a hook registers, the tests must register the new one too, or they keep exercising the old path.
 - A flaky-test fix must first show the failure it fixes (a reproduction or a captured failing run) before it claims a cause.
+- A test that an error hides its cause must check `__suppress_context__` (or `__context__`), not `__cause__`: a bare `raise` inside `except` still chains the original error while `__cause__` stays `None`. Instance: PR #352.
+- A stopping-rule or verdict check must be able to see the whole record it judges: no default window shorter than the record, and day counts must be calendar days, not days with data. Instance: PR #351.
 - A test of a pin that a bot bumps (Dependabot) must not hard-code the version, or every bump fails it; check the shape or that two places agree.
 - In the client every screen is a full page load, so a component's unmount cleanup never runs when the owner leaves. Work that must survive leaving (a reading-time event, a feedback write) must finish before navigating, be handed to the next page by a synchronous `localStorage` write, or sent by `navigator.sendBeacon` or a `keepalive` fetch, all of which survive the page closing; an IndexedDB write or a plain `fetch` started on `pagehide` may not finish. Test it by navigating away in Playwright, not by unmounting. Instances: PR #248, PR #251.
 - A Playwright locator by role (`getByRole`) leaves out elements with `aria-hidden`, so `toBeHidden()` on it passes whether or not the element shows, and the test cannot fail. Check the hidden state with a CSS or test-id locator, and confirm the test fails when the element is forced visible. Instance: PR #319.
