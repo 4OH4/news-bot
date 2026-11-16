@@ -442,6 +442,20 @@ def inspect_feedback(
         typer.echo(q.render(q.group_feedback(rows, group_by), [group_by, "count"], fmt))
 
 
+@inspect_app.command("ab")
+def inspect_ab(
+    since: Annotated[str, typer.Option(help="Created at or after: 24h, 21d, a date")] = "21d",
+    fmt: FormatOption = "text",
+) -> None:
+    """Summarise the A/B check: credited opens and reads per arm and the stopping rule."""
+    with _inspect_repository() as repository:
+        since_at = q.parse_since(since)
+        q.check_choice("--format", fmt, q.FORMATS)
+        events = repository.list_feedback(since=since_at)
+    summary = q.ab_summary(events, now=datetime.now(UTC), since=since_at)
+    typer.echo(q.render(q.ab_rows(summary), q.AB_COLUMNS, fmt))
+
+
 embed_app = typer.Typer(help="The local embedding model (ADR-0014).", no_args_is_help=True)
 app.add_typer(embed_app, name="embed")
 
