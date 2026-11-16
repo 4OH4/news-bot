@@ -8,7 +8,7 @@
   color: var(--muted);
 }
 
-/* Liked, Settings and Refresh: one row of round 44px icon controls (#272, #289). */
+/* Settings and Refresh: one row of round 44px icon controls (#272, #289). */
 .top-actions {
   flex: none;
   display: flex;
