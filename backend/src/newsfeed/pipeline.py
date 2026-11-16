@@ -59,6 +59,7 @@ from newsfeed.ports import Extractor, Fetcher
 from newsfeed.publish.feed import FEED_WINDOW_HOURS, PARTIAL_MIN_WORDS, publish_feed
 from newsfeed.publish.views import publish_views
 from newsfeed.rank.interests import InterestsConfig
+from newsfeed.rank.personalisation import PersonalisationConfig
 from newsfeed.rank.stage import DEFAULT_WINDOW_HOURS, rank_recent
 from newsfeed.wiring import Services
 
@@ -1205,6 +1206,7 @@ def run_pipeline(
     rank: bool = True,
     publish: bool = True,
     interests: InterestsConfig | None = None,
+    personalisation: PersonalisationConfig | None = None,
     rank_sources: Sequence[Source] | None = None,
     rank_window_hours: float = DEFAULT_WINDOW_HOURS,
     extract_source_ids: Collection[str] | None = None,
@@ -1220,7 +1222,8 @@ def run_pipeline(
     articles left pending by a source since disabled or removed, and ad hoc
     ones, are still extracted by a plain run. Rank scores articles fetched in
     the last ``rank_window_hours`` against ``interests`` (none means no rules),
-    taking source weights from ``rank_sources`` (default: ``sources``). Publish
+    taking source weights from ``rank_sources`` (default: ``sources``), and
+    keeps the interest profile with ``personalisation`` (default weights). Publish
     then writes ``feed.json``; its window never exceeds ``rank_window_hours``.
     A run that publishes (``newsfeed run``, and ``newsfeed publish`` too) then
     backs up feedback if today (UTC) has no backup yet (``backup_if_due``).
@@ -1248,6 +1251,7 @@ def run_pipeline(
             since=clock() - timedelta(hours=rank_window_hours),
             sources=sources if rank_sources is None else rank_sources,
             clock=clock,
+            personalisation=personalisation,
         )
         for name, n in summary.counts().items():
             if n:

@@ -51,6 +51,7 @@ from newsfeed.pipeline import (
 )
 from newsfeed.ports import BlobStore, Fetcher, Repository
 from newsfeed.preview import PreviewDirError, generate_preview
+from newsfeed.rank.personalisation import load_personalisation
 from newsfeed.rank.stage import DEFAULT_WINDOW_HOURS, load_rank_config
 from newsfeed.report import UnknownRunError, render_text
 from newsfeed.report import build_report as build_run_report
@@ -150,6 +151,7 @@ def _run_stages(
         # Ranking weighs every configured source, whatever --source narrows.
         all_sources = _select_sources(settings, None)
         interests = load_rank_config(settings.interests_path, all_sources) if rank else None
+        personalisation = load_personalisation(settings.personalisation_path) if rank else None
         with open_services(settings) as services:
             stats = run_pipeline(
                 services,
@@ -159,6 +161,7 @@ def _run_stages(
                 rank=rank,
                 publish=publish,
                 interests=interests,
+                personalisation=personalisation,
                 rank_sources=all_sources,
                 rank_window_hours=rank_window_hours,
                 # Only an explicit --source narrows extract; a plain run also
