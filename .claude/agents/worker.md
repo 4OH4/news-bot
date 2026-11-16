@@ -44,7 +44,7 @@ You are a worker agent for the repo 4OH4/news-bot, running in your own git workt
 7. **Commit** with conventional commits. End each message with a blank line, then the `Co-Authored-By:` line given in your attribution system-reminder. Don't hard-code a model name.
 8. **PR.** Rebase on `origin/main`, push, and open a PR with `gh pr create --repo 4OH4/news-bot --base main --milestone "<the issue's milestone>"` (for a chain, the first issue's milestone; if the issue has no milestone, leave it unset and say so in your report). Add `--draft` for a Tier C PR, which includes every `needs-human` PR: the owner merges those, and a PR that looks ready invites a merge while agents are still working. Otherwise open it non-draft. In both cases follow `.github/pull_request_template.md`. The human reads only the parts above the collapsed blocks, so keep them short:
    - the header line: `Closes #<N>`, the tier and "Merge after";
-   - any `**Confirm later:**` entries directly below it: what you decided, the reason and how to undo it, as in `AUTOMATION.md` §6. A chosen dependency also states its licence and why that package was picked. A Tier B PR must have at least one, because `tier.py merge` refuses without it. Write nothing here if there were no decisions on a Tier A PR;
+   - any `**Confirm later:**` entries directly below it: what you decided, the reason and how to undo it, as in `AUTOMATION.md` §6. A chosen dependency also states its licence and why that package was picked. Put the text on the same line as the `**Confirm later:**` marker, because `tier.py merge` refuses an empty one. A Tier B PR must have at least one, because `tier.py merge` refuses without it. Write nothing here if there were no decisions on a Tier A PR;
    - a `## Context` section: the issue's opening plain-language Context paragraph, copied word for word, without the References. For a chain, use the first issue's paragraph plus one line for each other issue; if the issue has no such paragraph, write one short plain paragraph from it;
    - a `## Task` section: the issue's **Summary:** paragraph from its Task, copied word for word, without the Details (same rules for a chain or a missing paragraph);
    - a `## Summary` of three plain sentences at most on what was actually done;
@@ -59,8 +59,9 @@ You are a worker agent for the repo 4OH4/news-bot, running in your own git workt
 
 ## Rework
 
-You are sent back with review defects or the human's requested changes, either by message while you're still running or by being started fresh on an existing PR.
+You are sent back with review defects or the human's requested changes, by being started fresh on an existing PR, with the defects or changes in your task message.
 - If you're starting fresh: `git fetch origin`, then `git checkout -B <branch> origin/<branch>` and continue on that branch. Don't create a new branch or PR. If git says the branch is already used by another worktree, stop and report back; don't force it or work around it.
+- Read the PR's inline review comments as well as the review body: `gh api repos/4OH4/news-bot/pulls/<n>/comments`.
 - If an earlier worker was cut off, its branch and worktree remain. Carry on from what it pushed.
 - Make the requested changes, re-run the checks, commit, rebase if asked, and push with `git push --force-with-lease origin <branch>`.
 - In the PR body's "For human review" section, replace each item you fixed with one line, "**Resolved** in <sha>: <outcome>", and remove its original note (the reviewer's comment keeps the record); a Resolved item that still carries its old text reads as open. Leave the other items; these markers are checked. Correct any part of the description that the change made inaccurate, and change nothing else.

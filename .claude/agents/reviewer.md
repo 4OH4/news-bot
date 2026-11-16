@@ -69,7 +69,7 @@ For docs, config and other changes with no tests to judge, write "n/a" with the 
   - Your full findings, with evidence, stay in the "Independent review" comment as the record. The section is what the owner reads, so besides one-line Resolved and Accepted items it holds only what is still open, and each open item says plainly what merging accepts.
   - Don't repeat what the PR already explains well, and change nothing else in the body.
   - Write the new body to your unique scratch file (e.g. `pr-<P>-body.md`), starting from a fresh `gh pr view <P>`. Before running `gh pr edit <P> --repo 4OH4/news-bot --body-file <file>`, confirm the file contains `Closes #<N>`; if it doesn't, re-fetch the body rather than publishing it.
-- **PR comment.** Post one PR comment headed "Independent review" ("Independent review (second)" for a second review, "Independent review (third)" for a third). Summarise your verdict and give the evidence behind each defect (e.g. the failing input). It must contain this line, on a line of its own, because `tier.py merge` reads it, with "n/a (reason)" against anything that doesn't apply:
+- **PR comment.** Post one PR comment headed "Independent review" ("Independent review (second)" for a second review, "Independent review (third)" for a third). The first line under the heading is `Checked at <sha>`, the full 40-character head SHA you reviewed. Summarise your verdict and give the evidence behind each defect (e.g. the failing input). It must contain this line, on a line of its own, because `tier.py merge` reads it, with "n/a (reason)" against anything that doesn't apply:
 
   ```
   Checks done: red <result>, mutation <what you broke and what caught it>, test change report <result>, REVIEW.md
