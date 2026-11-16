@@ -3,6 +3,7 @@ import { NotAllowed } from "./auth/NotAllowed";
 import { ReconnectBanner } from "./auth/ReconnectBanner";
 import { useSessionStatus } from "./auth/useSessionStatus";
 import { FeedScreen } from "./feed/FeedScreen";
+import { PreferencesLab } from "./lab/PreferencesLab";
 import { LikedScreen } from "./liked/LikedScreen";
 import "./liked/liked.css";
 import { ReaderScreen } from "./reader/ReaderScreen";
@@ -22,6 +23,7 @@ function clean(path: string): string {
 function Screen({ path }: { path: string }) {
   if (path.startsWith("/article/")) return <ReaderScreen />;
   const p = clean(path);
+  if (p === "/lab/preferences") return <PreferencesLab />;
   if (p === "/liked") return <LikedScreen />;
   if (p === "/settings") return <SettingsScreen />;
   if (p === "/news") return <FeedScreen view="news" />;
@@ -60,6 +62,7 @@ function TabBar({ path }: { path: string }) {
 export function App() {
   const status = useSessionStatus();
   const isArticle = location.pathname.startsWith("/article/");
+  const isLab = clean(location.pathname).startsWith("/lab/");
   useEffect(() => {
     if (isArticle) return;
     restoreListScroll();
@@ -78,7 +81,7 @@ export function App() {
       ) : (
         <>
           <Screen path={location.pathname} />
-          {isArticle ? null : (
+          {isArticle || isLab ? null : (
             <>
               <p id="version" data-version={__APP_VERSION__} hidden />
               <TabBar path={location.pathname} />

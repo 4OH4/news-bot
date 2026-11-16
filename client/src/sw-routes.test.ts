@@ -13,7 +13,7 @@ describe("isNetworkOnly", () => {
     expect(isNetworkOnly(path)).toBe(true);
   });
 
-  it.each(["/", "/index.html", "/article/42", "/reconnected-story", "/apix"])(
+  it.each(["/", "/index.html", "/article/42", "/lab/preferences", "/reconnected-story", "/apix"])(
     "lets %s fall back to the shell",
     (path) => {
       expect(isNetworkOnly(path)).toBe(false);
