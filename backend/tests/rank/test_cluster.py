@@ -109,3 +109,60 @@ def test_coverage_factor_grows_with_the_log_of_the_source_count(
     sources: int, gamma: float, expected: float
 ) -> None:
     assert coverage_factor(sources, gamma) == pytest.approx(expected, abs=0.005)
+
+
+# Mutation guards (#367): each test fails if the named change is made to cluster_articles.
+
+
+def test_a_third_article_gets_the_cluster_id_not_the_id_of_the_article_it_matched() -> None:
+    # B joins A. C is close to B only, so it matches B but must carry A's cluster id.
+    a, b, c = at_angle(0), at_angle(angle_for(0.94)), at_angle(2 * angle_for(0.94))
+    assert cosine(c, a) < THRESHOLD
+
+    result = cluster(member("a", 0, a), member("b", 1, b), member("c", 2, c))
+
+    assert result == {"a": "a", "b": "a", "c": "a"}
+
+
+def test_articles_fetched_at_the_same_time_are_ordered_by_id_whatever_the_input_order() -> None:
+    same = at_angle(0)
+
+    result = cluster(member("y", 0, same), member("x", 0, same))
+
+    assert result == {"x": "x", "y": "x"}
+
+
+@pytest.mark.parametrize(
+    ("first", "second", "joined"),
+    [
+        ([2.0, 0.0], [1.0, 1.0], False),  # the raw dot product is 2, the cosine 0.71
+        ([0.5, 0.0], [0.5, 0.0], True),  # the raw dot product is 0.25, the cosine 1
+    ],
+)
+def test_similarity_is_the_cosine_so_vector_length_does_not_matter(
+    first: list[float], second: list[float], joined: bool
+) -> None:
+    result = cluster(member("a", 0, first), member("b", 1, second))
+
+    assert (result["b"] == "a") is joined
+
+
+def test_a_tie_between_two_clusters_goes_to_the_earlier_member() -> None:
+    # C is exactly as close to A as to B, which are 90 degrees apart.
+    members = [
+        member("a", 0, [1.0, 0.0]),
+        member("b", 1, [0.0, 1.0]),
+        member("c", 2, [1.0, 1.0]),
+    ]
+
+    result = cluster_articles(members, threshold=0.5, max_gap_hours=GAP)
+
+    assert result == {"a": "a", "b": "b", "c": "a"}
+
+
+def test_a_similarity_exactly_at_the_threshold_joins() -> None:
+    members = [member("a", 0, [1.0, 0.0]), member("b", 1, [1.0, 0.0])]
+
+    result = cluster_articles(members, threshold=1.0, max_gap_hours=GAP)
+
+    assert result == {"a": "a", "b": "a"}

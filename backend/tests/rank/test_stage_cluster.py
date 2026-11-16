@@ -190,3 +190,63 @@ def test_the_pipeline_clusters_stories_and_counts_them_in_the_run_stats() -> Non
 
     assert stats.stage_counts[PipelineStage.RANK]["clusters_multi"] == 1
     assert all(a.score_breakdown["coverage_sources"] == 2 for a in repo.list_articles())
+
+
+# Mutation guards (#367): each test fails if the named change is made to ``_cluster``.
+
+
+def muted_story() -> tuple[Services, InterestsConfig]:
+    """Three sources cover a story and the last of them is muted."""
+    s = services(InMemoryRepository())
+    for name, source in THREE:
+        s.repository.upsert_article(story(name, source))
+    return s, InterestsConfig(sources={"courier": SourceRule(mute=True)})
+
+
+def test_a_muted_article_is_not_counted_as_a_source_of_the_story() -> None:
+    s, interests = muted_story()
+
+    summary = run(s, interests=interests)
+
+    got = stored(s)
+    assert got["Story alpha one"].score_breakdown["coverage_sources"] == 2
+    assert got["Story alpha two"].score_breakdown["coverage_sources"] == 2
+    assert summary.counts()["clusters_multi"] == 1
+
+
+def test_a_muted_article_gets_no_coverage_entries() -> None:
+    s, interests = muted_story()
+
+    run(s, interests=interests)
+
+    muted = stored(s)["Story alpha three"]
+    assert muted.score == 0
+    assert "coverage" not in muted.score_breakdown
+    assert "coverage_sources" not in muted.score_breakdown
+
+
+def test_a_stale_cluster_id_is_cleared_when_the_article_has_no_usable_embedding() -> None:
+    s = services(InMemoryRepository())
+    s.repository.upsert_article(story("broken", "gazette", cluster_id="left-from-an-old-run"))
+
+    run(s, embedder=SkippingEmbedder())
+
+    assert stored(s)["Story alpha broken"].cluster_id is None
+
+
+def test_an_embedding_from_another_model_is_not_clustered() -> None:
+    s = services(InMemoryRepository())
+    s.repository.upsert_article(story("one", "gazette"))
+    s.repository.upsert_article(story("two", "herald"))
+    # Its re-embedding fails, so it keeps a vector that matches the others' but comes from a
+    # model whose vectors can't be compared with theirs.
+    stale = story(
+        "broken", "courier", embedding=[1.0, 0.0, 0.0, 0.0], embedding_model="older-model"
+    )
+    s.repository.upsert_article(stale)
+
+    run(s, embedder=SkippingEmbedder())
+
+    got = stored(s)
+    assert got["Story alpha broken"].cluster_id is None
+    assert got["Story alpha one"].score_breakdown["coverage_sources"] == 2
