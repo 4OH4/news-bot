@@ -26,10 +26,11 @@ from collections import Counter, defaultdict
 from collections.abc import Callable, Collection, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import TypedDict
 from urllib.parse import urlsplit
 
+from newsfeed.backup import backup_due, write_backup
 from newsfeed.config import UrlParamsConfig
 from newsfeed.extract.chain import ExtractorChain
 from newsfeed.extract.overrides import Mode, url_domain
@@ -1172,6 +1173,29 @@ def publish_stage(
             tally.error()
 
 
+def backup_if_due(services: Services, tally: RunTally, *, run_id: str, day: date) -> None:
+    """Back up feedback once per UTC ``day``, after publish (#330).
+
+    Costs one ``exists`` when today's backup is already there. A failure is
+    logged and counted and never fails the run: with no manifest written, the
+    next run tries again.
+    """
+    try:
+        if backup_due(services.blobs, day):
+            write_backup(services.repository, services.blobs, day=day, run_id=run_id)
+    except Exception as exc:  # stage boundary: a backup must never fail the run
+        tally.error()
+        log.warning(
+            "backup failed",
+            extra={
+                "stage": "backup",
+                "run_id": run_id,
+                "day": day.isoformat(),
+                "error_type": type(exc).__name__,
+            },
+        )
+
+
 def run_pipeline(
     services: Services,
     sources: Sequence[Source],
@@ -1198,6 +1222,8 @@ def run_pipeline(
     the last ``rank_window_hours`` against ``interests`` (none means no rules),
     taking source weights from ``rank_sources`` (default: ``sources``). Publish
     then writes ``feed.json``; its window never exceeds ``rank_window_hours``.
+    A run that publishes (``newsfeed run``, and ``newsfeed publish`` too) then
+    backs up feedback if today (UTC) has no backup yet (``backup_if_due``).
     """
     started = clock()
     run_id = run_id or started.strftime("%Y%m%dT%H%M%S") + f"-{started.microsecond:06d}"
@@ -1240,6 +1266,7 @@ def run_pipeline(
             window_hours=min(FEED_WINDOW_HOURS, rank_window_hours),
         )
         durations[PipelineStage.PUBLISH.value] = time.perf_counter() - began
+        backup_if_due(services, tally, run_id=run_id, day=clock().astimezone(UTC).date())
     stats = tally.stats(run_id, started, clock(), durations)
     services.repository.save_run_stats(stats)
     log.info(

@@ -18,7 +18,13 @@ from typer.testing import CliRunner
 from newsfeed import cli
 from newsfeed.adapters.localfs_blobstore import LocalBlobStore
 from newsfeed.adapters.sqlite_repository import SqliteRepository
-from newsfeed.backup import backup_due, backup_key, restore_backup, write_backup
+from newsfeed.backup import (
+    BackupError,
+    backup_due,
+    backup_key,
+    restore_backup,
+    write_backup,
+)
 from newsfeed.models import Feedback, FeedbackEvent, RankingArm
 
 DAY = date(2026, 11, 16)
@@ -175,3 +181,96 @@ def test_cli_backup_then_restore_round_trips_through_the_data_dir(data_dir: Path
         assert secret not in restored.output + dry.output
     with SqliteRepository(data_dir / "newsfeed.db") as repo:
         assert _dumped(repo) == before
+
+
+# --- Guards (worker's tests) ----------------------------------------------------
+
+
+def test_restore_of_a_missing_or_incomplete_backup_raises(
+    source: SqliteRepository, empty: SqliteRepository, blobs: LocalBlobStore
+) -> None:
+    with pytest.raises(BackupError, match="no complete backup"):
+        restore_backup(empty, blobs, day=DAY, dry_run=False)
+
+    # feedback.jsonl written but no manifest: an interrupted backup is not restorable.
+    lines = b"".join(json.dumps(e.model_dump(mode="json")).encode() + b"\n" for e in _events())
+    blobs.put(backup_key(DAY, "feedback.jsonl"), lines)
+    with pytest.raises(BackupError, match="no complete backup"):
+        restore_backup(empty, blobs, day=DAY, dry_run=False)
+    assert empty.list_feedback() == []
+
+
+def test_a_damaged_backup_writes_nothing_and_its_error_quotes_no_event(
+    source: SqliteRepository, empty: SqliteRepository, blobs: LocalBlobStore
+) -> None:
+    write_backup(source, blobs, day=DAY, run_id=None)
+    key = backup_key(DAY, "feedback.jsonl")
+    good = blobs.get(blobs.ref_for(key)).decode().splitlines()
+    damaged = [good[0], good[1].replace('"open"', '"unknown-event"'), good[2]]
+    blobs.put(key, ("\n".join(damaged) + "\n").encode())
+
+    with pytest.raises(BackupError) as raised:
+        restore_backup(empty, blobs, day=DAY, dry_run=False)
+    assert "line 2" in str(raised.value)
+    assert raised.value.__cause__ is None
+    assert all(secret not in str(raised.value) for secret in SECRET_ARTICLE_IDS)
+    assert empty.list_feedback() == []
+
+    blobs.put(key, ("\n".join(good[:2]) + "\n").encode())  # one line lost
+    with pytest.raises(BackupError, match="manifest says 3"):
+        restore_backup(empty, blobs, day=DAY, dry_run=False)
+    assert empty.list_feedback() == []
+
+
+def test_cli_backup_refuses_to_replace_a_days_backup_without_force(data_dir: Path) -> None:
+    with SqliteRepository(data_dir / "newsfeed.db") as repo:
+        for event in _events():
+            repo.save_feedback(event)
+    assert runner.invoke(cli.app, ["backup", "--day", "2026-11-10"]).exit_code == 0
+    jsonl = data_dir / "blobs" / "backups" / "2026-11-10" / "feedback.jsonl"
+    with SqliteRepository(data_dir / "newsfeed.db") as repo:
+        repo.save_feedback(
+            Feedback(
+                id="fb-4", article_id="a4", event=FeedbackEvent.LIKE, created_at=datetime.now(UTC)
+            )
+        )
+
+    refused = runner.invoke(cli.app, ["backup", "--day", "2026-11-10"])
+    assert refused.exit_code == 1
+    assert "--force" in refused.output
+    assert len(jsonl.read_text().splitlines()) == 3
+
+    forced = runner.invoke(cli.app, ["backup", "--day", "2026-11-10", "--force"])
+    assert forced.exit_code == 0, forced.output
+    assert len(jsonl.read_text().splitlines()) == 4
+
+
+def test_cli_restore_into_firestore_needs_yes(
+    data_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """NEWSFEED_STORAGE=gcp selects Firestore; the guard stops before the store is written."""
+    blobs = LocalBlobStore(data_dir / "blobs")
+    with SqliteRepository(tmp_path / "source.db") as repo:
+        for event in _events():
+            repo.save_feedback(event)
+        write_backup(repo, blobs, day=date(2026, 11, 10), run_id=None)
+    target = tmp_path / "standin-for-firestore.db"
+    monkeypatch.setenv("NEWSFEED_STORAGE", "gcp")
+    monkeypatch.setenv("NEWSFEED_GCS_BUCKET", "test-bucket")
+    monkeypatch.setattr(cli, "open_storage", lambda _s: (SqliteRepository(target), blobs))
+
+    refused = runner.invoke(cli.app, ["restore-backup", "2026-11-10"])
+    assert refused.exit_code == 1
+    assert "--yes" in refused.output
+    with SqliteRepository(target) as repo:
+        assert repo.list_feedback() == []
+
+    dry = runner.invoke(cli.app, ["restore-backup", "2026-11-10", "--dry-run"])
+    assert dry.exit_code == 0, dry.output
+    with SqliteRepository(target) as repo:
+        assert repo.list_feedback() == []
+
+    confirmed = runner.invoke(cli.app, ["restore-backup", "2026-11-10", "--yes"])
+    assert confirmed.exit_code == 0, confirmed.output
+    with SqliteRepository(target) as repo:
+        assert len(repo.list_feedback()) == 3
