@@ -7,7 +7,6 @@ current. Errors on one article are logged and counted, never raised.
 
 With an ``Embedder``, articles without a current embedding are embedded in
 batches first, and the vector goes into the same write as the score (ADR-0014).
-``backfill_embeddings`` embeds the articles the owner's feedback points at.
 """
 
 from __future__ import annotations
@@ -28,16 +27,7 @@ from newsfeed.rank.interests import InterestsConfig, check_sources, load_interes
 from newsfeed.rank.scoring import score_article
 from newsfeed.wiring import Services
 
-__all__ = [
-    "DEFAULT_EMBED_BATCH_SIZE",
-    "DEFAULT_WINDOW_HOURS",
-    "BackfillSummary",
-    "RankSummary",
-    "backfill_embeddings",
-    "html_to_text",
-    "load_rank_config",
-    "rank_recent",
-]
+__all__ = ["DEFAULT_WINDOW_HOURS", "RankSummary", "html_to_text", "load_rank_config", "rank_recent"]
 
 log = get_logger(__name__)
 
@@ -70,29 +60,6 @@ class RankSummary:
             "errors": self.errors,
             "embedded": self.embedded,
             "embed_errors": self.embed_errors,
-        }
-
-
-@dataclass(frozen=True)
-class BackfillSummary:
-    """Counts from one ``backfill_embeddings`` call. Counts only: no ids or titles."""
-
-    articles: int = 0
-    missing: int = 0
-    current: int = 0
-    embedded: int = 0
-    errors: int = 0
-    no_body: int = 0
-
-    def counts(self) -> dict[str, int]:
-        """The counters, by name. With ``dry_run``, ``embedded`` is what would be."""
-        return {
-            "articles": self.articles,
-            "missing": self.missing,
-            "current": self.current,
-            "embedded": self.embedded,
-            "errors": self.errors,
-            "no_body": self.no_body,
         }
 
 
@@ -152,18 +119,16 @@ def _body_text(services: Services, article: Article) -> str | None:
         return None
 
 
-def _embed(
-    embedder: Embedder, batch: list[tuple[Article, str | None]], *, log_urls: bool
-) -> list[list[float] | None]:
+def _embed(embedder: Embedder, batch: list[tuple[Article, str | None]]) -> list[list[float] | None]:
     """One ``embed`` call for ``batch``: a checked vector per article, or None where it failed.
 
     Never raises. A failed call fails the whole batch; an unusable vector fails
-    only its article. Logs never carry a vector, and carry urls only when
-    ``log_urls`` (not for articles taken from feedback: that is reading history).
+    only its article. Logs never carry a vector.
     """
     texts = [embedding_text(article, body) for article, body in batch]
     try:
         vectors = embedder.embed(texts)
+        dimensions = embedder.dimensions
         if len(vectors) != len(texts):
             raise EmbeddingError(f"expected {len(texts)} vectors, got {len(vectors)}")
     except Exception as exc:
@@ -180,14 +145,19 @@ def _embed(
         return [None] * len(batch)
     checked: list[list[float] | None] = []
     for (article, _), vector in zip(batch, vectors, strict=True):
-        problem = vector_problem(vector, embedder.dimensions)
+        problem = vector_problem(vector, dimensions)
         if problem is None:
             checked.append([float(v) for v in vector])
             continue
-        extra = {"stage": _STAGE, "model": embedder.model, "problem": problem}
-        if log_urls:
-            extra |= {"source_id": article.source_id, "url": article.url}
-        log.warning("embedder returned an unusable vector", extra=extra)
+        log.warning(
+            "embedder returned an unusable vector",
+            extra={
+                "stage": _STAGE,
+                "url": article.url,
+                "model": embedder.model,
+                "problem": problem,
+            },
+        )
         checked.append(None)
     return checked
 
@@ -265,7 +235,7 @@ def rank_recent(
         nonlocal embed_errors, embed_seconds
         assert embedder is not None
         began = time.perf_counter()
-        vectors = _embed(embedder, pending, log_urls=True)
+        vectors = _embed(embedder, pending)
         embed_seconds += time.perf_counter() - began
         embed_errors += vectors.count(None)
         for (article, body), vector in zip(pending, vectors, strict=True):
@@ -305,90 +275,3 @@ def rank_recent(
         embedded=embedded,
         embed_errors=embed_errors,
     )
-
-
-def _stored_body(services: Services, article: Article) -> str | None:
-    """The article's stored body text, or None. Logs nothing: these come from feedback."""
-    if article.content_ref is None:
-        return None
-    try:
-        return html_to_text(services.blobs.get(article.content_ref).decode("utf-8", "replace"))
-    except Exception:  # expired or unreadable: embed the title and summary instead
-        return None
-
-
-def backfill_embeddings(
-    services: Services,
-    embedder: Embedder,
-    *,
-    since: datetime,
-    dry_run: bool = False,
-    batch_size: int = DEFAULT_EMBED_BATCH_SIZE,
-) -> BackfillSummary:
-    """Embed the stored articles that feedback since ``since`` points at, if they need it.
-
-    Each article is embedded from its stored body, or from its title and summary
-    once the body has expired. The article is re-read just before its write, so a
-    score the rank stage stored meanwhile is kept. With ``dry_run``, nothing is
-    embedded or written, and ``embedded`` counts what would be. Logs counts only.
-    """
-    if batch_size < 1:
-        raise ValueError("batch_size must be at least 1")
-    began = time.perf_counter()
-    repository = services.repository
-    ids = list(dict.fromkeys(f.article_id for f in repository.list_feedback(since)))
-    missing = current = embedded = errors = no_body = 0
-    todo: list[Article] = []
-    for article_id in ids:
-        article = repository.get_article(article_id)
-        if article is None:
-            missing += 1
-        elif needs_embedding(article, embedder.model):
-            todo.append(article)
-        else:
-            current += 1
-    if dry_run:
-        embedded = len(todo)
-        todo = []
-    for start in range(0, len(todo), batch_size):
-        batch = [(a, _stored_body(services, a)) for a in todo[start : start + batch_size]]
-        no_body += sum(body is None for _, body in batch)
-        vectors = _embed(embedder, batch, log_urls=False)
-        for (article, _), vector in zip(batch, vectors, strict=True):
-            if vector is None:
-                errors += 1
-                continue
-            try:
-                fresh = repository.get_article(article.id)
-                if fresh is None:
-                    missing += 1
-                    continue
-                data = _with_embedding(fresh, vector, embedder.model)
-                repository.upsert_article(Article.model_validate(data))
-            except Exception as exc:
-                errors += 1
-                log.warning(
-                    "backfill write failed",
-                    extra={"stage": _STAGE, "error_type": type(exc).__name__},
-                )
-                continue
-            embedded += 1
-    summary = BackfillSummary(
-        articles=len(ids),
-        missing=missing,
-        current=current,
-        embedded=embedded,
-        errors=errors,
-        no_body=no_body,
-    )
-    log.info(
-        "embedding backfill finished",
-        extra={
-            "stage": _STAGE,
-            "model": embedder.model,
-            "dry_run": dry_run,
-            "seconds": round(time.perf_counter() - began, 3),
-            **summary.counts(),
-        },
-    )
-    return summary

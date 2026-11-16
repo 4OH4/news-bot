@@ -468,34 +468,6 @@ def embed_download(
         typer.echo(f"to use it, set NEWSFEED_EMBED_MODEL_DIR={target.resolve()}")
 
 
-@embed_app.command("backfill")
-def embed_backfill(
-    since: Annotated[str, typer.Option(help="Feedback at or after: 180d, 24h, a date")] = "180d",
-    dry_run: Annotated[bool, typer.Option(help="Count what would be embedded; write nothing.")] = (
-        False
-    ),
-) -> None:
-    """Embed the stored articles that past feedback points at, where they lack one.
-
-    Prints counts only: which articles the owner read is private.
-    """
-    from newsfeed.rank.stage import backfill_embeddings
-
-    try:
-        since_at = q.parse_since(since)
-    except q.InspectError as exc:
-        raise typer.BadParameter(str(exc), param_hint="--since") from exc
-    settings = load_settings()
-    with open_services(settings) as services:
-        if services.embedder is None:
-            _fail("NEWSFEED_EMBED_MODEL_DIR is not set; run `newsfeed embed download` first")
-        summary = backfill_embeddings(services, services.embedder, since=since_at, dry_run=dry_run)
-    label = "would embed" if dry_run else "embedded"
-    counts = summary.counts()
-    counts[label] = counts.pop("embedded")
-    typer.echo(", ".join(f"{k}={v}" for k, v in counts.items()))
-
-
 @app.command()
 def serve() -> None:
     """Serve the feed, articles and client to the owner only (behind IAP in the cloud)."""
