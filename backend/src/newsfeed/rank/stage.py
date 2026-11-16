@@ -366,6 +366,14 @@ def _seen_ids(services: Services, since: datetime) -> set[str]:
     }
 
 
+def _with_cluster_mates(
+    ready: list[tuple[Article, dict[str, object], bool]], seen: set[str]
+) -> set[str]:
+    """``seen`` plus every article in ``ready`` sharing a story with one of them (#367)."""
+    stories = {data.get("cluster_id") for a, data, _ in ready if a.id in seen} - {None}
+    return seen | {a.id for a, data, _ in ready if data.get("cluster_id") in stories}
+
+
 def _similarity(
     ready: list[tuple[Article, dict[str, object], bool]],
     profile: Profile,
@@ -558,6 +566,8 @@ def rank_recent(
     ):
         try:
             seen = _seen_ids(services, since)
+            # A second version of a story already read gets no lift either.
+            seen = _with_cluster_mates(ready, seen)
         except Exception as exc:
             # Without the list, a seen article would get a lift; skip similarity instead.
             errors += 1

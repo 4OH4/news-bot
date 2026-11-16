@@ -347,7 +347,11 @@ def test_an_article_the_owner_opened_or_read_gets_no_similarity_lift(
     repo.save_profile(
         preseeded_profile(built_ago=timedelta(hours=1), feedback_ago=timedelta(hours=2))
     )
-    seen, unseen = article("alpha", "seen"), article("alpha", "unseen")  # same vector, top raw
+    # Same vector, top raw. The unseen one is fetched too long before to share the seen one's
+    # story (#367), but published at the same time so the other factors match.
+    published = NOW - timedelta(hours=1)
+    seen = article("alpha", "seen", published_at=published)
+    unseen = article("alpha", "unseen", age=timedelta(hours=60), published_at=published)
     for a in (seen, unseen, article("beta", "1"), article("beta", "2")):
         repo.upsert_article(a)
     seconds = 60 if event is FeedbackEvent.READ else None
@@ -405,3 +409,29 @@ def test_unreadable_feedback_skips_similarity_rather_than_lifting_read_articles(
     assert counts["errors"] == 1
     assert counts["with_similarity"] == 0
     assert all("similarity" not in a.score_breakdown for a in repo.list_articles())
+
+
+def test_an_article_in_the_same_story_as_one_the_owner_read_gets_no_similarity_lift(
+    tmp_path: Path,
+) -> None:
+    repo = InMemoryRepository()
+    repo.save_profile(
+        preseeded_profile(built_ago=timedelta(hours=1), feedback_ago=timedelta(hours=2))
+    )
+    read = article("alpha", "read", source_id="gazette")
+    mate = article("alpha", "mate", source_id="herald")  # the same story, another source
+    # The same vector, but fetched too long before to be part of the story (default gap 48 h).
+    other = article("alpha", "other", age=timedelta(hours=60), source_id="courier")
+    for a in (read, mate, other, article("beta", "1"), article("beta", "2")):
+        repo.upsert_article(a)
+    repo.save_feedback(feedback(read.id, ago=timedelta(minutes=30)))
+
+    rank(services(repo), config(tmp_path, SMALL_PROFILE))
+
+    got = by_title(repo)
+    assert got["Story alpha mate"].cluster_id == got["Story alpha read"].cluster_id
+    assert got["Story alpha other"].cluster_id != got["Story alpha read"].cluster_id
+    assert got["Story alpha mate"].score_breakdown["similarity"] == 1.0
+    assert "already_read" in got["Story alpha mate"].score_breakdown
+    assert got["Story alpha other"].score_breakdown["similarity"] > 1.0
+    assert "already_read" not in got["Story alpha other"].score_breakdown
