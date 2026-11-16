@@ -30,6 +30,7 @@ __all__ = [
     "BuiltFeed",
     "build_feed",
     "effective_time",
+    "one_per_cluster",
     "publish_feed",
 ]
 
@@ -89,9 +90,11 @@ def _is_article(article: Article) -> bool:
     return status is ExtractionStatus.PARTIAL and article.extraction.word_count >= PARTIAL_MIN_WORDS
 
 
-def _item(article: Article, story_id: str, *, as_article: bool) -> dict[str, Any]:
+def _item(
+    article: Article, story_id: str, *, as_article: bool, coverage: int = 1
+) -> dict[str, Any]:
     image = article.lead_image
-    return {
+    item: dict[str, Any] = {
         "id": article.id,
         "story_id": story_id,
         "title": article.title,
@@ -109,6 +112,9 @@ def _item(article: Article, story_id: str, *, as_article: bool) -> dict[str, Any
         "word_count": article.extraction.word_count if as_article else None,
         "content_path": f"articles/{article.id}.html" if as_article else None,
     }
+    if coverage >= 2:
+        item["coverage"] = coverage
+    return item
 
 
 def _problem(article: Article) -> str | None:
@@ -173,6 +179,33 @@ def _one_per_story(
     return [(a, kept[a.id]) for a in ranked if a.id in kept]
 
 
+def one_per_cluster(rows: Sequence[Article]) -> list[tuple[Article, int]]:
+    """``rows`` with one row per ``cluster_id``, in the input order (#325).
+
+    The row shown has the highest score; ties go to a row that shows as an article,
+    then the earliest effective time, then the smallest id. Each comes with the
+    number of distinct sources among its cluster's rows. Rows without a cluster
+    are kept as they are, each its own story.
+    """
+    clusters: defaultdict[str, list[Article]] = defaultdict(list)
+    for row in rows:
+        if row.cluster_id is not None:
+            clusters[row.cluster_id].append(row)
+
+    def best(group: list[Article]) -> Article:
+        return min(
+            group,
+            key=lambda a: (-(a.score or 0.0), not _is_article(a), effective_time(a), a.id),
+        )
+
+    kept = {best(group).id: len({a.source_id for a in group}) for group in clusters.values()}
+    return [
+        (row, 1 if row.cluster_id is None else kept[row.id])
+        for row in rows
+        if row.cluster_id is None or row.id in kept
+    ]
+
+
 def build_feed(
     articles: Sequence[Article],
     sources: Collection[Source],
@@ -189,7 +222,8 @@ def build_feed(
     (None: no window, as for views, ADR-0013).
     Articles that can't form a valid item are dropped and logged, so one bad
     article never blocks the feed. Rows linked by the canonical their page
-    declared are one story and take one place (``_one_per_story``).
+    declared are one story and take one place (``_one_per_story``), and rows of one cluster take one
+    place too, with a coverage count (``one_per_cluster``).
     """
     if not _RUN_ID.fullmatch(run_id):
         raise ValueError(f"invalid run id {run_id!r}")
@@ -223,14 +257,19 @@ def build_feed(
         )
     valid.sort(key=lambda a: (-(a.score or 0.0), -effective_time(a).timestamp(), a.id))
     stories = _one_per_story(valid, articles)
-    items = [_item(a, story_id, as_article=_is_article(a)) for a, story_id in stories[:limit]]
+    story_ids = {a.id: story_id for a, story_id in stories}
+    clustered = one_per_cluster([a for a, _ in stories])
+    items = [
+        _item(a, story_ids[a.id], as_article=_is_article(a), coverage=count)
+        for a, count in clustered[:limit]
+    ]
     feed = {
         "schema_version": SCHEMA_VERSION,
         "generated_at": _timestamp(now),
         "run_id": run_id,
         "items": items,
     }
-    return BuiltFeed(feed, len(candidates), dropped, len(valid) - len(stories))
+    return BuiltFeed(feed, len(candidates), dropped, len(valid) - len(clustered))
 
 
 def publish_feed(
