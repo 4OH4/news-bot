@@ -23,7 +23,7 @@ import json
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 from pydantic import BaseModel, ValidationError
 
@@ -39,6 +39,7 @@ __all__ = [
     "BackupManifest",
     "backup_due",
     "backup_key",
+    "latest_backup_day",
     "restore_backup",
     "write_backup",
 ]
@@ -96,6 +97,19 @@ def backup_key(day: date, name: str) -> str:
 def backup_due(blobs: BlobStore, day: date) -> bool:
     """True when ``day`` has no complete backup yet, i.e. no manifest."""
     return not blobs.exists(blobs.ref_for(backup_key(day, MANIFEST_NAME)))
+
+
+def latest_backup_day(blobs: BlobStore, today: date, *, lookback_days: int = 7) -> date | None:
+    """The newest day in ``today - lookback_days .. today`` with a complete backup, else None.
+
+    ``BlobStore`` can't list keys, so this probes each day's manifest. A day
+    with collection files but no manifest is incomplete and doesn't count.
+    """
+    for n in range(lookback_days + 1):
+        day = today - timedelta(days=n)
+        if not backup_due(blobs, day):
+            return day
+    return None
 
 
 def _utc_now() -> datetime:
@@ -194,6 +208,10 @@ def restore_backup(repository: Repository, blobs: BlobStore, *, day: date, dry_r
     loaded: list[tuple[_Collection, list[BaseModel]]] = []
     for collection in _COLLECTIONS:
         if collection.name not in manifest.counts:
+            log.info(
+                "restore skips a collection the backup lacks",
+                extra={"stage": "backup", "day": day.isoformat(), "collection": collection.name},
+            )
             continue  # a collection added after this backup was made
         items = _read_collection(blobs, day, collection)
         if len(items) != manifest.counts[collection.name]:

@@ -15,14 +15,15 @@ import statistics
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from pydantic import BaseModel, ConfigDict
 
+from newsfeed.backup import latest_backup_day
 from newsfeed.extract.overrides import url_domain
 from newsfeed.metrics import reason_category
 from newsfeed.models import Article, ExtractionStatus, Feedback, FeedbackEvent, RunStats
-from newsfeed.ports import Repository
+from newsfeed.ports import BlobStore, Repository
 
 __all__ = [
     "DomainSummary",
@@ -239,6 +240,23 @@ def _render_feedback(fb: FeedbackSummary) -> list[str]:
     return lines
 
 
+class BackupStatus(_Out):
+    """The newest complete feedback backup, and whether it is overdue."""
+
+    latest_day: date | None
+    stale: bool
+
+
+_BACKUP_STALE_DAYS = 2
+_BACKUP_LOOKBACK_DAYS = 7
+
+
+def _backup_status(blobs: BlobStore, today: date) -> BackupStatus:
+    latest = latest_backup_day(blobs, today, lookback_days=_BACKUP_LOOKBACK_DAYS)
+    stale = latest is None or (today - latest).days > _BACKUP_STALE_DAYS
+    return BackupStatus(latest_day=latest, stale=stale)
+
+
 class Report(_Out):
     """Everything ``newsfeed report`` prints."""
 
@@ -248,6 +266,7 @@ class Report(_Out):
     feeds: list[FeedFailure]
     failures: list[FailedGroup]
     feedback: FeedbackSummary | None = None
+    backup: BackupStatus | None = None
 
 
 def _select_runs(repo: Repository, run_id: str | None, since: datetime | None) -> list[RunStats]:
@@ -343,15 +362,19 @@ def build_report(
     run_id: str | None = None,
     since: datetime | None = None,
     now: datetime | None = None,
+    blobs: BlobStore | None = None,
 ) -> Report:
     """Summarise the latest run, run ``run_id``, or every run since ``since``.
 
     Raises ``UnknownRunError`` for an unknown ``run_id``. Feed health is the current
     state of ``source_ids`` whatever runs are chosen, because it is a running
-    count rather than a per-run figure.
+    count rather than a per-run figure. With ``blobs`` the report also shows the
+    latest feedback backup; without it that line is left out.
     """
     runs = _select_runs(repo, run_id, since)
-    feedback = _feedback_summary(repo, now or datetime.now(UTC), since)
+    now = now or datetime.now(UTC)
+    feedback = _feedback_summary(repo, now, since)
+    backup = _backup_status(blobs, now.astimezone(UTC).date()) if blobs is not None else None
     feeds = []
     for source_id in source_ids:
         state = repo.get_source_state(source_id)
@@ -367,7 +390,15 @@ def build_report(
             )
     feeds.sort(key=lambda f: (-f.consecutive_failures, f.source_id))
     if not runs:
-        return Report(run_ids=[], domains=[], trend=[], feeds=feeds, failures=[], feedback=feedback)
+        return Report(
+            run_ids=[],
+            domains=[],
+            trend=[],
+            feeds=feeds,
+            failures=[],
+            feedback=feedback,
+            backup=backup,
+        )
     # Filter on the last attempt, not fetched_at: a retried article was fetched earlier.
     problem_articles = [a for s in _PROBLEM_STATUSES for a in repo.list_articles(status=s)]
     return Report(
@@ -377,6 +408,7 @@ def build_report(
         feeds=feeds,
         failures=_failed_groups(problem_articles, runs),
         feedback=feedback,
+        backup=backup,
     )
 
 
@@ -415,4 +447,9 @@ def render_text(report: Report) -> str:
         lines += [f"    {u}" for u in g.urls]
     if report.feedback is not None:
         lines += _render_feedback(report.feedback)
+    if report.backup is not None:
+        b = report.backup
+        shown = b.latest_day.isoformat() if b.latest_day else "none found"
+        flag = " STALE" if b.stale and b.latest_day else ""
+        lines += ["", f"Latest feedback backup: {shown}{flag}"]
     return "\n".join(lines)
