@@ -18,6 +18,19 @@ describe("nextChrome", () => {
     expect(nextChrome(s, 0, VP, H).offset).toBe(0);
   });
 
+  it("resets to fully shown at the top, even after overscroll (-50 then 0)", () => {
+    const down = nextChrome(INITIAL_CHROME, 300, VP, H);
+    expect(down.offset).toBe(H);
+    const over = nextChrome(down, -50, VP, H);
+    expect(over.offset).toBe(0);
+    expect(nextChrome(over, 0, VP, H).offset).toBe(0);
+  });
+
+  it("does not count the gap above the sticky header toward its offset", () => {
+    expect(nextChrome(INITIAL_CHROME, 30, VP, H, 16).offset).toBe(14);
+    expect(nextChrome(INITIAL_CHROME, 10, VP, H, 16).offset).toBe(0);
+  });
+
   it("shows the button only past two screens and scrolling up", () => {
     const down = nextChrome(INITIAL_CHROME, 3 * VP, VP, H);
     expect(down.showButton).toBe(false);

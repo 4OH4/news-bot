@@ -19,6 +19,7 @@ export function useScrollChrome(headerRef: RefObject<HTMLElement>): ChromeState 
         window.scrollY,
         window.innerHeight,
         headerRef.current?.offsetHeight ?? 0,
+        parseFloat(getComputedStyle(document.body).paddingTop) || 0,
       );
       setState(current);
     };

@@ -138,7 +138,7 @@ test.describe("the current tab", () => {
     await sections(page).getByRole("link", { name: "News" }).click();
     await expect(page).toHaveURL(/\/news$/);
     await expect(sections(page).locator('a[aria-current="page"]')).toHaveText("News");
-    // #289: Liked and Settings are reached by the header icons.
+    // #289, #307: Settings is a header icon; Liked is a link in Settings.
     await page.locator("header").getByRole("link", { name: "Settings" }).click();
     await page.getByRole("link", { name: "Liked articles" }).click();
     await expect(page).toHaveURL(/\/liked$/);

@@ -38,7 +38,8 @@ async function openLongFeed(page: Page): Promise<void> {
 }
 
 const header = (page: Page) => page.locator("header.top");
-const toTop = (page: Page) => page.getByRole("button", { name: "Back to top" });
+// A CSS locator: getByRole skips aria-hidden elements, so toBeHidden() on it could never fail.
+const toTop = (page: Page) => page.locator(".back-to-top");
 const scrollY = (page: Page) => page.evaluate(() => window.scrollY);
 const jump = (page: Page, y: number) =>
   page.evaluate((top) => window.scrollTo({ top, behavior: "instant" }), y);
@@ -64,12 +65,23 @@ test("the header slides away going down and back going up, and is whole at the t
   await expect.poll(() => headerTop(page)).toBe(BODY_PAD);
 });
 
+test("the header moves exactly as far as the page is scrolled, 30px for 30px", async ({ page }) => {
+  await openLongFeed(page);
+  await page.mouse.wheel(0, 30);
+  await expect.poll(() => scrollY(page)).toBe(30);
+  // It rests BODY_PAD below the top; 30px of scroll leaves it 30px higher.
+  await expect.poll(() => headerTop(page)).toBe(BODY_PAD - 30);
+  await page.mouse.wheel(0, -10);
+  await expect.poll(() => headerTop(page)).toBe(BODY_PAD - 20);
+});
+
 test("the Back to top button is a 44px circle above the tab bar, bottom right", async ({ page }) => {
   await openLongFeed(page);
   await jump(page, 3000);
   await page.mouse.wheel(0, -50);
   const b = toTop(page);
   await expect(b).toBeVisible();
+  await expect(b).toHaveAttribute("aria-label", "Back to top");
   const box = (await b.boundingBox())!;
   expect(box.width).toBe(44);
   expect(box.height).toBe(44);

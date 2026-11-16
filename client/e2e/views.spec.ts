@@ -56,7 +56,7 @@ test("the tab bar has News, Feed and Longer, each 44px tall, and a tap opens the
   expect(seen).toContain("news");
 });
 
-test("the Settings icon is round, 44px at least, named, and open their screens", async ({
+test("the Settings icon is round, 44px at least and named, opens Settings, and Liked is reached from there", async ({
   page,
 }) => {
   await stubApi(page);
