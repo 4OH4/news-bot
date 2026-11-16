@@ -121,7 +121,7 @@ def run_ab(data: Path, events: list[Feedback], *args: str) -> str:
     seed(data, [], events)
     result = inspect("ab", "--since", "90d", *args)
     assert result.exit_code == 0, result.output
-    return result.stdout
+    return str(result.stdout)
 
 
 def recent(personal: int, rules: int, days: int) -> list[Feedback]:
