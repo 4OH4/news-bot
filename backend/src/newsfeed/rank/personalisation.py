@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from newsfeed.config import ConfigFile, load_config
 
 __all__ = [
+    "ClusteringSettings",
     "PersonalisationConfig",
     "ProfileSettings",
     "Signals",
@@ -58,6 +59,14 @@ class SimilaritySettings(_Section):
     negative_weight: float = Field(default=0.5, ge=0)
 
 
+class ClusteringSettings(_Section):
+    """When articles count as one story, and how much wider coverage lifts the score."""
+
+    threshold: float = Field(default=0.88, gt=0, le=1, description="Cosine similarity to join.")
+    max_gap_hours: float = Field(default=48.0, gt=0, description="Max fetch-time gap to join.")
+    coverage_gamma: float = Field(default=0.25, ge=0, description="Coverage factor strength.")
+
+
 class PersonalisationConfig(ConfigFile):
     """Schema of ``config/personalisation.yaml``; every field has a default."""
 
@@ -66,6 +75,7 @@ class PersonalisationConfig(ConfigFile):
     signals: Signals = Field(default_factory=Signals)
     profile: ProfileSettings = Field(default_factory=ProfileSettings)
     similarity: SimilaritySettings = Field(default_factory=SimilaritySettings)
+    clustering: ClusteringSettings = Field(default_factory=ClusteringSettings)
 
 
 def load_personalisation(path: Path) -> PersonalisationConfig:

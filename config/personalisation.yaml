@@ -23,3 +23,8 @@ profile:
 similarity:
   beta: 2.0         # top article's factor is 1 + beta
   negative_weight: 0.5
+
+clustering:         # one story, several outlets (#324)
+  threshold: 0.88   # cosine similarity to join a story
+  max_gap_hours: 48
+  coverage_gamma: 0.25   # score x (1 + gamma * ln sources), for 2 or more sources
