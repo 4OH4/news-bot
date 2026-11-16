@@ -40,3 +40,10 @@ def test_the_committed_file_loads_and_matches_the_defaults() -> None:
 def test_unknown_keys_and_non_finite_numbers_are_rejected(tmp_path: Path, text: str) -> None:
     with pytest.raises(ConfigError, match=r"personalisation\.yaml"):
         load_personalisation(write(tmp_path, text))
+
+
+def test_the_clustering_section_has_the_documented_defaults_and_is_in_the_committed_file() -> None:
+    expected = {"threshold": 0.88, "max_gap_hours": 48, "coverage_gamma": 0.25}
+    for loaded in (load_personalisation(COMMITTED), load_personalisation(COMMITTED.parent / "x")):
+        assert loaded.clustering.model_dump() == expected
+    assert "clustering:" in COMMITTED.read_text()
