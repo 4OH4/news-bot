@@ -199,6 +199,11 @@ class Settings(BaseSettings):
         """``interests.yaml`` in the config directory."""
         return self.config_dir / "interests.yaml"
 
+    @property
+    def personalisation_path(self) -> Path:
+        """``personalisation.yaml`` in the config directory."""
+        return self.config_dir / "personalisation.yaml"
+
 
 def load_settings() -> Settings:
     """Read the settings from the environment."""

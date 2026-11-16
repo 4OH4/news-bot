@@ -39,6 +39,12 @@ How the components combine::
 an empty config the score is ``source * recency``. Breakdown values are the
 factors above (except the ``demote_body_only:<name>`` marker), so the score can
 be recomputed from them.
+
+The rank stage may add two more keys that are not part of ``score`` (#323):
+``similarity``, a factor of 1 or more saying how close the article is to the
+owner's interest profile, which the API multiplies the score by for the
+personalised order; and ``similarity_raw``, a marker holding the underlying
+closeness. Neither changes ``score``, so the rules-only order stays available.
 """
 
 from __future__ import annotations
