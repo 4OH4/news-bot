@@ -1,0 +1,177 @@
+"""Backups of feedback to the blob store, and restoring them (#330).
+
+Round trips use the real SQLite repository and local blob store; the CLI
+commands run against a temporary data directory.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+from collections.abc import Iterator
+from datetime import UTC, date, datetime
+from pathlib import Path
+
+import pytest
+from typer.testing import CliRunner
+
+from newsfeed import cli
+from newsfeed.adapters.localfs_blobstore import LocalBlobStore
+from newsfeed.adapters.sqlite_repository import SqliteRepository
+from newsfeed.backup import backup_due, backup_key, restore_backup, write_backup
+from newsfeed.models import Feedback, FeedbackEvent, RankingArm
+
+DAY = date(2026, 11, 16)
+SECRET_ARTICLE_IDS = ("art-private-alpha", "art-private-beta", "art-private-gamma")
+SECRET_VALUES = (417.25, 983.5)
+
+
+def _events() -> list[Feedback]:
+    """Three invented events, with every optional field set on at least one."""
+    at = datetime(2026, 11, 15, 8, 30, tzinfo=UTC)
+    return [
+        Feedback(
+            id="fb-1",
+            article_id=SECRET_ARTICLE_IDS[0],
+            event=FeedbackEvent.READ,
+            value=SECRET_VALUES[0],
+            created_at=at,
+            view="feed",
+            arm=RankingArm.PERSONAL,
+        ),
+        Feedback(
+            id="fb-2", article_id=SECRET_ARTICLE_IDS[1], event=FeedbackEvent.OPEN, created_at=at
+        ),
+        Feedback(
+            id="fb-3",
+            article_id=SECRET_ARTICLE_IDS[2],
+            event=FeedbackEvent.READ,
+            value=SECRET_VALUES[1],
+            created_at=at,
+            arm=RankingArm.RULES,
+        ),
+    ]
+
+
+def _dumped(repo: SqliteRepository) -> list[dict[str, object]]:
+    return sorted((f.model_dump() for f in repo.list_feedback()), key=lambda d: str(d["id"]))
+
+
+@pytest.fixture
+def source(tmp_path: Path) -> Iterator[SqliteRepository]:
+    with SqliteRepository(tmp_path / "source.db") as repo:
+        for event in _events():
+            repo.save_feedback(event)
+        yield repo
+
+
+@pytest.fixture
+def empty(tmp_path: Path) -> Iterator[SqliteRepository]:
+    with SqliteRepository(tmp_path / "empty.db") as repo:
+        yield repo
+
+
+@pytest.fixture
+def blobs(tmp_path: Path) -> LocalBlobStore:
+    return LocalBlobStore(tmp_path / "blobs")
+
+
+def test_backup_writes_one_json_line_per_event_and_a_manifest_with_the_count(
+    source: SqliteRepository, blobs: LocalBlobStore
+) -> None:
+    assert backup_due(blobs, DAY)
+
+    manifest = write_backup(source, blobs, day=DAY, run_id="run-1")
+
+    lines = blobs.get(blobs.ref_for(backup_key(DAY, "feedback.jsonl"))).decode().splitlines()
+    assert sorted(json.loads(line)["id"] for line in lines) == ["fb-1", "fb-2", "fb-3"]
+    stored = json.loads(blobs.get(blobs.ref_for(backup_key(DAY, "manifest.json"))))
+    assert stored["day"] == "2026-11-16"
+    assert stored["run_id"] == "run-1"
+    assert stored["counts"] == {"feedback": 3}
+    assert manifest.counts == {"feedback": 3}
+    assert backup_key(DAY, "manifest.json") == "backups/2026-11-16/manifest.json"
+    assert not backup_due(blobs, DAY)
+
+
+def test_restore_round_trips_every_field_and_is_idempotent(
+    source: SqliteRepository, empty: SqliteRepository, blobs: LocalBlobStore
+) -> None:
+    write_backup(source, blobs, day=DAY, run_id=None)
+
+    assert restore_backup(empty, blobs, day=DAY, dry_run=False) == 3
+    assert _dumped(empty) == _dumped(source)
+
+    assert restore_backup(empty, blobs, day=DAY, dry_run=False) == 3
+    assert _dumped(empty) == _dumped(source)
+
+
+def test_dry_run_restore_counts_without_writing(
+    source: SqliteRepository, empty: SqliteRepository, blobs: LocalBlobStore
+) -> None:
+    write_backup(source, blobs, day=DAY, run_id=None)
+
+    assert restore_backup(empty, blobs, day=DAY, dry_run=True) == 3
+    assert empty.list_feedback() == []
+
+
+def test_backup_and_restore_logs_carry_no_article_id_or_feedback_value(
+    source: SqliteRepository,
+    empty: SqliteRepository,
+    blobs: LocalBlobStore,
+    log_records: list[logging.LogRecord],
+) -> None:
+    write_backup(source, blobs, day=DAY, run_id="run-1")
+    restore_backup(empty, blobs, day=DAY, dry_run=False)
+
+    assert log_records, "a backup should log its counts and keys"
+    for record in log_records:
+        text = record.getMessage() + " " + repr(vars(record))
+        for secret in (*SECRET_ARTICLE_IDS, *(str(v) for v in SECRET_VALUES)):
+            assert secret not in text, f"{secret!r} leaked into log record {record.msg!r}"
+
+
+# --- CLI -----------------------------------------------------------------------
+
+runner = CliRunner()
+
+
+@pytest.fixture
+def data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    config = tmp_path / "config"
+    config.mkdir()
+    (config / "sources.yaml").write_text("sources: []\n")
+    (config / "url_params.yaml").write_text("domains: {}\n")
+    (config / "extraction.yaml").write_text("domains: {}\n")
+    data = tmp_path / "data"
+    data.mkdir()
+    monkeypatch.setenv("NEWSFEED_CONFIG_DIR", str(config))
+    monkeypatch.setenv("NEWSFEED_DATA_DIR", str(data))
+    monkeypatch.setenv("NEWSFEED_STORAGE", "local")
+    return data
+
+
+def test_cli_backup_then_restore_round_trips_through_the_data_dir(data_dir: Path) -> None:
+    with SqliteRepository(data_dir / "newsfeed.db") as repo:
+        for event in _events():
+            repo.save_feedback(event)
+        before = _dumped(repo)
+
+    backed_up = runner.invoke(cli.app, ["backup", "--day", "2026-11-10"])
+    assert backed_up.exit_code == 0, backed_up.output
+    assert (data_dir / "blobs" / "backups" / "2026-11-10" / "manifest.json").is_file()
+
+    (data_dir / "newsfeed.db").unlink()
+    dry = runner.invoke(cli.app, ["restore-backup", "2026-11-10", "--dry-run"])
+    assert dry.exit_code == 0, dry.output
+    assert "3" in dry.output
+    with SqliteRepository(data_dir / "newsfeed.db") as repo:
+        assert repo.list_feedback() == []
+
+    restored = runner.invoke(cli.app, ["restore-backup", "2026-11-10"])
+    assert restored.exit_code == 0, restored.output
+    assert "3" in restored.output
+    for secret in SECRET_ARTICLE_IDS:
+        assert secret not in restored.output + dry.output
+    with SqliteRepository(data_dir / "newsfeed.db") as repo:
+        assert _dumped(repo) == before
