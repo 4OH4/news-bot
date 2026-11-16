@@ -619,3 +619,53 @@ def test_the_store_calls_do_not_block_the_event_loop() -> None:
     assert repository.on_loop == [False], "save_feedback ran on the event loop"
     assert blobs.on_loop, "the like should have touched the blob store"
     assert not any(blobs.on_loop), "a blob call ran on the event loop"
+
+
+# --- view, arm and user_id for the A/B check (#326) --------------------------
+
+
+def test_view_and_arm_are_stored_with_the_owner_as_user(blobs: RecordingBlobStore) -> None:
+    repository = InMemoryRepository()
+    client = client_for(make_app(blobs, repository=repository))
+
+    assert post(client, event(view="feed", arm="personal")).status_code == 204
+
+    [stored] = repository.list_feedback()
+    assert (stored.view, stored.arm, stored.user_id) == ("feed", "personal", "owner")
+
+
+def test_an_event_with_neither_view_nor_arm_is_stored_as_before(blobs: RecordingBlobStore) -> None:
+    repository = InMemoryRepository()
+    client = client_for(make_app(blobs, repository=repository))
+
+    assert post(client, event()).status_code == 204
+
+    [stored] = repository.list_feedback()
+    assert (stored.view, stored.arm, stored.user_id) == (None, None, "owner")
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [{"arm": "both"}, {"arm": 1}, {"view": "Feed"}, {"view": "x" * 41}, {"view": "feed\n"}],
+)
+def test_a_bad_view_or_arm_is_422_and_nothing_is_stored(
+    blobs: RecordingBlobStore, changes: dict[str, Any]
+) -> None:
+    repository = InMemoryRepository()
+    client = client_for(make_app(blobs, repository=repository))
+
+    assert post(client, event(**changes)).status_code == 422
+    assert repository.list_feedback() == []
+
+
+def test_a_user_id_in_the_body_is_still_refused(blobs: RecordingBlobStore) -> None:
+    # The owner is the only user: the server sets it, the client can't.
+    client = client_for(make_app(blobs))
+
+    assert post(client, event(user_id="someone-else")).status_code == 422
+
+
+def test_the_shared_example_file_shows_a_view_and_an_arm() -> None:
+    entries = json.loads(EXAMPLE.read_text())
+
+    assert any(e.get("view") == "feed" and e.get("arm") in ("rules", "personal") for e in entries)
