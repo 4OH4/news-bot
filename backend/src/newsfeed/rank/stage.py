@@ -14,6 +14,12 @@ there is new feedback and the last build is old enough, and after every
 article is embedded it adds ``similarity`` and ``similarity_raw`` to the
 breakdown of each one with a current embedding. ``score`` stays the rule score.
 The profile is the owner's personal history, so its logs carry counts only.
+
+Also with an ``Embedder``, the stage groups the window's embedded articles into
+stories (#324): near-identical embeddings fetched within two days share a
+``cluster_id``, and articles in a story covered by two or more sources have
+their ``score`` multiplied by a ``coverage`` factor. Clusters are recomputed
+from scratch on every run.
 """
 
 from __future__ import annotations
@@ -30,6 +36,7 @@ import lxml.html
 from newsfeed.logging import get_logger
 from newsfeed.models import DEFAULT_USER_ID, Article, PipelineStage, Profile, Source, article_id
 from newsfeed.ports import Embedder, EmbeddingError
+from newsfeed.rank.cluster import ClusterInput, cluster_articles, coverage_factor
 from newsfeed.rank.embedding import embedding_text, needs_embedding, vector_problem
 from newsfeed.rank.interests import InterestsConfig, check_sources, load_interests
 from newsfeed.rank.personalisation import PersonalisationConfig
@@ -66,6 +73,7 @@ class RankSummary:
     embed_errors: int = 0
     profile_rebuilt: int = 0
     with_similarity: int = 0
+    clusters_multi: int = 0
 
     def counts(self) -> dict[str, int]:
         """The counters recorded in ``RunStats.stage_counts["rank"]``."""
@@ -78,6 +86,7 @@ class RankSummary:
             "embed_errors": self.embed_errors,
             "profile_rebuilt": self.profile_rebuilt,
             "with_similarity": self.with_similarity,
+            "clusters_multi": self.clusters_multi,
         }
 
 
@@ -349,6 +358,51 @@ def _similarity(
     return {k: (factors[k], raw[k]) for k in raw}
 
 
+def _cluster(
+    ready: list[tuple[Article, dict[str, object], bool]],
+    model: str,
+    config: PersonalisationConfig,
+) -> int:
+    """Set ``cluster_id`` on each article in ``ready`` with an embedding from ``model``.
+
+    Where a story has two or more distinct sources, multiplies the score by
+    the coverage factor and records ``coverage`` and ``coverage_sources``.
+    Muted articles stay at 0 and don't count towards coverage. Returns the
+    number of such stories.
+    """
+    settings = config.clustering
+    members: list[ClusterInput] = []
+    for article, data, _ in ready:
+        vector = data.get("embedding")
+        if data.get("embedding_model") == model and isinstance(vector, list):
+            members.append(ClusterInput(article.id, article.fetched_at, article.source_id, vector))
+    cluster_of = cluster_articles(
+        members, threshold=settings.threshold, max_gap_hours=settings.max_gap_hours
+    )
+    sources: dict[str, set[str]] = defaultdict(set)
+    for article, data, _ in ready:
+        cluster_id = cluster_of.get(article.id)
+        breakdown = data["score_breakdown"]
+        assert isinstance(breakdown, dict)
+        # Set (even None) so a stale id from an earlier run never survives.
+        data["cluster_id"] = cluster_id
+        if cluster_id is not None and "muted" not in breakdown:
+            sources[cluster_id].add(article.source_id)
+    for article, data, _ in ready:
+        cluster_id = cluster_of.get(article.id)
+        count = len(sources[cluster_id]) if cluster_id is not None else 0
+        breakdown = data["score_breakdown"]
+        assert isinstance(breakdown, dict)
+        if count < 2 or "muted" in breakdown:
+            continue
+        factor = coverage_factor(count, settings.coverage_gamma)
+        score = data["score"]
+        assert isinstance(score, float)
+        data["score"] = score * factor
+        breakdown |= {"coverage": factor, "coverage_sources": float(count)}
+    return sum(len(v) >= 2 for v in sources.values())
+
+
 def rank_recent(
     services: Services,
     config: InterestsConfig,
@@ -457,6 +511,10 @@ def rank_recent(
     if pending:
         flush()
 
+    clusters_multi = 0
+    if embedder is not None:
+        clusters_multi = _cluster(ready, embedder.model, personalisation)
+
     # Similarity ranks each article among all of this run's, so it waits for every batch.
     similarity: dict[str, tuple[float, float]] = {}
     if (
@@ -496,6 +554,7 @@ def rank_recent(
             "profile_rebuilt": int(rebuilt),
             "profile_seconds": round(profile_seconds, 3),
             "with_similarity": with_similarity,
+            "clusters_multi": clusters_multi,
         },
     )
     return RankSummary(
@@ -507,6 +566,7 @@ def rank_recent(
         embed_errors=embed_errors,
         profile_rebuilt=int(rebuilt),
         with_similarity=with_similarity,
+        clusters_multi=clusters_multi,
     )
 
 

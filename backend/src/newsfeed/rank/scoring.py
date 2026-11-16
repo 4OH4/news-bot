@@ -40,6 +40,11 @@ an empty config the score is ``source * recency``. Breakdown values are the
 factors above (except the ``demote_body_only:<name>`` marker), so the score can
 be recomputed from them.
 
+The rank stage may add ``coverage`` (#324): a factor of 1 or more for a story
+covered by two or more sources, which is part of ``score`` (it multiplies the
+rule score). Its marker ``coverage_sources``, the number of sources, is not a
+factor.
+
 The rank stage may add two more keys that are not part of ``score`` (#323):
 ``similarity``, a factor of 1 or more saying how close the article is to the
 owner's interest profile, which the API multiplies the score by for the

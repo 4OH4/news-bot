@@ -161,7 +161,9 @@ def test_clusters_are_recomputed_and_scores_do_not_compound_across_runs(tmp_path
         assert first.score_breakdown["coverage_sources"] == 3
 
         # A fourth source reports the story, earlier than the others, before the next run.
-        repo.upsert_article(story("zero", "bulletin", age=timedelta(hours=3)))
+        # Published at the same time as the rest, so its recency, and so its rule score, matches.
+        zero = story("zero", "bulletin", age=timedelta(hours=3), published_at=NOW - age)
+        repo.upsert_article(zero)
         run(s, now=NOW + timedelta(hours=1))
 
         got = stored(s)
