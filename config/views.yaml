@@ -2,7 +2,9 @@
 # pages them (GET /api/feed?view=<name>). Unknown keys are rejected. Names: lowercase
 # letters, digits, '-'. tags: sources with any of them (omit for all); a tagged view
 # reads its sources' newest max_items articles, the untagged view reuses feed.json's
-# 72-hour read. order: newest | score. max_items: 1 to 1000.
+# 72-hour read. order: newest | score. max_items: 1 to 1000. ranking (score views only):
+# rules (default) | ab, which the API serves as the rules and personal orders
+# interleaved for the A/B check (ADR-0015).
 views:
   news:
     tags: [news]
@@ -11,6 +13,7 @@ views:
   feed:
     order: score
     max_items: 500
+    ranking: ab
   longer:
     tags: [long-form]
     order: score

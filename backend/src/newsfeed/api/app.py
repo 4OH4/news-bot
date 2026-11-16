@@ -2,7 +2,8 @@
 
 Every route sits behind the app-level owner check (``api.auth``), so a route
 added later can't skip it. Content is read through the ``BlobStore`` port only;
-the read routes need no repository read.
+the read routes need no repository read. A ``score`` view is ranked at read time
+(``api.ranking``): diversity, and for an ``ab`` view the A/B interleaving (ADR-0015).
 """
 
 from __future__ import annotations
@@ -13,9 +14,11 @@ import hashlib
 import json
 import mimetypes
 import re
+import threading
+from collections import OrderedDict
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, status
 from fastapi.responses import FileResponse
@@ -25,6 +28,8 @@ from newsfeed.api.auth import owner_check
 from newsfeed.api.feedback import feedback_router
 from newsfeed.api.headers import SecurityHeadersMiddleware
 from newsfeed.api.local_safety import check_client_dir
+from newsfeed.api.ranking import RankingMode, rank_view
+from newsfeed.config import ViewsConfig, load_views
 from newsfeed.ports import BlobNotFoundError, BlobStore, Repository, TokenVerifier
 
 __all__ = ["create_app"]
@@ -37,6 +42,7 @@ ASSET_CACHE_CONTROL = "private, max-age=31536000, immutable"  # hashed file name
 SCHEMA_VERSION = 1
 PAGE_LIMIT = 50
 MAX_PAGE_LIMIT = 100
+RANKED_CACHE_SIZE = 8  # (view, mode, file) entries; one run's Feed in three modes fits
 
 # Matched with fullmatch: ``$`` alone would also accept a trailing newline.
 _ARTICLE_ID = re.compile(r"[0-9a-f]{16}")
@@ -54,8 +60,12 @@ def create_app(
     owner_email: str,
     client_dir: Path | None = None,
     allowed_hosts: Sequence[str] | None = None,
+    views: ViewsConfig | None = None,
 ) -> FastAPI:
     """Build the API.
+
+    ``views`` says how each view is ordered; when None it is read from ``views.yaml``
+    in the settings' config directory, and a missing file means no view is re-ranked.
 
     ``repository`` is used only by the feedback route. ``client_dir`` is the built client;
     when None, every non-API path is 404. It must pass ``check_client_dir``, or
@@ -81,6 +91,8 @@ def create_app(
         )
     app.add_middleware(SecurityHeadersMiddleware)
     app.state.repository = repository
+    view_config = views if views is not None else _views_from_settings()
+    ranked = _RankedCache(RANKED_CACHE_SIZE)
 
     def no_feed_yet() -> HTTPException:
         return HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "No feed has been published yet")
@@ -91,6 +103,7 @@ def create_app(
         view: str | None = None,
         limit: Annotated[int, Query(ge=1, le=MAX_PAGE_LIMIT)] = PAGE_LIMIT,
         cursor: str | None = None,
+        ranking: Literal["rules", "personal"] | None = None,
     ) -> Response:
         if view is None:
             try:
@@ -107,7 +120,13 @@ def create_app(
             if not blobs.exists(blobs.ref_for(FEED_KEY)):
                 raise no_feed_yet() from None
             raise HTTPException(status.HTTP_404_NOT_FOUND, "View not found") from None
-        page = _page(view, stored, offset, limit)
+        configured = view_config.views.get(view)
+        if configured is not None and configured.order == "score":
+            mode: RankingMode = ranking or configured.ranking
+            run_id, generated_at, items = ranked.get(view, mode, stored)
+        else:
+            run_id, generated_at, items = _read_view(stored)
+        page = _page(view, run_id, generated_at, items, offset, limit)
         data = json.dumps(page, ensure_ascii=False, allow_nan=False).encode("utf-8")
         return _blob_response(request, data, "application/json")
 
@@ -160,8 +179,25 @@ def _cursor_offset(cursor: str) -> int:
     return int(match.group(2))
 
 
-def _page(view: str, stored: bytes, offset: int, limit: int) -> dict[str, Any]:
-    """One page of a stored view file, in the ``feed.json`` envelope."""
+def _views_from_settings() -> ViewsConfig:
+    """``views.yaml`` from the settings' config directory; none configured if it is absent.
+
+    A file that exists but is invalid raises ``ConfigError``, so a typo fails at start-up.
+    """
+    # Imported here: the settings module pulls in pipeline pieces the API doesn't need
+    # when ``serve`` (or a test) passes the views itself.
+    from newsfeed.settings import load_settings
+
+    path = load_settings().config_dir / "views.yaml"
+    return load_views(path) if path.is_file() else ViewsConfig()
+
+
+def _unreadable_view() -> HTTPException:
+    return HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "View can't be read")
+
+
+def _read_view(stored: bytes) -> tuple[str, Any, list[Any]]:
+    """(run_id, generated_at, items) of a stored view file; 503 if it can't be read."""
     try:
         document = json.loads(stored)
         run_id, items, generated_at = (
@@ -172,7 +208,51 @@ def _page(view: str, stored: bytes, offset: int, limit: int) -> dict[str, Any]:
         if not (isinstance(run_id, str) and isinstance(items, list)):
             raise TypeError
     except (ValueError, KeyError, TypeError):
-        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "View can't be read") from None
+        raise _unreadable_view() from None
+    return run_id, generated_at, items
+
+
+class _RankedCache:
+    """Ranked view lists, so paging through one run doesn't re-rank every page.
+
+    Keyed by view, mode and a digest of the stored file (which includes its run id),
+    so a new run, or any rewrite of the file, is ranked afresh. Every page of a run
+    uses the seed ``<run_id>:<view>``, so a cursor's offset names the same item.
+    """
+
+    def __init__(self, size: int) -> None:
+        self._size = size
+        self._entries: OrderedDict[tuple[str, str, str], tuple[str, Any, list[Any]]] = OrderedDict()
+        self._lock = threading.Lock()  # sync routes run in a thread pool
+
+    def get(self, view: str, mode: RankingMode, stored: bytes) -> tuple[str, Any, list[Any]]:
+        """(run_id, generated_at, ranked items) for this view file in ``mode``."""
+        key = (view, mode, hashlib.sha256(stored).hexdigest())
+        with self._lock:
+            hit = self._entries.get(key)
+            if hit is not None:
+                self._entries.move_to_end(key)
+                return hit
+        run_id, generated_at, items = _read_view(stored)
+        if not all(isinstance(item, dict) for item in items):
+            raise _unreadable_view()
+        try:
+            ranked = rank_view(items, mode=mode, seed=f"{run_id}:{view}")
+        except (TypeError, ValueError):
+            raise _unreadable_view() from None
+        entry = (run_id, generated_at, ranked)
+        with self._lock:
+            self._entries[key] = entry
+            self._entries.move_to_end(key)
+            while len(self._entries) > self._size:
+                self._entries.popitem(last=False)
+        return entry
+
+
+def _page(
+    view: str, run_id: str, generated_at: Any, items: list[Any], offset: int, limit: int
+) -> dict[str, Any]:
+    """One page of a view's items, in the ``feed.json`` envelope."""
     end = offset + limit
     next_cursor = _cursor(run_id, end) if end < len(items) else None
     page = {"schema_version": SCHEMA_VERSION, "generated_at": generated_at, "run_id": run_id}

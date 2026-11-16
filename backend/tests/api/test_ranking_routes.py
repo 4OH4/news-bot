@@ -217,9 +217,11 @@ def test_repeated_requests_for_the_same_run_are_identical_bytes(
 
 
 def test_one_loud_source_cannot_fill_the_top_of_any_order(blobs: RecordingBlobStore) -> None:
+    # Loud scores 10 down to 1. At 5.5 the quiet items lose the top five to loud ones
+    # without diversity (10, 9, 8, 7, 6) but win places with the 0.85 decay.
     loud = make_items(10, one_source=True)
     quiet = [
-        {**it, "id": f"{900 + n:016x}", "source_id": f"q{n}", "score": 1.0}
+        {**it, "id": f"{900 + n:016x}", "source_id": f"q{n}", "score": 5.5}
         for n, it in enumerate(make_items(10))
     ]
     put_view(blobs, "feed", loud + quiet)

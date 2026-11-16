@@ -16,7 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from starlette.concurrency import run_in_threadpool
 
 from newsfeed.logging import get_logger
-from newsfeed.models import Feedback, FeedbackEvent, UtcDatetime
+from newsfeed.models import DEFAULT_USER_ID, Feedback, FeedbackEvent, RankingArm, UtcDatetime
 from newsfeed.ports import BlobNotFoundError, BlobStore, Repository
 
 __all__ = ["MAX_BODY_BYTES", "FeedbackRequest", "feedback_router"]
@@ -40,6 +40,10 @@ class FeedbackRequest(BaseModel):
     event: FeedbackEvent
     value: Annotated[float | None, Field(ge=0, le=86400, allow_inf_nan=False)] = None
     created_at: UtcDatetime
+    # Where the item was shown and which A/B side placed it (ADR-0015); both optional,
+    # so an older client's event is still accepted. The user is never the client's to set.
+    view: Annotated[str | None, Field(pattern=r"^[a-z0-9-]{1,40}$")] = None
+    arm: RankingArm | None = None
 
 
 def feedback_router(blobs: BlobStore, repository: Repository) -> APIRouter:
@@ -67,6 +71,9 @@ def feedback_router(blobs: BlobStore, repository: Repository) -> APIRouter:
             event=parsed.event,
             value=parsed.value,
             created_at=parsed.created_at,
+            user_id=DEFAULT_USER_ID,
+            view=parsed.view,
+            arm=parsed.arm,
         )
         try:
             await run_in_threadpool(repository.save_feedback, feedback)
