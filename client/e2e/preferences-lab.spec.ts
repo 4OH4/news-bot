@@ -20,6 +20,18 @@ for (const scheme of ["light", "dark"] as const) {
     await page.getByText("Long reads").scrollIntoViewIfNeeded();
     await shot(page, "variant-a-expanded", scheme);
 
+    await page.goto("/lab/preferences?v=b");
+    await shot(page, "variant-b", scheme);
+    await page.getByRole("button", { name: /BBC News/ }).click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await shot(page, "variant-b-sheet", scheme);
+
+    await page.goto("/lab/preferences?v=c");
+    await page.getByRole("radiogroup", { name: "UK" }).getByRole("radio", { name: "Fewer" }).click();
+    await page.getByRole("radiogroup", { name: "Sport" }).getByRole("radio", { name: "Hide" }).click();
+    await page.getByRole("heading", { name: "UK" }).scrollIntoViewIfNeeded();
+    await shot(page, "variant-c", scheme);
+
     await page.goto("/lab/preferences?setup=1");
     await shot(page, "setup", scheme);
     await page.getByRole("button", { name: "Start reading" }).click();

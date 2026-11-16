@@ -30,7 +30,7 @@ function checked(): HTMLElement[] {
 }
 
 function nameOf(r: HTMLElement | undefined): string {
-  return (r?.getAttribute("aria-label") ?? r?.textContent ?? "").trim();
+  return (r?.getAttribute("aria-label") ?? "").trim();
 }
 
 describe("PreferenceControl", () => {

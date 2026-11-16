@@ -1,18 +1,32 @@
 import { useState } from "preact/hooks";
 import "./lab.css";
 import { MORE_TOPICS, KINDS, REGIONS, SOURCES, STARTER_TOPICS, type MockSource } from "./mock-catalogue";
-import { PreferenceControl, type PreferenceState } from "./PreferenceControl";
+import { iconFor, PreferenceControl, type PreferenceState } from "./PreferenceControl";
 
 // #332: hidden prototype of the preferences screen on mock data. State lives in memory only.
 
+type Variant = "a" | "b" | "c";
 type Prefs = Record<string, PreferenceState>;
+type Tab = "sources" | "regions" | "topics";
 
 const NOTE =
   "Hide works on every tab. Fewer and More change the order in Feed and Longer; News stays newest first.";
 
+const EXPLAIN: Record<PreferenceState, string> = {
+  hide: "Hide: never shown on any tab.",
+  fewer: "Fewer: pushed down the order in Feed and Longer.",
+  show: "Show: the normal order.",
+  more: "More: pulled up the order in Feed and Longer.",
+};
+
 const sKey = (id: string) => `source:${id}`;
 const rKey = (r: string) => `region:${r}`;
 const tKey = (t: string) => `topic:${t}`;
+
+function initialVariant(search: string): Variant {
+  const v = new URLSearchParams(search).get("v");
+  return v === "b" || v === "c" ? v : "a";
+}
 
 /** "2 hidden, 1 more, 1 fewer", or "No changes" when everything is on Show. */
 export function summarise(prefs: Prefs): string {
@@ -105,10 +119,132 @@ function TopicList({ ctx }: { ctx: Ctx }) {
   );
 }
 
-/** The prototype screen at /lab/preferences. `?setup=1` the first-run flow. */
+function VariantB({ ctx }: { ctx: Ctx }) {
+  const [tab, setTab] = useState<Tab>("sources");
+  const [sheet, setSheet] = useState<{ k: string; name: string } | null>(null);
+  const row = (k: string, name: string) => (
+    <li key={k}>
+      <button type="button" class="lab-tap" onClick={() => setSheet({ k, name })}>
+        <span class="lab-name">{name}</span>
+        <span class={`lab-state pref-${ctx.get(k)}`} aria-label={`currently ${ctx.get(k)}`}>
+          {iconFor(ctx.get(k))}
+        </span>
+      </button>
+    </li>
+  );
+  const topics = ctx.open.has("topics") ? [...STARTER_TOPICS, ...MORE_TOPICS] : STARTER_TOPICS;
+  return (
+    <>
+      <div class="lab-tabs" role="tablist">
+        {(["sources", "regions", "topics"] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            role="tab"
+            aria-selected={tab === t}
+            onClick={() => setTab(t)}
+          >
+            {t[0]?.toUpperCase()}
+            {t.slice(1)}
+          </button>
+        ))}
+      </div>
+      {tab === "sources" ? (
+        <>
+          <ul class="lab-list">{starters.map((s) => row(sKey(s.id), s.name))}</ul>
+          {ctx.open.has("sources") ? (
+            <ul class="lab-list">{groupedByKind(others, (s) => row(sKey(s.id), s.name))}</ul>
+          ) : null}
+          <MoreButton ctx={ctx} id="sources" count={others.length} />
+        </>
+      ) : null}
+      {tab === "regions" ? <ul class="lab-list">{REGIONS.map((r) => row(rKey(r), r))}</ul> : null}
+      {tab === "topics" ? (
+        <>
+          <ul class="lab-list">{topics.map((t) => row(tKey(t), t))}</ul>
+          <MoreButton ctx={ctx} id="topics" count={MORE_TOPICS.length} />
+        </>
+      ) : null}
+      {sheet ? (
+        <div class="lab-backdrop" onClick={() => setSheet(null)}>
+          <div
+            class="lab-sheet"
+            role="dialog"
+            aria-modal="true"
+            aria-label={sheet.name}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3>{sheet.name}</h3>
+            <PreferenceControl
+              label={sheet.name}
+              value={ctx.get(sheet.k)}
+              onChange={(v) => {
+                ctx.set(sheet.k, v);
+                setSheet(null);
+              }}
+            />
+            <p class="lab-explain">{EXPLAIN[ctx.get(sheet.k)]}</p>
+            <button type="button" class="lab-link" onClick={() => setSheet(null)}>
+              Close
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+function RegionGroup({ ctx, name, members }: { ctx: Ctx; name: string; members: MockSource[] }) {
+  const id = `group:${name}`;
+  const first = members.filter((s) => s.starter);
+  const rest = members.filter((s) => !s.starter);
+  const shown = ctx.open.has(id) ? members : first;
+  return (
+    <section class="lab-group">
+      {name === "Everywhere" ? (
+        <h2>Everywhere</h2>
+      ) : (
+        <div class="lab-group-head">
+          <h2>{name}</h2>
+          <PreferenceControl label={name} value={ctx.get(rKey(name))} onChange={(v) => ctx.set(rKey(name), v)} />
+        </div>
+      )}
+      <ul class="lab-list lab-indent">
+        {shown.map((s) => (
+          <Row key={s.id} ctx={ctx} k={sKey(s.id)} name={s.name} />
+        ))}
+      </ul>
+      {rest.length > 0 ? <MoreButton ctx={ctx} id={id} count={rest.length} /> : null}
+    </section>
+  );
+}
+
+function VariantC({ ctx }: { ctx: Ctx }) {
+  return (
+    <>
+      <section>
+        <h2>Topics</h2>
+        <TopicList ctx={ctx} />
+      </section>
+      {REGIONS.map((r) => (
+        <RegionGroup key={r} ctx={ctx} name={r} members={SOURCES.filter((s) => s.region === r)} />
+      ))}
+      <RegionGroup ctx={ctx} name="Everywhere" members={SOURCES.filter((s) => !s.region)} />
+    </>
+  );
+}
+
+const VARIANTS: { id: Variant; title: string }[] = [
+  { id: "a", title: "One page" },
+  { id: "b", title: "Tabs and sheet" },
+  { id: "c", title: "Regions hold sources" },
+];
+
+/** The prototype screen at /lab/preferences. `?v=a|b|c` picks the layout, `?setup=1` the first-run flow. */
 export function PreferencesLab() {
   const params = new URLSearchParams(location.search);
   const setup = params.get("setup") === "1";
+  const [variant, setVariant] = useState<Variant>(() => initialVariant(location.search));
   const [prefs, setPrefs] = useState<Prefs>({});
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [started, setStarted] = useState(false);
@@ -125,8 +261,33 @@ export function PreferencesLab() {
       }),
   };
 
+  const choose = (v: Variant) => {
+    setVariant(v);
+    try {
+      const p = new URLSearchParams(location.search);
+      p.set("v", v);
+      history.replaceState(null, "", `${location.pathname}?${p.toString()}`);
+    } catch {
+      // The address bar is a convenience; the variant still switches.
+    }
+  };
+
   return (
     <main class="lab">
+      <nav class="lab-switch" aria-label="Layout variant">
+        {VARIANTS.map((v) => (
+          <button
+            key={v.id}
+            type="button"
+            aria-pressed={variant === v.id}
+            aria-label={`${v.id.toUpperCase()} ${v.title}`}
+            onClick={() => choose(v.id)}
+          >
+            {v.id.toUpperCase()}
+            <small>{` ${v.title}`}</small>
+          </button>
+        ))}
+      </nav>
       <p class="lab-banner">Prototype on made-up data. Nothing is saved.</p>
       {setup ? (
         <header class="lab-welcome">
@@ -137,7 +298,9 @@ export function PreferencesLab() {
         <h1>Preferences</h1>
       )}
       <p class="lab-note">{NOTE}</p>
-      <VariantA ctx={ctx} />
+      {variant === "a" ? <VariantA ctx={ctx} /> : null}
+      {variant === "b" ? <VariantB ctx={ctx} /> : null}
+      {variant === "c" ? <VariantC ctx={ctx} /> : null}
       <footer class="lab-foot">
         <p class="lab-summary">{summarise(prefs)}</p>
         <button
