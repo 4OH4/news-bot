@@ -4,10 +4,14 @@ Reads articles from the ``Repository`` and their cleaned content from the
 ``BlobStore``, scores each with ``score_article`` and writes ``score`` and
 ``score_breakdown`` back. Articles are re-scored on every run, so recency stays
 current. Errors on one article are logged and counted, never raised.
+
+With an ``Embedder``, articles without a current embedding are embedded in
+batches first, and the vector goes into the same write as the score (ADR-0014).
 """
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable, Collection
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -17,6 +21,8 @@ import lxml.html
 
 from newsfeed.logging import get_logger
 from newsfeed.models import Article, PipelineStage, Source
+from newsfeed.ports import Embedder, EmbeddingError
+from newsfeed.rank.embedding import embedding_text, needs_embedding, vector_problem
 from newsfeed.rank.interests import InterestsConfig, check_sources, load_interests
 from newsfeed.rank.scoring import score_article
 from newsfeed.wiring import Services
@@ -27,6 +33,9 @@ log = get_logger(__name__)
 
 DEFAULT_WINDOW_HOURS = 72.0
 """How far back (by ``fetched_at``) articles are re-scored each run."""
+
+DEFAULT_EMBED_BATCH_SIZE = 32
+"""Texts per ``Embedder.embed`` call; bounds how many bodies are held at once."""
 
 _STAGE = PipelineStage.RANK.value
 
@@ -39,6 +48,8 @@ class RankSummary:
     muted: int = 0
     errors: int = 0
     no_body: int = 0
+    embedded: int = 0
+    embed_errors: int = 0
 
     def counts(self) -> dict[str, int]:
         """The counters recorded in ``RunStats.stage_counts["rank"]``."""
@@ -47,6 +58,8 @@ class RankSummary:
             "muted": self.muted,
             "no_body": self.no_body,
             "errors": self.errors,
+            "embedded": self.embedded,
+            "embed_errors": self.embed_errors,
         }
 
 
@@ -106,6 +119,56 @@ def _body_text(services: Services, article: Article) -> str | None:
         return None
 
 
+def _embed(embedder: Embedder, batch: list[tuple[Article, str | None]]) -> list[list[float] | None]:
+    """One ``embed`` call for ``batch``: a checked vector per article, or None where it failed.
+
+    Never raises. A failed call fails the whole batch; an unusable vector fails
+    only its article. Logs never carry a vector.
+    """
+    texts = [embedding_text(article, body) for article, body in batch]
+    try:
+        vectors = embedder.embed(texts)
+        dimensions = embedder.dimensions
+        if len(vectors) != len(texts):
+            raise EmbeddingError(f"expected {len(texts)} vectors, got {len(vectors)}")
+    except Exception as exc:
+        log.warning(
+            "embedding failed; continuing without embeddings for this batch",
+            extra={
+                "stage": _STAGE,
+                "model": embedder.model,
+                "count": len(texts),
+                "error_type": type(exc).__name__,
+                "error": str(exc)[:300],
+            },
+        )
+        return [None] * len(batch)
+    checked: list[list[float] | None] = []
+    for (article, _), vector in zip(batch, vectors, strict=True):
+        problem = vector_problem(vector, dimensions)
+        if problem is None:
+            checked.append([float(v) for v in vector])
+            continue
+        log.warning(
+            "embedder returned an unusable vector",
+            extra={
+                "stage": _STAGE,
+                "url": article.url,
+                "model": embedder.model,
+                "problem": problem,
+            },
+        )
+        checked.append(None)
+    return checked
+
+
+def _with_embedding(article: Article, vector: list[float] | None, model: str) -> dict[str, object]:
+    data = article.model_dump()
+    if vector is not None:
+        data |= {"embedding": vector, "embedding_model": model}
+    return data
+
+
 def rank_recent(
     services: Services,
     config: InterestsConfig,
@@ -113,28 +176,44 @@ def rank_recent(
     since: datetime,
     sources: Collection[Source] = (),
     clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+    embedder: Embedder | None = None,
+    embed_batch_size: int = DEFAULT_EMBED_BATCH_SIZE,
 ) -> RankSummary:
     """Score every article fetched at or after ``since`` and store the result.
 
     ``sources`` supplies ``Source.weight``; articles from other sources (ad hoc
     or removed) count with weight 1.0. ``config`` is read-only.
+
+    ``embedder`` defaults to ``services.embedder``. With one, articles lacking an
+    embedding from its model are embedded ``embed_batch_size`` at a time, and the
+    vector is stored in the same write as the score. Without one, a warning is
+    logged and ranking is unchanged. A failed batch or vector is logged and
+    counted in ``embed_errors``; those articles are still scored.
     """
+    if embed_batch_size < 1:
+        raise ValueError("embed_batch_size must be at least 1")
     now = clock()
     by_id = {source.id: source for source in sources}
-    scored = muted = errors = no_body = 0
-    for article in services.repository.list_articles(since=since):
+    if embedder is None:
+        embedder = services.embedder
+    if embedder is None:
+        log.warning(
+            "embeddings are off (NEWSFEED_EMBED_MODEL_DIR is not set); ranking without them",
+            extra={"stage": _STAGE},
+        )
+    scored = muted = errors = no_body = embedded = embed_errors = 0
+    embed_seconds = 0.0
+    pending: list[tuple[Article, str | None]] = []
+
+    def write(article: Article, body: str | None, vector: list[float] | None) -> None:
+        nonlocal scored, muted, errors, embedded
         try:
-            body = _body_text(services, article)
-            if body is None:
-                no_body += 1
             score, breakdown = score_article(
                 article, body, config, by_id.get(article.source_id), now
             )
-            services.repository.upsert_article(
-                Article.model_validate(
-                    {**article.model_dump(), "score": score, "score_breakdown": breakdown}
-                )
-            )
+            data = _with_embedding(article, vector, embedder.model if embedder else "")
+            data |= {"score": score, "score_breakdown": breakdown}
+            services.repository.upsert_article(Article.model_validate(data))
         except Exception as exc:
             errors += 1
             log.warning(
@@ -147,11 +226,52 @@ def rank_recent(
                     "error": str(exc),
                 },
             )
-            continue
+            return
         scored += 1
         muted += "muted" in breakdown
+        embedded += vector is not None
+
+    def flush() -> None:
+        nonlocal embed_errors, embed_seconds
+        assert embedder is not None
+        began = time.perf_counter()
+        vectors = _embed(embedder, pending)
+        embed_seconds += time.perf_counter() - began
+        embed_errors += vectors.count(None)
+        for (article, body), vector in zip(pending, vectors, strict=True):
+            write(article, body, vector)
+        pending.clear()
+
+    for article in services.repository.list_articles(since=since):
+        body = _body_text(services, article)
+        if body is None:
+            no_body += 1
+        if embedder is not None and needs_embedding(article, embedder.model):
+            pending.append((article, body))
+            if len(pending) >= embed_batch_size:
+                flush()
+        else:
+            write(article, body, None)
+    if pending:
+        flush()
     log.info(
         "ranking finished",
-        extra={"stage": _STAGE, "scored": scored, "muted": muted, "errors": errors},
+        extra={
+            "stage": _STAGE,
+            "scored": scored,
+            "muted": muted,
+            "errors": errors,
+            "embedded": embedded,
+            "embed_errors": embed_errors,
+            "embed_seconds": round(embed_seconds, 3),
+            "model": embedder.model if embedder else None,
+        },
     )
-    return RankSummary(scored=scored, muted=muted, errors=errors, no_body=no_body)
+    return RankSummary(
+        scored=scored,
+        muted=muted,
+        errors=errors,
+        no_body=no_body,
+        embedded=embedded,
+        embed_errors=embed_errors,
+    )

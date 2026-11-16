@@ -442,6 +442,32 @@ def inspect_feedback(
         typer.echo(q.render(q.group_feedback(rows, group_by), [group_by, "count"], fmt))
 
 
+embed_app = typer.Typer(help="The local embedding model (ADR-0014).", no_args_is_help=True)
+app.add_typer(embed_app, name="embed")
+
+
+@embed_app.command("download")
+def embed_download(
+    model_dir: Annotated[
+        Path | None,
+        typer.Option(help="Where to put it. Default: NEWSFEED_EMBED_MODEL_DIR, else data/models."),
+    ] = None,
+) -> None:
+    """Fetch the embedding model once from the model hub into a local folder.
+
+    A dependency fetch, like ``uv sync``: it doesn't touch news sites, so it
+    doesn't go through the polite fetcher.
+    """
+    from newsfeed.adapters.fastembed_embedder import DEFAULT_MODEL, download_model
+
+    settings = load_settings()
+    target = model_dir or settings.embed_model_dir or settings.data_dir / "models"
+    revision = download_model(target, DEFAULT_MODEL)
+    typer.echo(f"downloaded {DEFAULT_MODEL} (revision {revision or 'unknown'}) to {target}")
+    if settings.embed_model_dir is None or settings.embed_model_dir != target:
+        typer.echo(f"to use it, set NEWSFEED_EMBED_MODEL_DIR={target.resolve()}")
+
+
 @app.command()
 def serve() -> None:
     """Serve the feed, articles and client to the owner only (behind IAP in the cloud)."""
