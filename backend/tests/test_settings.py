@@ -194,3 +194,17 @@ def test_an_unknown_api_auth_mode_is_rejected(api_env: pytest.MonkeyPatch) -> No
 
     with pytest.raises(ValidationError):
         load_settings()
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"), [(None, None), ("", None), ("/models/x", Path("/models/x"))]
+)
+def test_embed_model_dir_is_unset_when_empty(
+    api_env: pytest.MonkeyPatch, value: str | None, expected: Path | None
+) -> None:
+    if value is None:
+        api_env.delenv("NEWSFEED_EMBED_MODEL_DIR", raising=False)
+    else:
+        api_env.setenv("NEWSFEED_EMBED_MODEL_DIR", value)
+
+    assert Settings(_env_file=None).embed_model_dir == expected  # type: ignore[call-arg]
