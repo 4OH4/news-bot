@@ -431,6 +431,51 @@ that ADR-0007 relies on, and budget alerts don't stop spending.
 The Cloud Run permissions here are from memory, not checked against a cloud
 call.
 
+## Restoring feedback from a backup
+
+Once a day the pipeline copies every feedback event to the content bucket under
+`backups/<YYYY-MM-DD>/` (`feedback.jsonl`, then `manifest.json`, which is
+written last, so a day without it is incomplete). `newsfeed report` shows the
+latest day and adds `STALE` when it is more than 2 days old. Nothing deletes
+backups.
+
+1. List the days available (the bucket is `<project-id>-content`):
+
+   ```bash
+   gcloud storage ls gs://<project-id>-content/backups/
+   ```
+
+   Pick the newest day that has a `manifest.json`.
+
+2. Check it without writing anything, against the live store:
+
+   ```bash
+   NEWSFEED_STORAGE=gcp NEWSFEED_GCP_PROJECT=<project-id> \
+     NEWSFEED_GCS_BUCKET=<project-id>-content \
+     uv run --project backend newsfeed restore-backup YYYY-MM-DD --dry-run
+   ```
+
+   This reads every file and checks it against the manifest's counts, and
+   prints "would restore N item(s)".
+
+3. Restore for real. Against Firestore the command refuses without `--yes`:
+
+   ```bash
+   NEWSFEED_STORAGE=gcp NEWSFEED_GCP_PROJECT=<project-id> \
+     NEWSFEED_GCS_BUCKET=<project-id>-content \
+     uv run --project backend newsfeed restore-backup YYYY-MM-DD --yes
+   ```
+
+A `.env` file in the repo root can override these settings and point the
+command at another store, so check it has no `NEWSFEED_` lines first.
+
+Warning: restore saves each backed-up event over the stored record with the
+same id, so it replaces those records with the backup's copy. It never deletes
+anything, so events newer than the backup stay, and running it twice changes
+nothing more. A damaged or incomplete backup writes nothing. To take a backup
+by hand: `newsfeed backup` (add `--day YYYY-MM-DD` to file it under another
+day, and `--force` to replace a day that already has one).
+
 ## Later changes
 
 A PR that changes `infra/terraform/` lists its commands; normally:
