@@ -46,6 +46,103 @@ def test_an_empty_folder_fails_without_downloading(tmp_path: Path) -> None:
     assert list(tmp_path.glob("**/*.onnx")) == []
 
 
+def test_loading_turns_telemetry_off_first(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+    fake = types.ModuleType("onnxruntime")
+    fake.disable_telemetry_events = lambda: calls.append("disabled")  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "onnxruntime", fake)
+    monkeypatch.delenv("HF_HUB_DISABLE_TELEMETRY", raising=False)
+    monkeypatch.delenv("DO_NOT_TRACK", raising=False)
+    monkeypatch.delenv("ORT_DISABLE_TELEMETRY", raising=False)
+
+    with pytest.raises(EmbeddingError):  # no model in the folder; the load was attempted
+        FastembedEmbedder(tmp_path).embed(["text"])
+
+    assert calls == ["disabled"]
+    assert os.environ["HF_HUB_DISABLE_TELEMETRY"] == "1"
+    assert os.environ["DO_NOT_TRACK"] == "1"
+    assert os.environ["ORT_DISABLE_TELEMETRY"] == "1"
+
+
+def test_telemetry_is_off_before_fastembed_is_imported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import builtins
+
+    names = ("ORT_DISABLE_TELEMETRY", "HF_HUB_DISABLE_TELEMETRY", "DO_NOT_TRACK")
+    for name in names:
+        monkeypatch.delenv(name, raising=False)
+    at_import: dict[str, dict[str, str | None]] = {}
+    real_import = builtins.__import__
+
+    def spy(name: str, *args: object, **kwargs: object) -> object:
+        if name in ("fastembed", "onnxruntime") and name not in at_import:
+            at_import[name] = {n: os.environ.get(n) for n in names}
+        return real_import(name, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(builtins, "__import__", spy)
+    monkeypatch.delitem(sys.modules, "fastembed", raising=False)
+    fake = types.ModuleType("fastembed")
+    fake.TextEmbedding = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("stop"))  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "onnxruntime", types.ModuleType("onnxruntime"))
+    monkeypatch.setitem(sys.modules, "fastembed", fake)
+
+    with pytest.raises(EmbeddingError):
+        FastembedEmbedder(tmp_path).embed(["text"])
+
+    # The first import of either library sees all three switches already set.
+    assert at_import["onnxruntime"] == dict.fromkeys(names, "1")
+    assert at_import["fastembed"] == dict.fromkeys(names, "1")
+
+
+def test_downloading_turns_telemetry_off_first(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from newsfeed.adapters.fastembed_embedder import download_model
+
+    names = ("ORT_DISABLE_TELEMETRY", "HF_HUB_DISABLE_TELEMETRY", "DO_NOT_TRACK")
+    for name in names:
+        monkeypatch.delenv(name, raising=False)
+    at_construct: dict[str, str | None] = {}
+
+    def construct(*args: object, **kwargs: object) -> None:
+        at_construct.update({n: os.environ.get(n) for n in names})
+
+    fake = types.ModuleType("fastembed")
+    fake.TextEmbedding = construct  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "fastembed", fake)
+    monkeypatch.setitem(sys.modules, "onnxruntime", types.ModuleType("onnxruntime"))
+
+    download_model(tmp_path / "m")
+
+    assert at_construct == dict.fromkeys(names, "1")
+
+
+def test_telemetry_settings_the_operator_chose_are_kept(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DO_NOT_TRACK", "0")
+    monkeypatch.setitem(sys.modules, "onnxruntime", types.ModuleType("onnxruntime"))
+
+    with pytest.raises(EmbeddingError):
+        FastembedEmbedder(tmp_path).embed(["text"])
+
+    assert os.environ["DO_NOT_TRACK"] == "0"
+
+
+def test_the_image_sets_telemetry_off_and_the_hub_offline_at_run_time() -> None:
+    dockerfile = (Path(__file__).parents[3] / "backend" / "Dockerfile").read_text("utf-8")
+    base = dockerfile.split("FROM python-base AS base")[1].split("\nFROM ")[0]
+    model = dockerfile.split("FROM python-base AS model")[1].split("\nFROM ")[0]
+
+    for setting in ("HF_HUB_OFFLINE=1", "HF_HUB_DISABLE_TELEMETRY=1", "DO_NOT_TRACK=1"):
+        assert setting in base
+    assert "ORT_DISABLE_TELEMETRY=1" in base
+    for setting in ("ORT_DISABLE_TELEMETRY=1", "HF_HUB_DISABLE_TELEMETRY=1", "DO_NOT_TRACK=1"):
+        assert setting in model
+    assert "HF_HUB_OFFLINE" not in model  # the build-time download needs the hub
+
+
 def test_no_texts_need_no_model(tmp_path: Path) -> None:
     assert FastembedEmbedder(tmp_path / "absent").embed([]) == []
 
