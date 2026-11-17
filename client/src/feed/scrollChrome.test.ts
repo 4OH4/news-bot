@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { INITIAL_CHROME, nextChrome } from "./scrollChrome";
+import { INITIAL_CHROME, nextChrome, snapChrome } from "./scrollChrome";
 
 const VP = 800;
 const H = 60;
@@ -43,5 +43,33 @@ describe("nextChrome", () => {
   it("does not show within two screens", () => {
     const s = nextChrome(nextChrome(INITIAL_CHROME, 1.9 * VP, VP, H), 1.8 * VP, VP, H);
     expect(s.showButton).toBe(false);
+  });
+});
+
+describe("snapChrome", () => {
+  it("finishes a part-shown header hidden after a downward move", () => {
+    const s = nextChrome(INITIAL_CHROME, 30, VP, H);
+    expect(s.dir).toBe(1);
+    expect(snapChrome(s, H).offset).toBe(H);
+  });
+
+  it("finishes a part-shown header shown after an upward move", () => {
+    let s = nextChrome(INITIAL_CHROME, 500, VP, H);
+    s = nextChrome(s, 470, VP, H);
+    expect(s.dir).toBe(-1);
+    expect(snapChrome(s, H).offset).toBe(0);
+  });
+
+  it("leaves a fully shown or fully hidden header alone", () => {
+    const hidden = nextChrome(INITIAL_CHROME, 500, VP, H);
+    expect(snapChrome(hidden, H)).toBe(hidden);
+    const shown = nextChrome(hidden, 300, VP, H);
+    expect(snapChrome({ ...shown, offset: 0 }, H).offset).toBe(0);
+  });
+
+  it("is always fully shown at the top, whatever the direction", () => {
+    const part = { ...INITIAL_CHROME, y: 10, offset: 20, dir: 1 as const };
+    expect(snapChrome(part, H, 16).offset).toBe(0);
+    expect(snapChrome({ ...part, y: 0 }, H).offset).toBe(0);
   });
 });

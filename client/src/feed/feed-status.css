@@ -113,3 +113,14 @@
     transition: none;
   }
 }
+
+/* The header follows the finger with no transition; only the snap at rest animates (#307). */
+.top.snapping {
+  transition: transform 0.15s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .top.snapping {
+    transition: none;
+  }
+}

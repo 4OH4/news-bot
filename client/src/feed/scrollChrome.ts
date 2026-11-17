@@ -7,9 +7,11 @@ export interface ChromeState {
   offset: number;
   /** Whether the Back to top button shows. */
   showButton: boolean;
+  /** Direction of the last scroll move: -1 up, 1 down, 0 none yet. */
+  dir: -1 | 0 | 1;
 }
 
-export const INITIAL_CHROME: ChromeState = { y: 0, offset: 0, showButton: false };
+export const INITIAL_CHROME: ChromeState = { y: 0, offset: 0, showButton: false, dir: 0 };
 
 /**
  * The next state after a scroll to `y`. The header follows the scroll delta (so it moves with the
@@ -31,5 +33,17 @@ export function nextChrome(
   let showButton = prev.showButton;
   if (delta > 0 || y <= viewport) showButton = false;
   else if (delta < 0 && y > 2 * viewport) showButton = true;
-  return { y, offset, showButton };
+  const dir = delta < 0 ? -1 : delta > 0 ? 1 : prev.dir;
+  return { y, offset, showButton, dir };
+}
+
+/**
+ * The state once scrolling has stopped. A part-shown header (0 < offset < height) finishes its
+ * slide: fully shown if the last move was upward, fully hidden if downward. At the top of the page
+ * (`y <= gap`) it is always fully shown, and a fully shown or hidden header is left alone.
+ */
+export function snapChrome(prev: ChromeState, headerHeight: number, gap = 0): ChromeState {
+  if (prev.y <= gap) return prev.offset === 0 ? prev : { ...prev, offset: 0 };
+  if (prev.offset <= 0 || prev.offset >= headerHeight) return prev;
+  return { ...prev, offset: prev.dir < 0 ? 0 : headerHeight };
 }
