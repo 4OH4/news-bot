@@ -75,7 +75,10 @@ def test_run_writes_todays_backup_after_publish(
 
     day = tmp_path / "blobs" / TODAY
     assert len((day / "feedback.jsonl").read_text().splitlines()) == 3
-    assert json.loads((day / "manifest.json").read_text())["counts"] == {"feedback": 3}
+    assert json.loads((day / "manifest.json").read_text())["counts"] == {
+        "feedback": 3,
+        "preferences": 0,
+    }
     assert (tmp_path / "blobs" / "feed.json").is_file()
 
 
@@ -114,5 +117,8 @@ def test_failed_backup_write_leaves_no_manifest_and_the_next_run_retries(
     _run(tmp_path, repository)
 
     day = tmp_path / "blobs" / TODAY
-    assert json.loads((day / "manifest.json").read_text())["counts"] == {"feedback": 3}
+    assert json.loads((day / "manifest.json").read_text())["counts"] == {
+        "feedback": 3,
+        "preferences": 0,
+    }
     assert len((day / "feedback.jsonl").read_text().splitlines()) == 3

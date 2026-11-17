@@ -25,7 +25,7 @@ from newsfeed.backup import (
     restore_backup,
     write_backup,
 )
-from newsfeed.models import Feedback, FeedbackEvent, RankingArm
+from newsfeed.models import Feedback, FeedbackEvent, RankingArm, ReaderPreferences
 from tests.fakes import InMemoryBlobStore, InMemoryRepository
 
 DAY = date(2026, 11, 16)
@@ -95,8 +95,8 @@ def test_backup_writes_one_json_line_per_event_and_a_manifest_with_the_count(
     stored = json.loads(blobs.get(blobs.ref_for(backup_key(DAY, "manifest.json"))))
     assert stored["day"] == "2026-11-16"
     assert stored["run_id"] == "run-1"
-    assert stored["counts"] == {"feedback": 3}
-    assert manifest.counts == {"feedback": 3}
+    assert stored["counts"] == {"feedback": 3, "preferences": 0}
+    assert manifest.counts == {"feedback": 3, "preferences": 0}
     assert backup_key(DAY, "manifest.json") == "backups/2026-11-16/manifest.json"
     assert not backup_due(blobs, DAY)
 
@@ -136,6 +136,78 @@ def test_backup_and_restore_logs_carry_no_article_id_or_feedback_value(
         text = record.getMessage() + " " + repr(vars(record))
         for secret in (*SECRET_ARTICLE_IDS, *(str(v) for v in SECRET_VALUES)):
             assert secret not in text, f"{secret!r} leaked into log record {record.msg!r}"
+
+
+# --- Reader preferences (#334) ---------------------------------------------------
+
+SECRET_SOURCE = "private-source-zeta"
+
+
+def _prefs(hour: int, topic_state: str = "fewer") -> ReaderPreferences:
+    return ReaderPreferences.model_validate(
+        {
+            "sources": {SECRET_SOURCE: "hide"},
+            "topics": {"sport": topic_state},
+            "updated_at": datetime(2026, 11, 16, hour, 0, tzinfo=UTC),
+        }
+    )
+
+
+def test_backup_and_restore_carry_feedback_and_preferences(
+    empty: SqliteRepository, blobs: LocalBlobStore, tmp_path: Path
+) -> None:
+    with SqliteRepository(tmp_path / "with-prefs.db") as source:
+        for event in _events()[:2]:
+            source.save_feedback(event)
+        source.save_preferences(_prefs(9))
+
+        manifest = write_backup(source, blobs, day=DAY, run_id=None)
+
+        assert manifest.counts == {"feedback": 2, "preferences": 1}
+        assert restore_backup(empty, blobs, day=DAY, dry_run=False) == 3
+        assert _dumped(empty) == _dumped(source)
+        assert empty.get_preferences("owner") == _prefs(9)
+
+
+@pytest.mark.parametrize(
+    ("stored_hour", "kept"),
+    [(10, True), (9, True), (8, False)],
+    ids=["stored-newer-is-kept", "same-time-is-kept", "stored-older-is-replaced"],
+)
+def test_restore_keeps_stored_preferences_unless_the_backup_is_newer(
+    empty: SqliteRepository,
+    blobs: LocalBlobStore,
+    tmp_path: Path,
+    log_records: list[logging.LogRecord],
+    stored_hour: int,
+    kept: bool,
+) -> None:
+    backed_up = _prefs(9, topic_state="more")
+    with SqliteRepository(tmp_path / "backed-up.db") as source:
+        source.save_preferences(backed_up)
+        write_backup(source, blobs, day=DAY, run_id=None)
+    stored = _prefs(stored_hour, topic_state="fewer")
+    empty.save_preferences(stored)
+    log_records.clear()
+
+    restored = restore_backup(empty, blobs, day=DAY, dry_run=False)
+
+    assert empty.get_preferences("owner") == (stored if kept else backed_up)
+    assert restored == (0 if kept else 1)
+    kept_logs = [
+        r
+        for r in log_records
+        if "kept" in r.getMessage().lower() and getattr(r, "collection", None) == "preferences"
+    ]
+    if kept:
+        assert len(kept_logs) == 1
+        assert getattr(kept_logs[0], "user_id", None) == "owner"
+        assert getattr(kept_logs[0], "stage", None) == "backup"
+    else:
+        assert kept_logs == []
+    for record in log_records:
+        text = record.getMessage() + " " + repr(vars(record))
+        assert SECRET_SOURCE not in text, f"a setting leaked into log record {record.msg!r}"
 
 
 # --- CLI -----------------------------------------------------------------------
