@@ -54,19 +54,35 @@ phone: sends view + arm with open/read/like  ──►  feedback store  ──�
 
 ## Epic: reader preferences (#331)
 
-The owner's decisions (2026-11-15/16, #314) are settled: four states per source, region and topic (Hide · Fewer · Show · More, icons ⊘ − ✓ +); a small starter set with "add more", grouped; first-run setup; shared by all three tabs; Hide everywhere, Fewer and More in ranked views; no new sources and no change to ingest; single user, keyed by user id; a prototype first.
+The owner's decisions (2026-11-15/16, #314) are settled: four states per source and topic (Hide · Fewer · Show · More, icons ⊘ − ✓ +); a small starter set with "add more", grouped; first-run setup; shared by all three tabs; Hide everywhere, Fewer and More in ranked views; no new sources and no change to ingest; single user, keyed by user id; a prototype first.
+
+**The layout (owner's pick, #333, 2026-11-17).** Option a, one page with inline controls, with the sources split into sections: "News sources" first, then the other sources, "Long Reads" as the last source section, then Topics. No Regions section for now; regions may come back later, perhaps for news sources only (`DEFERRED_WORK.md`).
+
+**Source sections come from the tags in `config/sources.yaml`**, through a `source_sections` list in `config/preferences.yaml` (#335), so a new source lands in a section with no code change:
+
+| Section, in screen order | A source is in it when | Today |
+|---|---|---|
+| News sources | tagged `news` | bbc-news, guardian-world, independent-uk, inews, al-jazeera-english, dw-news, business-insider |
+| Tech | tagged `tech`, and not `news` or `long-form` | ars-technica, the-verge, wired, lwn, 404media, mit-tech-review, simon-willison, julia-evans, martin-fowler, cloudflare-blog |
+| Science | tagged `science`, and none of the above | nature-news, phys-org, carbon-brief |
+| More sources | in no other section | noahpinion |
+| Long Reads | tagged `long-form`, and not `news` | quanta, bbc-future, guardian-longread, aeon, new-yorker |
+
+Each enabled source is in exactly one section. Sections claim sources in the order `news`, `long-form`, `tech`, `science`, then the catch-all, which is not the screen order: a source tagged both `news` and `long-form` (none today) is under News sources, and one tagged `science` and `long-form` (quanta, bbc-future) is under Long Reads, matching the News and Longer tabs, which select by the same tags (`config/views.yaml`). An empty section isn't shown. Within each section the starter sources show first and "Show n more" opens the rest of that section; a section with no starter source shows only its heading and that button.
 
 **Mechanism.**
-- **Defaults in config, choices in the store.** `config/preferences.yaml` holds the multipliers (0, 0.5, 1, 2, with the product clamped to 0.25 to 4), the starter set (8 sources, 6 topics, all regions), region definitions and preference topics, each covering one or more `interests.yaml` topics (Tech covers ai, software, linux, security-privacy, internet-infrastructure) (#335). The owner's choices are stored as overrides only, in `ReaderPreferences(user_id="owner")` (#334, ADR-0016), backed up daily.
-- **Regions** are a tag on each news source in `config/sources.yaml`: UK (bbc-news, independent-uk, inews), Europe (dw-news), US (business-insider), World (guardian-world, al-jazeera-english). Tech, science, long-read and blog sources have no region, so region settings don't touch them. Per-article region rules stay deferred.
+- **Defaults in config, choices in the store.** `config/preferences.yaml` holds the multipliers (0, 0.5, 1, 2, with the product clamped to 0.25 to 4), the starter set (8 sources, 6 topics), the source sections, a display label per source, and preference topics, each covering one or more `interests.yaml` topics (Tech covers ai, software, linux, security-privacy, internet-infrastructure) (#335). The owner's choices are stored as overrides only, in `ReaderPreferences(user_id="owner")` (#334, ADR-0016), backed up daily.
+- **No regions in this version.** `ReaderPreferences` has no regions map, `config/sources.yaml` gains no region tags, and there is no `pref:region:*` key. Adding regions later is additive: a new map with an empty default, so no stored data needs migrating.
+- **More lifts the rules' demotion of that topic.** Sport has weight -2 in `interests.yaml`, so a sport headline is multiplied by about 0.14; x2 alone would leave it below unmatched stories, and "Set Sport to More" would look broken (#314). So when a topic is set to More and an item is about it, the API also divides out the item's `demote:<t>` factor for each covered topic, recorded as `pref:undemote:<t>` (outside the 0.25 to 4 clamp, which limits only the owner's multipliers). Fewer and Hide leave the demotion as it is. A body-only demotion stays, because the item isn't "about" the topic.
 - **Topics** come from the rank stage's keyword matching: it marks `about:<topic>` when a topic matches the title or summary (body-only matches are often sidebars), for every topic including new weight-0 ones such as politics, so a topic can be hidden without changing anyone's score (#336). Optionally, once embeddings exist, an article close to a topic's description is marked too, and a topic set to More seeds a thin profile (#340).
-- **How it combines.** served score = stored rule score x preference factors (x similarity on the personal side) x diversity. Any Hide wins over everything. Each factor shows in the breakdown as `pref:source:<id>`, `pref:region:<id>` or `pref:topic:<id>`, so "Why this story?" (#328) explains it.
+- **How it combines.** served score = stored rule score x preference factors (x similarity on the personal side) x diversity. Any Hide wins over everything. Each factor shows in the breakdown as `pref:source:<id>`, `pref:topic:<id>`, `pref:undemote:<t>` or `pref:clamp`, so "Why this story?" (#328) explains it.
+- **"As before" means against the same view file.** `coverage` and recency are part of the stored score and change from run to run, so tests and the demo compare a view served with preferences to the same view file served with none, not to an earlier run.
 - **"Mute source" becomes Hide** (#339): the card's menu sets the preference, so a mute is visible and reversible in Settings, and the sources already muted on the phone move into the store once.
 - **Fewer and More apply to Feed and Longer**, the two views ordered by score; News stays newest first. The screen says so ("Hide works on every tab. Fewer and More change the order in Feed and Longer; News stays newest first."), so nothing looks broken.
 
-**Prototype first.** #332 builds the screen on mock data at a hidden route, `/lab/preferences`, in three layouts (inline controls; tabs with a bottom sheet; regions holding their sources) plus the first-run flow, storing nothing. Agents merge it so it reaches the phone on the next deploy; the owner opens it in Chrome at the app's address plus `/lab/preferences`. #333 (`needs-human`) is the owner's pick. Everything after waits on that pick, and the architect updates #334, #335, #337 and #338 to match it before they start.
+**Prototype first.** #332 builds the screen on mock data at a hidden route, `/lab/preferences`, in three layouts (inline controls; tabs with a bottom sheet; regions holding their sources) plus the first-run flow, storing nothing. Agents merge it so it reaches the phone on the next deploy; the owner opens it in Chrome at the app's address plus `/lab/preferences`. #333 (`needs-human`) was the owner's pick, made on 2026-11-17 (above); #334 to #340 were updated to it in #369.
 
-**Epic demo.** Settings, then "Sources, regions and topics": set BBC News to Hide, and it is gone from News, Feed and Longer on the next refresh, with no pipeline run. Set Sport to More: sport stories rise in the Feed, and a sport story's "Why this story?" shows "Your setting for sport x2.00". News keeps its order. Set everything back to Show, and the tabs are as before.
+**Epic demo.** Settings, then "Sources and topics": the screen shows News sources, Tech, Science, More sources and Long Reads, then Topics. Set BBC News to Hide, and it is gone from News, Feed and Longer on the next refresh, with no pipeline run. Set Sport to More: sport stories rise in the Feed above unmatched stories, and a sport story's "Why this story?" shows "Your setting for sport x2.00" and "Sport no longer demoted". News keeps its order. Set everything back to Show, and the tabs are as before.
 
 The epic is off the critical path: no core issue depends on it. Its API work (#337) follows #326 because both change the view-serving code.
 
@@ -103,7 +119,7 @@ Reader preferences epic (#331):
 ```
 #332 prototype (hidden route) ── #333 owner picks (needs-human)
                                    ├── #334 contract: ReaderPreferences, backup, ADR-0016 (after #320, #330)
-                                   │     └── #335 config, region tags, item_effect
+                                   │     └── #335 config, source sections, item_effect
                                    │           ├── #336 about:<topic> markers, weight-0 topics (after #324)
                                    │           └── #337 preferences API, applied when served (after #326)
                                    │                 ├── #338 preferences screen, first-run (needs-human; after #328)
@@ -127,7 +143,7 @@ Reader preferences epic (#331):
 | #332 prototype | none | | A |
 | #333 pick | #332 | | owner |
 | #334 preferences contract | #333, #320, #330 | high | B |
-| #335 preferences config | #333, #334 | | B (`sources.yaml`) |
+| #335 preferences config | #333, #334 | | A (new `config/preferences.yaml` only) |
 | #336 topic markers | #333, #335, #324 | | B (`interests.yaml`) |
 | #337 preferences API | #334, #335, #326 | high | A |
 | #338 preferences screen | #333, #337, #328 | | C (needs-human) |
@@ -156,7 +172,7 @@ Links that exist only to avoid editing the same files at once: #324 after #323 (
 
 ## What the owner and agents need first
 
-- **Owner:** nothing before work starts. Later: merge the Tier C PRs (#322, #328, #338), try the prototype and comment on #333, and keep using the Feed so the A/B record fills.
+- **Owner:** nothing before work starts. Later: merge the Tier C PRs (#322, #328, #338) and keep using the Feed so the A/B record fills.
 - **Agents:** no credentials, cloud setup or paid service. #322's build downloads the model from the model hub in CI; if an agent's local sandbox blocks it, CI's `docker` job is the check. After #322 merges, if it raised `job_memory`, the lead runs `terraform apply` (ADR-0007). No manual backfill is needed in the cloud: each profile rebuild embeds up to 200 feedback articles that lack an embedding (#323), so the owner's Phase 3 history fills in over the first few runs.
 
 ## First point the owner can use something
@@ -187,7 +203,11 @@ No change from `CLAUDE.md` (confirmed for Phase 4 by PR #308). Where it bites in
 | Google Takeout bootstrap deferred | Reads already exist; the export is the most sensitive data the project could hold | Build it as planned in §6 |
 | `DEFAULT_USER_ID = "owner"`; the email never used as a key | Email is private; one function maps identity to user id | Change `user_id_for` |
 | Prototype merged by agents behind a hidden route, not `needs-human` | No screen the owner uses changes; it reaches the phone sooner; the review is #333 | Remove `client/src/lab/` |
-| Regions as source tags on news sources only (UK, Europe, US, World) | Settled direction; other sources have no meaningful region | Edit tags in `config/sources.yaml` |
+| No region preferences for now (owner, #333); regions left out of the model, config and API, not hidden | The owner asked to remove the Regions section; leaving them out keeps the contract small, and adding a map later is additive | `DEFERRED_WORK.md` "Regions in reader preferences" |
+| Source sections from `sources.yaml` tags: News sources (`news`), Tech (`tech`), Science (`science`), More sources (the rest), Long Reads (`long-form`), claimed in the order news, long-form, tech, science | The owner's pick names News and Long Reads; Tech and Science split the rest the way the prototype's kinds did; claiming order keeps each section matching its tab | Edit `source_sections` in `config/preferences.yaml` |
+| A source tagged both `news` and `long-form` sits under News sources only (none today) | One control per source; News is the section the owner asked to be clear | Swap the claiming order |
+| More on a topic divides out the rules' `demote:<t>` for covered topics (`pref:undemote:<t>`, outside the clamp); Fewer and Hide don't | x2 can't lift a x0.14 demotion, so Sport set to More looked broken (#314) | Drop the undemote step in `item_effect` |
+| Restoring a backup keeps the stored preferences when they are newer (`updated_at`) than the backed-up copy, with a log line | A restore after data loss brings them back; a restore over live data never loses newer choices | Overwrite with `--force` instead |
 | Topics from `about:` markers on title or summary matches; new weight-0 topics (politics, business, health, culture) | Hide works without changing scores; body-only matches are often sidebars | Edit `config/interests.yaml` |
 | Fewer and More apply to Feed and Longer (both ordered by score), not Feed alone | Same rule for every ranked view; the screen says so | Apply them only in `ranking: ab` views |
 | Preference multipliers 0 / 0.5 / 1 / 2, product clamped to 0.25 to 4; starter set of 8 sources and 6 topics | The owner's starting values | Edit `config/preferences.yaml` |
