@@ -23,6 +23,35 @@ COPY backend/src ./src
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev --no-editable
 
+# The embedding model (ADR-0014, #322), fetched once at build time so the job never
+# downloads it. Its own stage, built from the lockfile alone, so a code change
+# reuses it. Same call as `newsfeed embed download` (fastembed's downloader), which
+# needs the source tree and would re-download on every code change. The build
+# fails if the download fails or the hub's revision isn't the pinned one. This is
+# the only stage that downloads from the hub; its one RUN --mount is the uv cache,
+# and it has no ADD or secret.
+FROM python-base AS model
+COPY --from=uv /uv /bin/uv
+# Telemetry off here too (#359); the hub stays reachable, as the download needs it.
+ENV UV_LINK_MODE=copy \
+    UV_PYTHON_DOWNLOADS=0 \
+    UV_PROJECT_ENVIRONMENT=/app/.venv \
+    ORT_DISABLE_TELEMETRY=1 \
+    HF_HUB_DISABLE_TELEMETRY=1 \
+    DO_NOT_TRACK=1
+WORKDIR /build
+COPY backend/pyproject.toml backend/uv.lock backend/.python-version ./
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --locked --no-dev --no-install-project
+# Qdrant/bge-small-en-v1.5-onnx-Q, the repo fastembed serves for BAAI/bge-small-en-v1.5
+# (fastembed can't pin a revision itself, so a mismatch fails the build: bump on purpose).
+ARG EMBED_MODEL_REVISION=aa8f8b060edb00e03bfdd08813a2949946c8ba55
+RUN /app/.venv/bin/python -c "from fastembed import TextEmbedding; TextEmbedding('BAAI/bge-small-en-v1.5', cache_dir='/app/models', lazy_load=True)" \
+    && snapshots=$(ls /app/models/models--*/snapshots) \
+    && echo "model revision: $snapshots" \
+    && test "$snapshots" = "$EMBED_MODEL_REVISION" \
+    && chmod -R a+rX /app/models
+
 # Same dependencies plus the optional Playwright group (PROJECT_PLAN.md §11).
 FROM builder AS playwright-builder
 RUN --mount=type=cache,target=/root/.cache/uv \
@@ -46,7 +75,15 @@ FROM python-base AS base
 RUN useradd --create-home --uid 10001 newsfeed \
     && mkdir /data && chown newsfeed:newsfeed /data
 COPY config /app/config
-ENV PATH=/app/.venv/bin:$PATH \
+COPY --from=model /app/models /app/models
+# Telemetry off and the hub never contacted at run time: the model is baked in
+# (#359). Set here, not in the `model` stage, whose build download needs the hub.
+ENV NEWSFEED_EMBED_MODEL_DIR=/app/models \
+    HF_HUB_OFFLINE=1 \
+    HF_HUB_DISABLE_TELEMETRY=1 \
+    DO_NOT_TRACK=1 \
+    ORT_DISABLE_TELEMETRY=1 \
+    PATH=/app/.venv/bin:$PATH \
     PYTHONUNBUFFERED=1 \
     NEWSFEED_CONFIG_DIR=/app/config \
     NEWSFEED_DATA_DIR=/data
