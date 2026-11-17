@@ -45,5 +45,7 @@ export function nextChrome(
 export function snapChrome(prev: ChromeState, headerHeight: number, gap = 0): ChromeState {
   if (prev.y <= gap) return prev.offset === 0 ? prev : { ...prev, offset: 0 };
   if (prev.offset <= 0 || prev.offset >= headerHeight) return prev;
-  return { ...prev, offset: prev.dir < 0 ? 0 : headerHeight };
+  // Hidden only as far as the page has scrolled past the sticky point: the header still occupies
+  // its space until then, so hiding it further would leave a blank band above the first card.
+  return { ...prev, offset: prev.dir < 0 ? 0 : Math.min(headerHeight, prev.y - gap) };
 }

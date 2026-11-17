@@ -48,9 +48,20 @@ describe("nextChrome", () => {
 
 describe("snapChrome", () => {
   it("finishes a part-shown header hidden after a downward move", () => {
-    const s = nextChrome(INITIAL_CHROME, 30, VP, H);
+    let s = nextChrome(INITIAL_CHROME, 200, VP, H);
+    s = nextChrome(s, 170, VP, H);
+    s = nextChrome(s, 180, VP, H);
     expect(s.dir).toBe(1);
+    expect(s.offset).toBeLessThan(H);
     expect(snapChrome(s, H).offset).toBe(H);
+  });
+
+  it("near the top, hides the header only as far as the page has scrolled", () => {
+    const s = nextChrome(INITIAL_CHROME, 40, VP, H, 16);
+    expect(s.offset).toBe(24);
+    expect(snapChrome(s, H, 16).offset).toBe(24);
+    const t = nextChrome(INITIAL_CHROME, 30, VP, H);
+    expect(snapChrome(t, H).offset).toBe(30);
   });
 
   it("finishes a part-shown header shown after an upward move", () => {

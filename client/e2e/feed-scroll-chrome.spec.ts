@@ -89,6 +89,26 @@ test("the header moves exactly as far as the page is scrolled, 30px for 30px, mi
   });
   // It rests BODY_PAD below the top; 30px of scroll leaves it 30px higher.
   expect(tops).toEqual([BODY_PAD - 30, BODY_PAD - 20]);
+  // With scrollend ignored, the 120ms idle timer alone finishes the slide: up, so fully shown.
+  await expect.poll(() => headerTop(page)).toBe(0);
+});
+
+test("near the top, a snap after a short downward scroll leaves no blank band", async ({ page }) => {
+  await openLongFeed(page);
+  for (const y of [20, 50]) {
+    await jump(page, 0);
+    await expect.poll(() => headerTop(page)).toBe(BODY_PAD);
+    await page.mouse.wheel(0, y);
+    await expect.poll(() => scrollY(page)).toBe(y);
+    // Poll until the snap has settled: the header bottom meets the first card's top.
+    await expect
+      .poll(async () => {
+        const h = (await header(page).boundingBox())!;
+        const card = (await page.getByTestId("feed-item").first().boundingBox())!;
+        return Math.abs(h.y + h.height - card.y);
+      })
+      .toBeLessThanOrEqual(1);
+  }
 });
 
 test("when scrolling stops the header snaps fully shown after up, fully hidden after down", async ({
