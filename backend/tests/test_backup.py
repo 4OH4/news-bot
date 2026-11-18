@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from collections.abc import Iterator
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -269,6 +270,83 @@ def test_cli_backup_then_restore_round_trips_through_the_data_dir(data_dir: Path
         assert secret not in restored.output + dry.output
     with SqliteRepository(data_dir / "newsfeed.db") as repo:
         assert _dumped(repo) == before
+
+
+# --- restore-backup --force and the preferences report (#373) ---------------------
+
+
+def _prefs_on(day: int, topic_state: str) -> ReaderPreferences:
+    return ReaderPreferences.model_validate(
+        {
+            "sources": {SECRET_SOURCE: "hide"},
+            "topics": {"sport": topic_state},
+            "updated_at": datetime(2026, 11, day, 9, 0, tzinfo=UTC),
+        }
+    )
+
+
+@pytest.fixture
+def newer_stored_than_backup(data_dir: Path) -> None:
+    """A backup of 2026-11-09 preferences, then stored preferences dated 2026-11-16."""
+    with SqliteRepository(data_dir / "newsfeed.db") as repo:
+        repo.save_preferences(_prefs_on(9, "more"))
+    assert runner.invoke(cli.app, ["backup", "--day", "2026-11-10"]).exit_code == 0
+    with SqliteRepository(data_dir / "newsfeed.db") as repo:
+        repo.save_preferences(_prefs_on(16, "fewer"))
+
+
+@pytest.mark.parametrize(
+    ("args", "verb", "written"),
+    [
+        ([], "kept", False),
+        (["--force"], "replaced", True),
+        (["--force", "--dry-run"], "would replace", False),
+        (["--dry-run"], "kept", False),
+    ],
+    ids=["default-keeps", "force-replaces", "force-dry-run-reports-only", "dry-run-keeps"],
+)
+def test_cli_restore_says_what_it_did_with_preferences_and_force_overrides_newer_wins(
+    data_dir: Path, newer_stored_than_backup: None, args: list[str], verb: str, written: bool
+) -> None:
+    result = runner.invoke(cli.app, ["restore-backup", "2026-11-10", *args])
+
+    assert result.exit_code == 0, result.output
+    lines = [line for line in result.output.splitlines() if "owner" in line]
+    assert len(lines) == 1, result.output
+    assert verb in lines[0].lower()
+    assert "2026-11-16" in lines[0] and "2026-11-09" in lines[0]
+    assert SECRET_SOURCE not in result.output
+    with SqliteRepository(data_dir / "newsfeed.db") as repo:
+        stored = repo.get_preferences("owner")
+    assert stored == (_prefs_on(9, "more") if written else _prefs_on(16, "fewer"))
+
+
+def test_cli_restore_force_leaves_feedback_behaviour_unchanged(data_dir: Path) -> None:
+    with SqliteRepository(data_dir / "newsfeed.db") as repo:
+        for event in _events():
+            repo.save_feedback(event)
+        before = _dumped(repo)
+    assert runner.invoke(cli.app, ["backup", "--day", "2026-11-10"]).exit_code == 0
+
+    forced = runner.invoke(cli.app, ["restore-backup", "2026-11-10", "--force"])
+
+    assert forced.exit_code == 0, forced.output
+    assert "owner" not in forced.output  # no preferences record, so no preferences line
+    with SqliteRepository(data_dir / "newsfeed.db") as repo:
+        assert _dumped(repo) == before
+
+
+def test_cli_restore_help_names_feedback_and_preferences(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Rich colours and wraps help in CI; force plain, wide output, and strip any ANSI left.
+    monkeypatch.setenv("NO_COLOR", "1")
+    monkeypatch.setenv("TERM", "dumb")
+    monkeypatch.setenv("COLUMNS", "200")
+    result = runner.invoke(cli.app, ["restore-backup", "--help"])
+
+    assert result.exit_code == 0
+    plain = " ".join(re.sub(r"\x1b\[[0-9;]*m", "", result.output).split())
+    assert "--force" in plain
+    assert "preferences" in plain.lower()
 
 
 # --- Guards (worker's tests) ----------------------------------------------------
