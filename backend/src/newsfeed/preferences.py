@@ -50,9 +50,9 @@ class Multipliers(_Frozen):
     """What each state does to a score. Hide is always 0 (the item is removed)."""
 
     hide: float = Field(ge=0)
-    fewer: float = Field(ge=0)
+    fewer: float = Field(gt=0)
     show: float = Field(ge=0)
-    more: float = Field(ge=0)
+    more: float = Field(gt=0)
 
     @model_validator(mode="after")
     def _hide_is_zero(self) -> Self:
@@ -181,7 +181,8 @@ def load_preferences_config(path: Path, sources: Collection[Source]) -> Preferen
     """Load and validate ``config/preferences.yaml`` against the configured sources.
 
     Only enabled sources are selectable. Raises ``ConfigError`` for a bad file,
-    a starter or label naming a source that isn't enabled, and so on.
+    a starter naming a source that isn't enabled, a label naming one that isn't
+    configured, and so on.
     """
     raw = load_config(path, _RawConfig)
     enabled = [s for s in sources if s.enabled]
@@ -189,9 +190,12 @@ def load_preferences_config(path: Path, sources: Collection[Source]) -> Preferen
     for source_id in raw.starter.sources:
         if source_id not in enabled_ids:
             raise ConfigError(f"{path}: starter source {source_id!r} is not an enabled source")
+    # Labels may name disabled sources, so disabling one in sources.yaml doesn't
+    # also force an edit here; only ids absent from sources.yaml are an error.
+    configured_ids = {s.id for s in sources}
     for source_id in raw.sources:
-        if source_id not in enabled_ids:
-            raise ConfigError(f"{path}: label for {source_id!r}, which is not an enabled source")
+        if source_id not in configured_ids:
+            raise ConfigError(f"{path}: label for {source_id!r}, which is not a configured source")
     _warn_unknown_covers(path, raw)
     return PreferencesConfig(
         multipliers=raw.multipliers,

@@ -472,7 +472,10 @@ command at another store, so check it has no `NEWSFEED_` lines first.
 Warning: restore saves each backed-up event over the stored record with the
 same id, so it replaces those records with the backup's copy. It never deletes
 anything, so events newer than the backup stay, and running it twice changes
-nothing more. A damaged or incomplete backup writes nothing. To take a backup
+nothing more. A damaged or incomplete backup writes nothing. The reader's
+stored preferences are kept when they are as new as the backup's copy, and the
+command prints a line saying so; add `--force` to `restore-backup` to replace
+them with the backup's copy anyway (feedback is unaffected). To take a backup
 by hand: `newsfeed backup` (add `--day YYYY-MM-DD` to file it under another
 day, and `--force` to replace a day that already has one).
 

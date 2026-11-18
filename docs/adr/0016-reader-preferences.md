@@ -30,12 +30,12 @@ Stored scores are never recomputed (ADR-0013), so anything baked in at rank time
 - *Applying preferences at rank time*: a change would take up to 72 hours to reach older items (ADR-0013), and every user would need their own stored scores.
 - *Skipping hidden sources at ingest*: un-hiding would show nothing until the next fetches, and it would change what the pipeline holds for a display choice.
 - *Storing every key's state, defaults included*: a changed default would never reach a key the owner hadn't touched, and the stored record would need rewriting whenever a source is added.
-- *Refusing a restore over newer preferences without a `--force` flag*: keeping the newer record loses nothing and needs no new flag; a `--force` option can be added later.
+- *Refusing a restore over newer preferences without a `--force` flag*: keeping the newer record loses nothing. The default keeps it; `newsfeed restore-backup --force` (#373) replaces it with the backup's copy when a rollback is wanted.
 
 ## Consequences
 
 - A change shows on the next refresh, and the pipeline stays shared, which keeps per-user views cheap later.
 - The API reads one more record per request; on Firestore that is one document read per served view.
 - The owner's choices are now data that can't be recreated, so they are in the backup, and any later contract change to them is high risk.
-- Restoring an older backup can't roll back a newer choice. If that is ever wanted, a `--force` option on `newsfeed restore` is the follow-up.
+- Restoring an older backup doesn't roll back a newer choice unless `newsfeed restore-backup --force` is used (#373).
 - Revisit when a second user is added (sign-in and keys, stop-the-line), or when regions come back.
