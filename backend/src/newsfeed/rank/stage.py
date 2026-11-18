@@ -27,6 +27,7 @@ from scratch on every run.
 
 from __future__ import annotations
 
+import resource
 import time
 from collections import defaultdict
 from collections.abc import Callable, Collection
@@ -63,8 +64,19 @@ log = get_logger(__name__)
 DEFAULT_WINDOW_HOURS = 72.0
 """How far back (by ``fetched_at``) articles are re-scored each run."""
 
-DEFAULT_EMBED_BATCH_SIZE = 32
-"""Texts per ``Embedder.embed`` call; bounds how many bodies are held at once."""
+DEFAULT_EMBED_BATCH_SIZE = 4
+"""Texts per ``Embedder.embed`` call; bounds how many bodies are held at once.
+
+At 32 full-length texts the model's working memory took the 1 GiB job past
+its limit; at 4 it peaks near 370 MB with no loss of speed (#376).
+"""
+
+DEFAULT_MAX_EMBED_PER_RUN = 100
+"""Texts one run sends to the embedder at most, profile backfill included.
+
+Articles over the cap are scored without a vector and embedded on a later
+run, so a backlog drains over several runs instead of one long one (#376).
+"""
 
 MAX_PROFILE_BACKFILL = 200
 """Feedback articles a profile rebuild embeds at most, so the history fills in over runs."""
@@ -271,11 +283,12 @@ def _rebuild_profile(
     now: datetime,
     window_since: datetime,
     batch_size: int,
-) -> Profile:
-    """Build the profile from recent feedback and save it.
+    max_embed: int,
+) -> tuple[Profile, int]:
+    """Build the profile from recent feedback and save it; also return the texts embedded.
 
     Feedback articles with no embedding from ``embedder.model`` are embedded and
-    stored, at most ``MAX_PROFILE_BACKFILL`` per rebuild, except those in the
+    stored, at most ``min(MAX_PROFILE_BACKFILL, max_embed)`` per rebuild, except those in the
     rank window (fetched at or after ``window_since``): the rank stage embeds
     and writes those itself, after this, so the two writes can't collide.
     """
@@ -285,10 +298,11 @@ def _rebuild_profile(
     rows, weights, missing = _feedback_stories(services, story_weights(events, config, now))
     vectors: dict[str, list[float]] = {}
     backfill: list[Article] = []
+    limit = min(MAX_PROFILE_BACKFILL, max_embed)
     for story_id, row in rows.items():
         if row.embedding is not None and not needs_embedding(row, embedder.model):
             vectors[story_id] = row.embedding
-        elif row.fetched_at < window_since and len(backfill) < MAX_PROFILE_BACKFILL:
+        elif row.fetched_at < window_since and len(backfill) < limit:
             backfill.append(row)
     backfilled = backfill_errors = 0
     for start in range(0, len(backfill), batch_size):
@@ -335,7 +349,7 @@ def _rebuild_profile(
             "seconds": round(time.perf_counter() - began, 3),
         },
     )
-    return profile
+    return profile, len(backfill)
 
 
 def _current_profile(
@@ -346,15 +360,24 @@ def _current_profile(
     now: datetime,
     window_since: datetime,
     batch_size: int,
-) -> tuple[Profile | None, bool]:
-    """The saved profile, rebuilt first when due, and whether it was rebuilt. Raises on failure."""
+    max_embed: int,
+) -> tuple[Profile | None, int | None]:
+    """The saved profile, rebuilt first when due, and the texts a rebuild embedded.
+
+    The count is None when there was no rebuild. Raises on failure.
+    """
     profile = services.repository.get_profile(DEFAULT_USER_ID)
     if not _rebuild_due(services, profile, embedder.model, config, now):
-        return profile, False
-    rebuilt = _rebuild_profile(
-        services, embedder, config, now=now, window_since=window_since, batch_size=batch_size
+        return profile, None
+    return _rebuild_profile(
+        services,
+        embedder,
+        config,
+        now=now,
+        window_since=window_since,
+        batch_size=batch_size,
+        max_embed=max_embed,
     )
-    return rebuilt, True
 
 
 def _seen_ids(services: Services, since: datetime) -> set[str]:
@@ -452,6 +475,7 @@ def rank_recent(
     clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     embedder: Embedder | None = None,
     embed_batch_size: int = DEFAULT_EMBED_BATCH_SIZE,
+    max_embed_per_run: int = DEFAULT_MAX_EMBED_PER_RUN,
     personalisation: PersonalisationConfig | None = None,
 ) -> RankSummary:
     """Score every article fetched at or after ``since`` and store the result.
@@ -463,7 +487,10 @@ def rank_recent(
     embedding from its model are embedded ``embed_batch_size`` at a time, and the
     vector is stored in the same write as the score. Without one, a warning is
     logged and ranking is unchanged. A failed batch or vector is logged and
-    counted in ``embed_errors``; those articles are still scored.
+    counted in ``embed_errors``; those articles are still scored. At most
+    ``max_embed_per_run`` texts go to the embedder per call, counting the
+    profile backfill first; articles over that are scored without a vector
+    and embedded by a later run.
 
     With an embedder, the interest profile is rebuilt first when due (see
     ``personalisation``, which defaults to the built-in weights), and once every
@@ -475,6 +502,8 @@ def rank_recent(
     """
     if embed_batch_size < 1:
         raise ValueError("embed_batch_size must be at least 1")
+    if max_embed_per_run < 0:
+        raise ValueError("max_embed_per_run must not be negative")
     now = clock()
     by_id = {source.id: source for source in sources}
     personalisation = personalisation or PersonalisationConfig()
@@ -489,19 +518,24 @@ def rank_recent(
     embed_seconds = 0.0
     profile: Profile | None = None
     rebuilt = False
+    budget = max_embed_per_run
+    deferred = 0
     profile_began = time.perf_counter()
     if embedder is not None:
         try:
             # Before the window snapshot below, so the rank writes can't
             # overwrite embeddings the rebuild stores.
-            profile, rebuilt = _current_profile(
+            profile, backfilled = _current_profile(
                 services,
                 embedder,
                 personalisation,
                 now=now,
                 window_since=since,
                 batch_size=embed_batch_size,
+                max_embed=budget,
             )
+            rebuilt = backfilled is not None
+            budget -= backfilled or 0
         except Exception as exc:
             errors += 1
             log.warning(
@@ -543,6 +577,11 @@ def rank_recent(
         if body is None:
             no_body += 1
         if embedder is not None and needs_embedding(article, embedder.model):
+            if budget <= 0:
+                deferred += 1
+                prepare(article, body, None)
+                continue
+            budget -= 1
             pending.append((article, body))
             if len(pending) >= embed_batch_size:
                 flush()
@@ -604,12 +643,14 @@ def rank_recent(
             "errors": errors,
             "embedded": embedded,
             "embed_errors": embed_errors,
+            "embed_deferred": deferred,
             "embed_seconds": round(embed_seconds, 3),
             "model": embedder.model if embedder else None,
             "profile_rebuilt": int(rebuilt),
             "profile_seconds": round(profile_seconds, 3),
             "with_similarity": with_similarity,
             "clusters_multi": clusters_multi,
+            "peak_rss_mb": _peak_rss_mb(),
         },
     )
     return RankSummary(
@@ -623,6 +664,11 @@ def rank_recent(
         with_similarity=with_similarity,
         clusters_multi=clusters_multi,
     )
+
+
+def _peak_rss_mb() -> float:
+    """The process's peak resident memory so far, in MB (Linux reports ``ru_maxrss`` in KiB)."""
+    return round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024, 1)
 
 
 def _log_rank_failure(article: Article, exc: Exception) -> None:

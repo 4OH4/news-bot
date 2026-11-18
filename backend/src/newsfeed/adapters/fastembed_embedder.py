@@ -24,12 +24,17 @@ from newsfeed.ports import EmbeddingError
 if TYPE_CHECKING:
     from fastembed import TextEmbedding
 
-__all__ = ["DEFAULT_MODEL", "FastembedEmbedder", "download_model"]
+__all__ = ["DEFAULT_BATCH_SIZE", "DEFAULT_MODEL", "FastembedEmbedder", "download_model"]
 
 log = get_logger(__name__)
 
 DEFAULT_MODEL = "BAAI/bge-small-en-v1.5"
 """MIT licence, 384 dimensions (ADR-0014). fastembed serves Qdrant's ONNX conversion."""
+
+DEFAULT_BATCH_SIZE = 4
+"""Texts per ONNX run. Full-length texts reach the 512-token limit, and 100 of
+them took peak RSS to about 1.3 GB at 32 per run, past the job's 1 GiB, but
+about 370 MB at 4, at the same speed (#376)."""
 
 
 def _disable_telemetry() -> None:
@@ -65,7 +70,7 @@ class FastembedEmbedder:
     """
 
     def __init__(
-        self, model_dir: Path, model_name: str = DEFAULT_MODEL, batch_size: int = 32
+        self, model_dir: Path, model_name: str = DEFAULT_MODEL, batch_size: int = DEFAULT_BATCH_SIZE
     ) -> None:
         if batch_size < 1:
             raise ValueError("batch_size must be at least 1")
