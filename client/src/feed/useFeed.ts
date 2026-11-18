@@ -31,6 +31,30 @@ function noticeFor(err: unknown, hasFeed: boolean): string {
   return hasFeed ? "Could not refresh. Showing the last feed." : "Could not load the feed. Try again.";
 }
 
+const STALE_KEY = "newsfeed-feeds-stale-at";
+let staleAt = 0; // used when storage is blocked
+
+/**
+ * Marks every stored list stale (#338): a saved preference changes what the API serves, so
+ * the next load of each view fetches page 1 in full instead of revalidating its etag.
+ */
+export function markFeedsStale(): void {
+  staleAt = Date.now();
+  try {
+    localStorage.setItem(STALE_KEY, String(staleAt));
+  } catch {
+    // Storage can be blocked; the mark then lasts until reload.
+  }
+}
+
+function staleSince(): number {
+  try {
+    return Math.max(staleAt, Number(localStorage.getItem(STALE_KEY)) || 0);
+  } catch {
+    return staleAt;
+  }
+}
+
 /** `page`'s items appended to `shown`, without ids already shown. */
 export function appendPage(shown: Feed, page: Feed): Feed {
   const ids = new Set(shown.items.map((i) => i.id));
@@ -142,7 +166,8 @@ export function useFeed(view: ViewName = "feed", ranking?: "rules" | "personal")
       try {
         const stored = ranking ? null : await loadFeed(view);
         if (stored) {
-          etag.current = stored.etag || undefined;
+          // A list stored before the last preferences save is shown but fetched in full.
+          etag.current = stored.fetchedAt > staleSince() ? stored.etag || undefined : undefined;
           show(stored.feed);
           setFetchedAt(stored.fetchedAt);
         }
