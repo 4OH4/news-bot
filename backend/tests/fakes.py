@@ -29,6 +29,7 @@ from newsfeed.models import (
     Feedback,
     FetchResult,
     Profile,
+    ReaderPreferences,
     RunStats,
     Source,
     SourceState,
@@ -84,6 +85,7 @@ class InMemoryRepository:
         self._feedback: dict[str, Feedback] = {}
         self._run_stats: dict[str, RunStats] = {}
         self._profiles: dict[str, Profile] = {}
+        self._preferences: dict[str, ReaderPreferences] = {}
 
     def upsert_article(self, article: Article) -> None:
         """Insert or replace ``article`` by id."""
@@ -165,6 +167,17 @@ class InMemoryRepository:
         """Insert or replace the profile for ``profile.user_id``."""
         with self._lock:
             self._profiles[profile.user_id] = profile.model_copy(deep=True)
+
+    def get_preferences(self, user_id: str) -> ReaderPreferences | None:
+        """Return a copy of the preferences for ``user_id``, or None."""
+        with self._lock:
+            prefs = self._preferences.get(user_id)
+            return prefs.model_copy(deep=True) if prefs else None
+
+    def save_preferences(self, prefs: ReaderPreferences) -> None:
+        """Insert or replace the preferences for ``prefs.user_id``."""
+        with self._lock:
+            self._preferences[prefs.user_id] = prefs.model_copy(deep=True)
 
     def save_run_stats(self, stats: RunStats) -> None:
         """Insert or replace run statistics by run id."""

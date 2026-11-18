@@ -210,6 +210,21 @@ def test_restore_keeps_stored_preferences_unless_the_backup_is_newer(
         assert SECRET_SOURCE not in text, f"a setting leaked into log record {record.msg!r}"
 
 
+def test_dry_run_counts_preferences_by_the_same_rule_and_writes_nothing(
+    empty: SqliteRepository, blobs: LocalBlobStore, tmp_path: Path
+) -> None:
+    with SqliteRepository(tmp_path / "backed-up.db") as source:
+        source.save_preferences(_prefs(9, topic_state="more"))
+        write_backup(source, blobs, day=DAY, run_id=None)
+
+    assert restore_backup(empty, blobs, day=DAY, dry_run=True) == 1
+    assert empty.get_preferences("owner") is None
+
+    empty.save_preferences(_prefs(10))
+    assert restore_backup(empty, blobs, day=DAY, dry_run=True) == 0
+    assert empty.get_preferences("owner") == _prefs(10)
+
+
 # --- CLI -----------------------------------------------------------------------
 
 runner = CliRunner()

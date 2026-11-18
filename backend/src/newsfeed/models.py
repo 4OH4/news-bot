@@ -48,8 +48,10 @@ __all__ = [
     "InterestCentroid",
     "LenientUtcDatetime",
     "PipelineStage",
+    "PreferenceState",
     "Profile",
     "RankingArm",
+    "ReaderPreferences",
     "RunStats",
     "Source",
     "SourceState",
@@ -520,6 +522,52 @@ class Profile(_Model):
         if len(lengths) > 1:
             raise ValueError(f"profile vectors differ in length: {sorted(lengths)}")
         return self
+
+
+# --- Reader preferences ------------------------------------------------------
+
+
+class PreferenceState(StrEnum):
+    """The reader's choice for one source or topic: Hide, Fewer, Show or More (ADR-0016)."""
+
+    HIDE = "hide"
+    FEWER = "fewer"
+    SHOW = "show"
+    MORE = "more"
+
+
+PreferenceKey = Annotated[str, Field(pattern=r"^[a-z0-9][a-z0-9_-]*$")]
+"""A source id or topic slug used as a preference key, such as ``bbc-news``."""
+
+
+class ReaderPreferences(_Model):
+    """A reader's own Hide, Fewer, Show or More choices, keyed by ``user_id`` (ADR-0016).
+
+    Only overrides are stored: a source or topic absent from ``sources`` or
+    ``topics`` takes the configured default from ``config/preferences.yaml``,
+    so changing a default reaches every reader who hasn't chosen otherwise.
+    The choices are the owner's own data and can't be rebuilt from anything
+    else, so they are in the daily backup (``backup.py``).
+
+    There is no regions map in this version (#333). Adding one later is
+    additive, a new map with an empty default, so no stored data would need
+    migrating.
+    """
+
+    user_id: UserId = DEFAULT_USER_ID
+    sources: dict[PreferenceKey, PreferenceState] = Field(
+        default_factory=dict, description="Source id to state; absent means the default."
+    )
+    topics: dict[PreferenceKey, PreferenceState] = Field(
+        default_factory=dict, description="Preference topic slug to state; absent means default."
+    )
+    setup_done_at: UtcDatetime | None = Field(
+        default=None, description="When first-run setup was finished; None if not yet."
+    )
+    updated_at: UtcDatetime = Field(description="When the preferences were last saved.")
+    version: NonNegativeInt = Field(
+        default=0, description="Incremented on each save, so a client can tell its copy is stale."
+    )
 
 
 # --- Run statistics ----------------------------------------------------------
