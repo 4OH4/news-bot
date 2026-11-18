@@ -57,6 +57,8 @@ def src(id_: str, *tags: str, enabled: bool = True) -> Source:
     )
 
 
+NO_STARTER: dict[str, list[str]] = {"sources": [], "topics": []}
+
 SOURCES = [
     src("bbc-news", "news", "uk"),
     src("quanta", "science", "long-form"),
@@ -68,13 +70,13 @@ SOURCES = [
 
 
 def make_config(
-    tmp_path: Path, sources: list[Source] = SOURCES, **changes: Any
+    tmp_path: Path, source_list: list[Source] = SOURCES, **changes: Any
 ) -> PreferencesConfig:
     data = copy.deepcopy(BASE)
     data.update(changes)
     path = tmp_path / "preferences.yaml"
-    path.write_text(yaml.safe_dump(data), encoding="utf-8")
-    return load_preferences_config(path, sources)
+    path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    return load_preferences_config(path, source_list)
 
 
 @pytest.fixture
@@ -144,7 +146,7 @@ def test_committed_config_places_every_enabled_source_in_its_section() -> None:
     ],
 )
 def test_source_joins_first_claiming_section(tmp_path: Path, tags: list[str], section: str) -> None:
-    config = make_config(tmp_path, [src("probe", *tags)])
+    config = make_config(tmp_path, [src("probe", *tags)], starter=NO_STARTER, sources={})
     assert config.section_of["probe"] == section
 
 
@@ -154,7 +156,11 @@ def test_disabled_sources_are_not_selectable(config: PreferencesConfig) -> None:
 
 
 def test_menu_leaves_out_empty_sections(tmp_path: Path) -> None:
-    config = make_config(tmp_path, [s for s in SOURCES if s.id not in {"nature", "quanta"}])
+    config = make_config(
+        tmp_path,
+        [s for s in SOURCES if s.id not in {"nature", "quanta"}],
+        starter={"sources": ["bbc-news"], "topics": []},
+    )
     assert "science" not in section_ids(config)
 
 
