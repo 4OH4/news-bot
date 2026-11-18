@@ -21,7 +21,8 @@ make ``12:00:00Z`` sort after ``12:00:00.5Z``.
 
 ``Article.embedding`` is a BLOB of packed little-endian float32
 (``adapters/vectors.py``), so it reads back rounded to float32. A ``Profile``
-is one row in ``profiles``, with its centroids as JSON text.
+is one row in ``profiles``, with its centroids as JSON text, and
+``ReaderPreferences`` one row in ``preferences``, with its two maps as JSON text.
 """
 
 from __future__ import annotations
@@ -42,6 +43,7 @@ from newsfeed.models import (
     ExtractionStatus,
     Feedback,
     Profile,
+    ReaderPreferences,
     RunStats,
     SourceState,
 )
@@ -149,6 +151,19 @@ _MIGRATIONS: tuple[tuple[str, ...], ...] = (
         )
         """,
     ),
+    # 3 -> 4 (#334): the reader's preferences, one row per user.
+    (
+        """
+        CREATE TABLE preferences (
+            user_id TEXT PRIMARY KEY,
+            sources TEXT NOT NULL,
+            topics TEXT NOT NULL,
+            setup_done_at TEXT,
+            updated_at TEXT NOT NULL,
+            version INTEGER NOT NULL
+        )
+        """,
+    ),
 )
 
 SCHEMA_VERSION = len(_MIGRATIONS)
@@ -196,6 +211,8 @@ _PROFILE_COLUMNS = (
     "last_feedback_at",
 )
 _PROFILE_JSON = frozenset({"centroids", "negative"})
+_PREFERENCES_COLUMNS = ("user_id", "sources", "topics", "setup_done_at", "updated_at", "version")
+_PREFERENCES_JSON = frozenset({"sources", "topics"})
 _RUN_STATS_COLUMNS = (
     "run_id",
     "started_at",
@@ -513,6 +530,26 @@ class SqliteRepository:
         row["built_at"] = _format_time(profile.built_at)
         row["last_feedback_at"] = _format_time(profile.last_feedback_at)
         self._connection().execute(_upsert_sql("profiles", _PROFILE_COLUMNS), row)
+
+    # --- Reader preferences --------------------------------------------------
+
+    def get_preferences(self, user_id: str) -> ReaderPreferences | None:
+        """Return the preferences saved for ``user_id``, or None."""
+        row = (
+            self._connection()
+            .execute("SELECT * FROM preferences WHERE user_id = ?", (user_id,))
+            .fetchone()
+        )
+        if row is None:
+            return None
+        return ReaderPreferences.model_validate(_from_row(row, json_fields=_PREFERENCES_JSON))
+
+    def save_preferences(self, prefs: ReaderPreferences) -> None:
+        """Insert or replace the preferences for ``prefs.user_id``."""
+        row = _to_row(prefs.model_dump(mode="json"), json_fields=_PREFERENCES_JSON)
+        row["setup_done_at"] = _format_time(prefs.setup_done_at)
+        row["updated_at"] = _format_time(prefs.updated_at)
+        self._connection().execute(_upsert_sql("preferences", _PREFERENCES_COLUMNS), row)
 
     # --- Run stats -----------------------------------------------------------
 

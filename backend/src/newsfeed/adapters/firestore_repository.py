@@ -2,7 +2,8 @@
 
 Each model is one document, in one collection per model: ``articles`` (keyed by
 ``Article.id``), ``source_state`` (``source_id``), ``feedback`` (``id``),
-``profiles`` (``user_id``) and ``run_stats`` (``run_id``). An optional ``prefix``
+``profiles`` (``user_id``), ``preferences`` (``user_id``) and ``run_stats``
+(``run_id``). An optional ``prefix``
 is put in front of every collection name, so tests and environments can share a
 database without seeing each other's data (``prefix="test-ab12-"`` gives ``test-ab12-articles``).
 
@@ -72,6 +73,7 @@ from newsfeed.models import (
     ExtractionStatus,
     Feedback,
     Profile,
+    ReaderPreferences,
     RunStats,
     SourceState,
 )
@@ -173,6 +175,7 @@ class FirestoreRepository:
         self._source_state = client.collection(f"{prefix}source_state")
         self._feedback = client.collection(f"{prefix}feedback")
         self._profiles = client.collection(f"{prefix}profiles")
+        self._preferences = client.collection(f"{prefix}preferences")
         self._run_stats = client.collection(f"{prefix}run_stats")
 
     # --- Articles ------------------------------------------------------------
@@ -286,6 +289,19 @@ class FirestoreRepository:
     def save_profile(self, profile: Profile) -> None:
         """Insert or replace the profile for ``profile.user_id``."""
         self._profiles.document(_doc_id(profile.user_id)).set(_profile_document(profile))
+
+    # --- Reader preferences --------------------------------------------------
+
+    def get_preferences(self, user_id: str) -> ReaderPreferences | None:
+        """Return the preferences saved for ``user_id``, or None."""
+        snapshot = self._preferences.document(_doc_id(user_id)).get()
+        if not snapshot.exists:
+            return None
+        return ReaderPreferences.model_validate(snapshot.to_dict() or {})
+
+    def save_preferences(self, prefs: ReaderPreferences) -> None:
+        """Insert or replace the preferences for ``prefs.user_id``, as one document."""
+        self._preferences.document(_doc_id(prefs.user_id)).set(prefs.model_dump(mode="json"))
 
     # --- Run stats -----------------------------------------------------------
 

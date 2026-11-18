@@ -17,7 +17,14 @@ import pytest
 
 from newsfeed.adapters import firestore_repository
 from newsfeed.adapters.firestore_repository import FirestoreRepository
-from newsfeed.models import Article, Feedback, FeedbackEvent, Profile, RunStats
+from newsfeed.models import (
+    Article,
+    Feedback,
+    FeedbackEvent,
+    Profile,
+    ReaderPreferences,
+    RunStats,
+)
 
 
 def _repo() -> tuple[FirestoreRepository, MagicMock]:
@@ -221,3 +228,27 @@ def test_feedback_document_from_before_ab_fields_loads_with_defaults() -> None:
     query.stream.return_value = [legacy]
     (feedback,) = repo.list_feedback()
     assert (feedback.user_id, feedback.view, feedback.arm) == ("owner", None, None)
+
+
+def test_preferences_are_one_document_per_user_and_read_back_equal() -> None:
+    repo, client = _repo()
+    prefs = ReaderPreferences.model_validate(
+        {
+            "sources": {"bbc-news": "hide"},
+            "topics": {"sport": "fewer"},
+            "updated_at": datetime(2026, 11, 17, 10, 0, tzinfo=UTC),
+            "version": 2,
+        }
+    )
+    repo.save_preferences(prefs)
+    assert "p-preferences" in [call.args[0] for call in client.collection.call_args_list]
+    client.collection.return_value.document.assert_any_call("owner")
+    _serve_last_write(client)
+
+    assert repo.get_preferences("owner") == prefs
+
+
+def test_unknown_preferences_are_none() -> None:
+    repo, client = _repo()
+    client.collection.return_value.document.return_value.get.return_value.exists = False
+    assert repo.get_preferences("owner") is None

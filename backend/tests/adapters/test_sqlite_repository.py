@@ -30,6 +30,7 @@ from newsfeed.models import (
     Feedback,
     PipelineStage,
     Profile,
+    ReaderPreferences,
     RunStats,
     SourceState,
 )
@@ -379,3 +380,31 @@ def test_a_database_from_before_personalisation_gains_the_new_fields(db_path: Pa
         )
         repo.save_profile(profile)
         assert repo.get_profile("owner") == profile
+
+
+def test_a_database_from_before_preferences_keeps_its_data_and_stores_them(db_path: Path) -> None:
+    # A developer's data/ at schema version 3, the last before #334.
+    db_path.parent.mkdir(parents=True)
+    connection = sqlite3.connect(db_path)
+    connection.execute("CREATE TABLE schema_version (version INTEGER)")
+    connection.execute("INSERT INTO schema_version (version) VALUES (3)")
+    for migration in _MIGRATIONS[:3]:
+        for statement in migration:
+            connection.execute(statement)
+    connection.execute(
+        "INSERT INTO feedback (id, article_id, event, value, created_at) VALUES (?, ?, ?, ?, ?)",
+        ("f1", "a" * 16, "open", None, "2026-10-11T12:00:00.000000Z"),
+    )
+    connection.commit()
+    connection.close()
+
+    prefs = ReaderPreferences.model_validate(
+        {"sources": {"bbc-news": "hide"}, "topics": {"sport": "fewer"}, "updated_at": T0}
+    )
+    with SqliteRepository(db_path) as repo:
+        assert repo.schema_version() == SCHEMA_VERSION
+        assert [f.id for f in repo.list_feedback()] == ["f1"]
+        assert repo.get_preferences("owner") is None
+        repo.save_preferences(prefs)
+    with SqliteRepository(db_path) as repo:
+        assert repo.get_preferences("owner") == prefs

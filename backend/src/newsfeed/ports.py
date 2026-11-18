@@ -40,6 +40,7 @@ from newsfeed.models import (
     Feedback,
     FetchResult,
     Profile,
+    ReaderPreferences,
     RunStats,
     Source,
     SourceState,
@@ -167,6 +168,17 @@ class Repository(Protocol):
 
     def save_profile(self, profile: Profile) -> None:
         """Insert or replace the interest profile, keyed by ``profile.user_id``."""
+        ...
+
+    def get_preferences(self, user_id: str) -> ReaderPreferences | None:
+        """Return the reader preferences saved for ``user_id``, or None if none yet."""
+        ...
+
+    def save_preferences(self, prefs: ReaderPreferences) -> None:
+        """Insert or replace the reader preferences, keyed by ``prefs.user_id``.
+
+        The record is replaced whole, so a key left out is back to its default.
+        """
         ...
 
     def save_run_stats(self, stats: RunStats) -> None:

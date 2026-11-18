@@ -1,7 +1,8 @@
-"""Daily backups of the owner's feedback to the blob store, and restoring them (#330).
+"""Daily backups of the owner's feedback and preferences, and restoring them (#330, #334).
 
-Feedback is the one thing in the store that can't be rebuilt (CLAUDE.md, "Cost
-of failure"), and Firestore's point-in-time recovery is off. A backup is one
+Feedback and reader preferences are the things in the store that can't be
+rebuilt (CLAUDE.md, "Cost of failure"), and Firestore's point-in-time recovery
+is off. A backup is one
 JSON-lines file per collection under ``backups/<YYYY-MM-DD>/``, then
 ``manifest.json`` with the counts. The manifest is written last, so its
 presence means every collection file before it was written in full.
@@ -10,11 +11,12 @@ Nothing here deletes, from the blob store or the repository. Backups sit
 outside both bucket lifecycle rules (``articles/`` and ``feeds/``), so nothing
 else deletes them either.
 
-Logs carry counts, keys and durations only, never an event's contents: those
-are the owner's reading history.
+Logs carry counts, keys and durations only, never an event's contents or the
+owner's settings: those are the owner's reading history and choices.
 
 Cost: one ``list_feedback`` per backup, which on Firestore is one document read
-per stored event, plus one write per collection file and one for the manifest.
+per stored event, one ``get_preferences`` read, plus one write per collection
+file and one for the manifest.
 """
 
 from __future__ import annotations
@@ -28,7 +30,7 @@ from datetime import UTC, date, datetime, timedelta
 from pydantic import BaseModel, ValidationError
 
 from newsfeed.logging import get_logger
-from newsfeed.models import Feedback
+from newsfeed.models import DEFAULT_USER_ID, Feedback, ReaderPreferences
 from newsfeed.ports import BlobNotFoundError, BlobStore, Repository
 
 __all__ = [
@@ -58,6 +60,8 @@ class _Collection:
     model: type[BaseModel]
     dump: Callable[[Repository], Sequence[BaseModel]]
     save: Callable[[Repository, BaseModel], None]
+    # Whether a restore should write this backed-up item; logs when it doesn't.
+    should_restore: Callable[[Repository, BaseModel, bool], bool] = lambda _r, _i, _d: True
 
     @property
     def file_name(self) -> str:
@@ -69,9 +73,53 @@ def _save_feedback(repository: Repository, item: BaseModel) -> None:
     repository.save_feedback(item)
 
 
-# The collections a backup holds. Preferences (#334) join with one more entry.
+def _dump_preferences(repository: Repository) -> list[ReaderPreferences]:
+    # One user for now (ADR-0010); more users would list them here.
+    prefs = repository.get_preferences(DEFAULT_USER_ID)
+    return [prefs] if prefs is not None else []
+
+
+def _save_preferences(repository: Repository, item: BaseModel) -> None:
+    assert isinstance(item, ReaderPreferences)
+    repository.save_preferences(item)
+
+
+def _preferences_should_restore(repository: Repository, item: BaseModel, dry_run: bool) -> bool:
+    """False when the stored record is as new as the backed-up copy or newer.
+
+    Preferences are one record per user that the owner edits, so restoring an
+    older backup over live data would lose newer choices (ADR-0016). Feedback
+    needs no such rule: an event is never rewritten once stored.
+    """
+    assert isinstance(item, ReaderPreferences)
+    stored = repository.get_preferences(item.user_id)
+    if stored is None or stored.updated_at < item.updated_at:
+        return True
+    # The user id and timestamps only, never the settings themselves.
+    log.info(
+        "restore kept the stored preferences, as new as the backup or newer",
+        extra={
+            "stage": "backup",
+            "collection": "preferences",
+            "user_id": item.user_id,
+            "dry_run": dry_run,
+            "stored_updated_at": stored.updated_at.isoformat(),
+            "backup_updated_at": item.updated_at.isoformat(),
+        },
+    )
+    return False
+
+
+# The collections a backup holds.
 _COLLECTIONS: tuple[_Collection, ...] = (
     _Collection("feedback", Feedback, lambda repo: repo.list_feedback(), _save_feedback),
+    _Collection(
+        "preferences",
+        ReaderPreferences,
+        _dump_preferences,
+        _save_preferences,
+        _preferences_should_restore,
+    ),
 )
 COLLECTIONS: tuple[str, ...] = tuple(c.name for c in _COLLECTIONS)
 
@@ -194,12 +242,15 @@ def restore_backup(repository: Repository, blobs: BlobStore, *, day: date, dry_r
     """Save every item of ``day``'s backup into ``repository``; return how many.
 
     Every file is read and checked against the manifest's counts before
-    anything is written, so a damaged backup writes nothing. Items are saved
+    anything is written, so a damaged backup writes nothing. Feedback is saved
     with ``save_feedback``, which is keyed by id, so a second restore changes
     nothing. Feedback events are never rewritten once stored (ADR-0010), so
     saving a backed-up copy over an event already in the store writes the same
-    fields back. Nothing is ever deleted. With ``dry_run`` nothing is written
-    and the count is what would be saved.
+    fields back. Preferences are saved only when nothing is stored for that
+    user or the stored record's ``updated_at`` is older than the backed-up
+    copy's; a kept record is logged and not counted (ADR-0016). Nothing is ever
+    deleted. With ``dry_run`` nothing is written and the count is what would be
+    saved.
 
     Raises ``BackupError`` if the backup is missing, incomplete or unreadable.
     """
@@ -226,18 +277,23 @@ def restore_backup(repository: Repository, blobs: BlobStore, *, day: date, dry_r
                 f"but the manifest says {manifest.counts[collection.name]}"
             )
         loaded.append((collection, items))
-    total = sum(len(items) for _, items in loaded)
-    if not dry_run:
-        for collection, items in loaded:
-            for item in items:
+    counts: dict[str, int] = {}
+    for collection, items in loaded:
+        counts[collection.name] = 0
+        for item in items:
+            if not collection.should_restore(repository, item, dry_run):
+                continue
+            if not dry_run:
                 collection.save(repository, item)
+            counts[collection.name] += 1
+    total = sum(counts.values())
     log.info(
         "backup restored" if not dry_run else "backup restore dry run",
         extra={
             "stage": "backup",
             "day": day.isoformat(),
             "dry_run": dry_run,
-            "counts": {c.name: len(items) for c, items in loaded},
+            "counts": counts,
             "duration_ms": round((time.perf_counter() - began) * 1000),
         },
     )
