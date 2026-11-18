@@ -13,7 +13,14 @@ import typer
 from pydantic import ValidationError
 
 from newsfeed import inspect as q
-from newsfeed.backup import BackupError, backup_due, backup_key, restore_backup, write_backup
+from newsfeed.backup import (
+    BackupError,
+    PreferencesOutcome,
+    backup_due,
+    backup_key,
+    restore_backup,
+    write_backup,
+)
 from newsfeed.config import ConfigError, load_sources, load_url_params
 from newsfeed.eval.report import (
     build_report,
@@ -511,20 +518,37 @@ def restore_backup_command(
     yes: Annotated[
         bool, typer.Option("--yes", help="Confirm a restore into the cloud store (Firestore).")
     ] = False,
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force",
+            help="Replace stored preferences with the backup's copy even if the stored one "
+            "is newer. Feedback is unaffected.",
+        ),
+    ] = False,
 ) -> None:
-    """Save a day's backed-up feedback back into the store. Never deletes anything."""
+    """Save a day's backed-up feedback and preferences back into the store.
+
+    Stored preferences that are as new as the backup's are kept unless --force.
+    Never deletes anything.
+    """
     settings = load_settings()
     # NEWSFEED_STORAGE=gcp is what selects Firestore (newsfeed.storage), so it is the check.
     if settings.storage == "gcp" and not dry_run and not yes:
         _fail("this writes to the live Firestore store; run with --dry-run first, then --yes")
     target = day.date()
+    outcomes: list[PreferencesOutcome] = []
     with _storage(settings) as (repository, blobs):
         try:
-            n = restore_backup(repository, blobs, day=target, dry_run=dry_run)
+            n = restore_backup(
+                repository, blobs, day=target, dry_run=dry_run, force=force, outcomes=outcomes
+            )
         except BackupError as exc:
             _fail(str(exc))
     verb = "would restore" if dry_run else "restored"
     typer.echo(f"{verb} {n} item(s) from {backup_key(target, '')}")
+    for outcome in outcomes:
+        typer.echo(outcome.describe())
 
 
 embed_app = typer.Typer(help="The local embedding model (ADR-0014).", no_args_is_help=True)

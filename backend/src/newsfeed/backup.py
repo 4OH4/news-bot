@@ -39,6 +39,7 @@ __all__ = [
     "MANIFEST_NAME",
     "BackupError",
     "BackupManifest",
+    "PreferencesOutcome",
     "backup_due",
     "backup_key",
     "latest_backup_day",
@@ -60,8 +61,11 @@ class _Collection:
     model: type[BaseModel]
     dump: Callable[[Repository], Sequence[BaseModel]]
     save: Callable[[Repository, BaseModel], None]
-    # Whether a restore should write this backed-up item; logs when it doesn't.
-    should_restore: Callable[[Repository, BaseModel, bool], bool] = lambda _r, _i, _d: True
+    # Whether a restore should write this backed-up item (given dry_run, force);
+    # logs when it doesn't and may append a line to the report.
+    should_restore: Callable[
+        [Repository, BaseModel, bool, bool, list[PreferencesOutcome]], bool
+    ] = lambda _r, _i, _d, _f, _o: True
 
     @property
     def file_name(self) -> str:
@@ -84,8 +88,41 @@ def _save_preferences(repository: Repository, item: BaseModel) -> None:
     repository.save_preferences(item)
 
 
-def _preferences_should_restore(repository: Repository, item: BaseModel, dry_run: bool) -> bool:
+@dataclass(frozen=True)
+class PreferencesOutcome:
+    """What a restore did, or would do, with one user's preferences record.
+
+    Carries the user id and timestamps only, never the settings themselves.
+    """
+
+    user_id: str
+    action: str  # "kept", "replaced" or "restored" (nothing was stored)
+    stored_updated_at: datetime | None
+    backup_updated_at: datetime
+    dry_run: bool
+
+    def describe(self) -> str:
+        """One output line, e.g. ``preferences for owner: kept stored (...)``."""
+        backup = self.backup_updated_at.date().isoformat()
+        stored = self.stored_updated_at.date().isoformat() if self.stored_updated_at else "none"
+        verb = self.action
+        if self.dry_run and verb != "kept":
+            verb = f"would {'replace' if verb == 'replaced' else 'restore'}"
+        return (
+            f"preferences for {self.user_id}: {verb} (stored dated {stored}, backup dated {backup})"
+        )
+
+
+def _preferences_should_restore(
+    repository: Repository,
+    item: BaseModel,
+    dry_run: bool,
+    force: bool,
+    outcomes: list[PreferencesOutcome],
+) -> bool:
     """False when the stored record is as new as the backed-up copy or newer.
+
+    With ``force`` the backup's copy always wins.
 
     Preferences are one record per user that the owner edits, so restoring an
     older backup over live data would lose newer choices (ADR-0016). Feedback
@@ -93,8 +130,20 @@ def _preferences_should_restore(repository: Repository, item: BaseModel, dry_run
     """
     assert isinstance(item, ReaderPreferences)
     stored = repository.get_preferences(item.user_id)
-    if stored is None or stored.updated_at < item.updated_at:
+    stored_at = stored.updated_at if stored is not None else None
+
+    def outcome(action: str) -> None:
+        outcomes.append(
+            PreferencesOutcome(item.user_id, action, stored_at, item.updated_at, dry_run)
+        )
+
+    if stored is None:
+        outcome("restored")
         return True
+    if force or stored.updated_at < item.updated_at:
+        outcome("replaced")
+        return True
+    outcome("kept")
     # The user id and timestamps only, never the settings themselves.
     log.info(
         "restore kept the stored preferences, as new as the backup or newer",
@@ -238,7 +287,15 @@ def _read_collection(blobs: BlobStore, day: date, collection: _Collection) -> li
     return items
 
 
-def restore_backup(repository: Repository, blobs: BlobStore, *, day: date, dry_run: bool) -> int:
+def restore_backup(
+    repository: Repository,
+    blobs: BlobStore,
+    *,
+    day: date,
+    dry_run: bool,
+    force: bool = False,
+    outcomes: list[PreferencesOutcome] | None = None,
+) -> int:
     """Save every item of ``day``'s backup into ``repository``; return how many.
 
     Every file is read and checked against the manifest's counts before
@@ -248,9 +305,10 @@ def restore_backup(repository: Repository, blobs: BlobStore, *, day: date, dry_r
     saving a backed-up copy over an event already in the store writes the same
     fields back. Preferences are saved only when nothing is stored for that
     user or the stored record's ``updated_at`` is older than the backed-up
-    copy's; a kept record is logged and not counted (ADR-0016). Nothing is ever
-    deleted. With ``dry_run`` nothing is written and the count is what would be
-    saved.
+    copy's, or ``force`` is set; a kept record is logged and not counted
+    (ADR-0016). Each preferences record's fate is appended to ``outcomes`` when
+    given. Nothing is ever deleted. With ``dry_run`` nothing is written and the
+    count is what would be saved.
 
     Raises ``BackupError`` if the backup is missing, incomplete or unreadable.
     """
@@ -277,11 +335,12 @@ def restore_backup(repository: Repository, blobs: BlobStore, *, day: date, dry_r
                 f"but the manifest says {manifest.counts[collection.name]}"
             )
         loaded.append((collection, items))
+    sink: list[PreferencesOutcome] = outcomes if outcomes is not None else []
     counts: dict[str, int] = {}
     for collection, items in loaded:
         counts[collection.name] = 0
         for item in items:
-            if not collection.should_restore(repository, item, dry_run):
+            if not collection.should_restore(repository, item, dry_run, force, sink):
                 continue
             if not dry_run:
                 collection.save(repository, item)
