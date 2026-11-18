@@ -89,13 +89,17 @@ class Topic(_Frozen):
 
     A positive weight adds ``weight`` times the field weight for each field
     (title, summary, body) a keyword matches in; a negative one multiplies the
-    score by a demotion factor instead. ``newsfeed.rank.scoring`` has the rules.
+    score by a demotion factor instead; 0 changes no score but still records the
+    ``about:<name>`` marker. ``newsfeed.rank.scoring`` has the rules.
     """
 
     name: Keyword
     keywords: Annotated[list[Keyword], Field(min_length=1)]
     weight: float = Field(
-        description="Times the field weight, added per matching field; negative demotes."
+        description=(
+            "Times the field weight, added per matching field; negative demotes; "
+            "0 only records the about:<name> marker."
+        )
     )
 
     @field_validator("keywords")

@@ -21,7 +21,13 @@
 #                                 # score is then multiplied by
 #                                 # 1 / (1 + |weight| x strongest field
 #                                 # weight), e.g. -1 in the body halves it;
-#                                 # never 0, so demoted articles keep order
+#                                 # never 0, so demoted articles keep order;
+#                                 # 0 changes no score (a "marker topic")
+#
+#   Every topic, whatever its weight, adds the marker about:<name> = 1.0 to
+#   the breakdown when a keyword matches the title or summary (not the body
+#   alone). It is not a factor: it is how preferences know what an article
+#   is about.
 #
 #   mute_keywords: [foo]          # one in the title or summary mutes the
 #                                 # article: scored and stored, but left out
@@ -288,6 +294,78 @@ topics:
 # Muted: left out of the feed when in the title or summary. These are the
 # non-articles seen in the Phase 1 run: affiliate coupon pages, daily cartoons
 # and newsletter or app sign-up items.
+  # Marker topics (weight 0): they change no score, only add about:<name> so
+  # the reader's preferences can hide or reduce them (#336). Whole words;
+  # "MP" and "Reform UK" are borderline but specific enough in a UK-leaning feed.
+  - name: politics
+    weight: 0
+    keywords:
+      - parliament
+      - election
+      - elections
+      - prime minister
+      - minister
+      - ministers
+      - MP
+      - MPs
+      - Labour
+      - Conservative
+      - Tories
+      - Reform UK
+      - Lib Dems
+      - Senate
+      - Congress
+      - White House
+      - president
+      - chancellor
+      - policy
+
+  - name: business
+    weight: 0
+    keywords:
+      - company
+      - companies
+      - shares
+      - investors
+      - profits
+      - CEO
+      - merger
+      - startup
+      - startups
+      - acquisition
+      - stock market
+      - earnings
+
+  - name: health
+    weight: 0
+    keywords:
+      - NHS
+      - hospital
+      - hospitals
+      - doctors
+      - vaccine
+      - vaccines
+      - cancer
+      - disease
+      - health
+      - patients
+      - mental health
+
+  - name: culture
+    weight: 0
+    keywords:
+      - film
+      - films
+      - novel
+      - album
+      - theatre
+      - museum
+      - exhibition
+      - TV series
+      - author
+      - concert
+      - festival
+
 mute_keywords:
   - promo codes
   - promo code

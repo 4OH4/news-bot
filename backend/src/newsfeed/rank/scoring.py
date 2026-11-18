@@ -23,6 +23,10 @@ How the components combine::
   With ``scoring.body_only_demotion`` below 1, a match in the body alone
   uses ``scale * body weight`` as ``w`` (so 0 skips it) and adds the marker
   ``demote_body_only:<name>`` = scale; the marker is not a factor.
+* ``about:<name>``: a marker (1.0, not a factor) for every topic, whatever its
+  weight (0 included), whose keywords match the title or summary. It is how
+  preferences know what an article is about; body-only matches don't count. A
+  weight 0 topic adds no points and no demotion.
 * ``mute_keyword_in_body``: 0.5 when a mute keyword matches only in the body.
   A passing mention in the body halves the score instead of muting.
 * ``source``: the multiplier for the article's source: the reader's weight in
@@ -37,8 +41,8 @@ How the components combine::
 
 ``BASE_SCORE`` keeps an article with no matching topic above zero, so that with
 an empty config the score is ``source * recency``. Breakdown values are the
-factors above (except the ``demote_body_only:<name>`` marker), so the score can
-be recomputed from them.
+factors above (except the ``demote_body_only:<name>`` and ``about:<name>``
+markers), so the score can be recomputed from them.
 
 The rank stage may add ``coverage`` (#324): a factor of 1 or more for a story
 covered by two or more sources, which is part of ``score`` (it multiplies the
@@ -109,6 +113,10 @@ def score_article(
         }
         if not hits:
             continue
+        if "title" in hits or "summary" in hits:
+            # A body-only match is often a sidebar, so it doesn't say what the
+            # article is about; preferences read this marker (#336).
+            breakdown[f"about:{topic.name}"] = 1.0
         matched = list(hits.values())
         if topic.weight < 0:
             strength = max(matched)
