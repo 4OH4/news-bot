@@ -21,8 +21,9 @@
 #                                 # score is then multiplied by
 #                                 # 1 / (1 + |weight| x strongest field
 #                                 # weight), e.g. -1 in the body halves it;
-#                                 # never 0, so demoted articles keep order;
-#                                 # 0 changes no score (a "marker topic")
+#                                 # the factor never reaches 0, so demoted
+#                                 # articles keep their order; a weight of 0
+#                                 # changes no score (a "marker topic")
 #
 #   Every topic, whatever its weight, adds the marker about:<name> = 1.0 to
 #   the breakdown when a keyword matches the title or summary (not the body
@@ -291,12 +292,13 @@ topics:
       - Black Friday
       - Prime Day
 
-# Muted: left out of the feed when in the title or summary. These are the
-# non-articles seen in the Phase 1 run: affiliate coupon pages, daily cartoons
-# and newsletter or app sign-up items.
   # Marker topics (weight 0): they change no score, only add about:<name> so
   # the reader's preferences can hide or reduce them (#336). Whole words;
   # "MP" and "Reform UK" are borderline but specific enough in a UK-leaning feed.
+  # Left out as too broad: "author" and "novel" (they turn up in stories about
+  # reports and studies, not only books), "policy", "company" and "health"
+  # alone. Kept but borderline: "festival" and "actor" can be non-culture
+  # stories; accepted because a missed hide is cheap.
   - name: politics
     weight: 0
     keywords:
@@ -318,12 +320,12 @@ topics:
       - White House
       - president
       - chancellor
-      - policy
+      - Downing Street
 
   - name: business
     weight: 0
     keywords:
-      - company
+      - chief executive
       - companies
       - shares
       - investors
@@ -335,6 +337,9 @@ topics:
       - acquisition
       - stock market
       - earnings
+      - shareholders
+      - quarterly results
+      - takeover
 
   - name: health
     weight: 0
@@ -347,25 +352,37 @@ topics:
       - vaccines
       - cancer
       - disease
-      - health
+      - public health
       - patients
       - mental health
+      - GP
+      - surgery
+      - clinical trial
+      - symptoms
 
   - name: culture
     weight: 0
     keywords:
       - film
       - films
-      - novel
       - album
       - theatre
       - museum
       - exhibition
       - TV series
-      - author
       - concert
       - festival
+      - bestseller
+      - actor
+      - actress
+      - Booker Prize
+      - novelist
+      - orchestra
+      - art gallery
 
+# Muted: left out of the feed when in the title or summary. These are the
+# non-articles seen in the Phase 1 run: affiliate coupon pages, daily cartoons
+# and newsletter or app sign-up items.
 mute_keywords:
   - promo codes
   - promo code

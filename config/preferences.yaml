@@ -53,8 +53,7 @@ sources:
   cloudflare-blog: {label: Cloudflare Blog}
   noahpinion: {label: Noahpinion}
 
-# Preference topic -> label and the interests.yaml topics it covers. Some
-# covered topics (politics, business, health, culture) arrive with #336.
+# Preference topic -> label and the interests.yaml topics it covers.
 topics:
   politics: {label: Politics, covers: [politics]}
   tech: {label: Tech, covers: [ai, software, linux, security-privacy, internet-infrastructure]}

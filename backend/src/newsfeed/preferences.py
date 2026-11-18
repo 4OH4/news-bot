@@ -50,9 +50,9 @@ class Multipliers(_Frozen):
     """What each state does to a score. Hide is always 0 (the item is removed)."""
 
     hide: float = Field(ge=0)
-    fewer: float = Field(gt=0)
+    fewer: float = Field(ge=0.01)
     show: float = Field(ge=0)
-    more: float = Field(gt=0)
+    more: float = Field(ge=0.01)
 
     @model_validator(mode="after")
     def _hide_is_zero(self) -> Self:
