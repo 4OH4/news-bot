@@ -17,7 +17,7 @@ from newsfeed.config import UrlParamsConfig
 from newsfeed.models import Article
 from newsfeed.ports import BlobStore, Embedder, EmbeddingError, Repository
 from newsfeed.rank.interests import InterestsConfig
-from newsfeed.rank.stage import rank_recent
+from newsfeed.rank.stage import DEFAULT_EMBED_BATCH_SIZE, rank_recent
 from newsfeed.wiring import Services
 from tests.fakes import (
     FakeEmbedder,
@@ -203,7 +203,7 @@ def test_a_bad_vector_fails_that_article_and_the_run_continues(bad: list[float])
     assert counts["embed_errors"] == 1
 
 
-def test_batches_are_of_32_texts() -> None:
+def test_batches_are_of_the_default_size() -> None:
     s = services()
     for n in range(70):
         s.repository.upsert_article(article(f"n{n:02d}"))
@@ -211,7 +211,7 @@ def test_batches_are_of_32_texts() -> None:
 
     counts = run(s, embedder)
 
-    assert [len(call) for call in embedder.calls] == [32, 32, 6]
+    assert [len(call) for call in embedder.calls] == [DEFAULT_EMBED_BATCH_SIZE] * 17 + [2]
     assert counts["embedded"] == 70
 
 

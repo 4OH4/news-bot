@@ -144,6 +144,7 @@ def rank(
     *,
     now: datetime = NOW,
     batch: int = 32,
+    max_embed: int = 100,
 ) -> dict[str, int]:
     return rank_recent(
         s,
@@ -152,6 +153,7 @@ def rank(
         clock=lambda: now,
         embedder=embedder or ScriptedEmbedder(),
         embed_batch_size=batch,
+        max_embed_per_run=max_embed,
         personalisation=cfg,
     ).counts()
 
@@ -288,13 +290,14 @@ def test_a_rebuild_embeds_at_most_200_old_feedback_articles(tmp_path: Path) -> N
     def embedded() -> int:
         return sum(a.embedding is not None for a in repo.list_articles())
 
-    rank(s, cfg)
+    # A per-run cap above 200, so the backfill's own limit is the one tested.
+    rank(s, cfg, max_embed=300)
     assert embedded() == 200
     # Newer than every event the first rebuild used, so the second run sees new feedback.
     repo.save_feedback(
         feedback(old("gamma", "000", embedded=False).id, FeedbackEvent.OPEN, None, at=NOW)
     )
-    rank(s, cfg, now=NOW + timedelta(hours=7))
+    rank(s, cfg, now=NOW + timedelta(hours=7), max_embed=300)
     assert embedded() == 250
 
 
