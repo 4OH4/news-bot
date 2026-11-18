@@ -12,6 +12,7 @@ import type { FeedbackContext } from "../feedback/event";
 import { enqueueFeedback } from "../feedback/queue";
 import { isSeen, markSeen } from "../feedback/seen";
 import "./card-actions.css";
+import { explainBreakdown } from "./explain";
 import { relativeTime } from "./time";
 import { storyKey, type FeedItem, type ViewName } from "./types";
 
@@ -40,12 +41,34 @@ async function recordOpen(item: FeedItem, context: FeedbackContext): Promise<voi
   }
 }
 
-/** One story in the list. `article` items open the reader; `link` items open the site. */
+/** The score components in words, with which side placed the story when it is known (#328). */
+function WhyList({ item }: { item: FeedItem }) {
+  const rows = explainBreakdown(item.score_breakdown ?? {}, item.score, item.coverage);
+  return (
+    <div class="why-list">
+      <ul>
+        {rows.map((row) => (
+          <li key={row.label} class={`why-${row.kind}`}>
+            <span>{row.label}</span> <span class="why-value">{row.value}</span>
+          </li>
+        ))}
+      </ul>
+      {item.arm ? (
+        <p class="why-arm">
+          Placed by: {item.arm === "personal" ? "personalised" : "rules"}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/** One story in the list.`article` items open the reader; `link` items open the site. */
 export function FeedItemCard({ item, view: screen }: { item: FeedItem; view?: ViewName }) {
   const context = cardContext(screen, item);
   const [imageFailed, setImageFailed] = useState(false);
   const [view, setView] = useState<View>("pending");
   const [seen, setSeen] = useState(false);
+  const [why, setWhy] = useState(false);
   const checks = useRef(0);
 
   useEffect(() => {
@@ -113,6 +136,7 @@ export function FeedItemCard({ item, view: screen }: { item: FeedItem; view?: Vi
 
   const time = relativeTime(item.published_at);
   const status = statusLabel(item.extraction_status);
+  const coverage = item.coverage ?? 0;
   return (
     <article class={seen ? "card card-seen" : "card"} data-testid="feed-item">
       {item.lead_image ? (
@@ -153,6 +177,7 @@ export function FeedItemCard({ item, view: screen }: { item: FeedItem; view?: Vi
           {item.domain}
         </a>
         {time ? <span> · {time}</span> : null}
+        {coverage >= 2 ? <span> · {coverage} sources</span> : null}
       </p>
       {item.summary ? <p class="card-summary">{item.summary}</p> : null}
       {isLink || status ? (
@@ -170,7 +195,11 @@ export function FeedItemCard({ item, view: screen }: { item: FeedItem; view?: Vi
           <button type="button" onClick={() => act("muted")}>
             Mute {item.domain}
           </button>
+          <button type="button" aria-expanded={why} onClick={() => setWhy((w) => !w)}>
+            Why this story?
+          </button>
         </div>
+        {why ? <WhyList item={item} /> : null}
       </details>
     </article>
   );
