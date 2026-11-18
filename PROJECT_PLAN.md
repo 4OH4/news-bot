@@ -186,6 +186,7 @@ Each phase has a clear exit criterion. Later phases may be re-planned based on w
 - Optional bootstrap from a Google Takeout export of search and YouTube history.
 - Hybrid score combining rules, similarity, freshness, source weight and a diversity penalty, with a transparent score breakdown per article.
 - Near-duplicate story clustering.
+- Reader preferences (added by the owner, 2026-11-16): Hide, Fewer, Show or More per source and topic, from a menu in the app (#331, ADR-0016).
 - **Exit:** a measurable lift in open and read rate versus rules-only (simple A/B by day or by feed slot).
 - **Milestone demo:** read the same day's feed with and without personalisation, open one article's score breakdown, and see the A/B results so far.
 
