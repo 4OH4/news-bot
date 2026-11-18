@@ -211,6 +211,16 @@ def test_a_topic_setting_scales_its_items_in_score_views_only(
     assert view(api, "news").json()["items"] == ITEMS
 
 
+def test_a_hidden_topic_leaves_the_news_view_too() -> None:
+    api = client()
+    assert put(api, body(topics={"sport": "hide"})).status_code == 200
+
+    news = ids(view(api, "news").json())
+
+    assert SPORT_ID not in news
+    assert PLAIN_ID in news
+
+
 @pytest.mark.parametrize(
     ("ranking", "similarity"), [("rules", 1.0), ("personal", SPORT_SIMILARITY)]
 )

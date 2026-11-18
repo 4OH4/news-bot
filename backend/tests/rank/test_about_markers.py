@@ -117,3 +117,10 @@ def test_new_topics_mark_the_articles_they_are_about() -> None:
     }
     for topic, title in expected.items():
         assert score(article(title=title), full)[1].get(f"about:{topic}") == 1.0
+
+
+def test_the_word_author_alone_does_not_mark_an_article_as_culture() -> None:
+    full = load_interests(CONFIG_DIR / "interests.yaml")
+    a = article(title="The author of the report spoke to reporters")
+
+    assert "about:culture" not in score(a, full)[1]

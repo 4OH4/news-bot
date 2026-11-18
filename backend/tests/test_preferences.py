@@ -11,7 +11,7 @@ import pytest
 import yaml
 
 from newsfeed.config import ConfigError, load_sources
-from newsfeed.models import ReaderPreferences, Source, SourceType
+from newsfeed.models import PreferenceState, ReaderPreferences, Source, SourceType
 from newsfeed.preferences import (
     PreferencesConfig,
     effective_states,
@@ -305,6 +305,17 @@ def test_zero_multiplier_is_rejected_naming_the_key(tmp_path: Path, key: str) ->
     multipliers = {**BASE["multipliers"], key: 0}
     with pytest.raises((ConfigError, ValueError), match=key):
         make_config(tmp_path, multipliers=multipliers)
+
+
+@pytest.mark.parametrize("key", ["fewer", "more"])
+def test_multiplier_below_the_floor_is_rejected_but_the_floor_itself_loads(
+    tmp_path: Path, key: str
+) -> None:
+    with pytest.raises((ConfigError, ValueError), match=key):
+        make_config(tmp_path, multipliers={**BASE["multipliers"], key: 0.001})
+
+    loaded = make_config(tmp_path, multipliers={**BASE["multipliers"], key: 0.01})
+    assert loaded.multipliers.of(PreferenceState(key)) == 0.01
 
 
 def test_label_for_a_disabled_source_loads(tmp_path: Path) -> None:
