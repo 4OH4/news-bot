@@ -80,7 +80,7 @@ SYNTHETIC = [
     ("The election result surprises parliament", "A new minister is named", None),
     ("Premier League title race", "Football club sign a striker", "shares fell"),
     ("Hospital waiting lists grow", "The NHS warns of winter", "doctors and vaccine"),
-    ("New film wins the festival", "A novel adaptation at the theatre", None),
+    ("New film wins the film festival", "A novel adaptation at the theatre", None),
     ("Company profits rise", "Investors welcome the merger", "the CEO said"),
     ("Linux kernel release", "Maintainers ship a patch", "the senate was not involved"),
     ("A quiet day", None, None),
@@ -112,7 +112,7 @@ def test_new_topics_mark_the_articles_they_are_about() -> None:
     expected = {
         "politics": "The election result surprises parliament",
         "health": "Hospital waiting lists grow",
-        "culture": "New film wins the festival",
+        "culture": "New film wins the film festival",
         "business": "Company profits rise",
     }
     for topic, title in expected.items():
