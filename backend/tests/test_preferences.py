@@ -289,3 +289,48 @@ def test_hide_wins_over_more(config: PreferencesConfig) -> None:
     overrides = prefs(topics={"sport": "hide", "tech": "more"})
     hidden, _ = effect(config, overrides, "bbc-news", about__sport=1.0, about__ai=1.0)
     assert hidden
+
+
+def test_lower_clamp_lifts_a_product_below_min_factor(config: PreferencesConfig) -> None:
+    overrides = prefs(topics={"tech": "fewer", "science": "fewer"}, sources={"quanta": "fewer"})
+    _, factors = effect(config, overrides, "quanta", about__ai=1.0, about__space=1.0)
+    assert factors["pref:clamp"] == pytest.approx(2.0)  # 0.125 lifted to 0.25
+
+
+# --- Validation rules (#382) -----------------------------------------------------
+
+
+@pytest.mark.parametrize("key", ["fewer", "more"])
+def test_zero_multiplier_is_rejected_naming_the_key(tmp_path: Path, key: str) -> None:
+    multipliers = {**BASE["multipliers"], key: 0}
+    with pytest.raises((ConfigError, ValueError), match=key):
+        make_config(tmp_path, multipliers=multipliers)
+
+
+def test_label_for_a_disabled_source_loads(tmp_path: Path) -> None:
+    config = make_config(tmp_path, sources={"example-off": {"label": "Off"}})
+    assert "example-off" not in config.section_of
+
+
+def test_label_for_an_unconfigured_source_still_fails(tmp_path: Path) -> None:
+    with pytest.raises((ConfigError, ValueError), match="nobody"):
+        make_config(tmp_path, sources={"nobody": {"label": "Nobody"}})
+
+
+DUP_SECTIONS = [*BASE["source_sections"], {"id": "news", "label": "Dup", "tag": "x"}]
+
+
+@pytest.mark.parametrize(
+    ("changes", "match"),
+    [
+        ({"claim_order": ["news", "tech"]}, "science"),
+        ({"starter": {"sources": [], "topics": ["no-such-topic"]}}, "no-such-topic"),
+        ({"source_sections": DUP_SECTIONS}, "duplicate"),
+    ],
+    ids=["tagged-section-not-in-claim-order", "starter-topic-unknown", "duplicate-section-ids"],
+)
+def test_loader_checks_from_review_of_380(
+    tmp_path: Path, changes: dict[str, Any], match: str
+) -> None:
+    with pytest.raises((ConfigError, ValueError), match=match):
+        make_config(tmp_path, **changes)
