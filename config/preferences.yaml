@@ -1,0 +1,78 @@
+# Defaults for the reader preferences menu (ADR-0016, #335).
+#
+# The reader's own Hide / Fewer / Show / More choices are stored separately
+# (only overrides); everything here is the default they are applied to.
+# Loaded by backend/src/newsfeed/preferences.py.
+
+# What each state does to an item's score. Hide removes the item.
+multipliers: {hide: 0, fewer: 0.5, show: 1.0, more: 2.0}
+
+# The product of the reader's multipliers for one item is clamped to this range.
+max_factor: 4.0
+min_factor: 0.25
+
+# Source sections, in screen order. A source joins one section: the first, in
+# claim_order, whose tag it carries; otherwise the one section with no tag.
+source_sections:
+  - {id: news, label: News sources, tag: news}
+  - {id: tech, label: Tech, tag: tech}
+  - {id: science, label: Science, tag: science}
+  - {id: more, label: More sources}
+  - {id: long-reads, label: Long Reads, tag: long-form}
+
+# Long Reads claims before Tech and Science, so quanta and bbc-future (tagged
+# science and long-form) sit under Long Reads, matching the Longer tab.
+claim_order: [news, long-reads, tech, science]
+
+# Display labels; an enabled source without one shows its id.
+sources:
+  bbc-news: {label: BBC News}
+  guardian-world: {label: Guardian World}
+  independent-uk: {label: The Independent}
+  inews: {label: i news}
+  al-jazeera-english: {label: Al Jazeera English}
+  dw-news: {label: DW News}
+  business-insider: {label: Business Insider}
+  ars-technica: {label: Ars Technica}
+  the-verge: {label: The Verge}
+  wired: {label: Wired}
+  lwn: {label: LWN.net}
+  404media: {label: 404 Media}
+  mit-tech-review: {label: MIT Technology Review}
+  nature-news: {label: Nature News}
+  quanta: {label: Quanta Magazine}
+  phys-org: {label: Phys.org}
+  carbon-brief: {label: Carbon Brief}
+  bbc-future: {label: BBC Future}
+  guardian-longread: {label: Guardian Long Read}
+  aeon: {label: Aeon}
+  new-yorker: {label: The New Yorker}
+  simon-willison: {label: Simon Willison}
+  julia-evans: {label: Julia Evans}
+  martin-fowler: {label: Martin Fowler}
+  cloudflare-blog: {label: Cloudflare Blog}
+  noahpinion: {label: Noahpinion}
+
+# Preference topic -> label and the interests.yaml topics it covers. Some
+# covered topics (politics, business, health, culture) arrive with #336.
+topics:
+  politics: {label: Politics, covers: [politics]}
+  tech: {label: Tech, covers: [ai, software, linux, security-privacy, internet-infrastructure]}
+  science: {label: Science, covers: [science, space]}
+  climate: {label: Climate and energy, covers: [climate-energy]}
+  business: {label: Business and economy, covers: [economics, business]}
+  sport: {label: Sport, covers: [sport]}
+  # The rest, under "add more".
+  ai: {label: AI, covers: [ai]}
+  space: {label: Space, covers: [space]}
+  security-privacy: {label: Security and privacy, covers: [security-privacy]}
+  linux: {label: Linux, covers: [linux]}
+  health: {label: Health, covers: [health]}
+  culture: {label: Culture, covers: [culture]}
+  celebrity-royals: {label: Celebrity and royals, covers: [celebrity-royals]}
+  shopping: {label: Shopping, covers: [shopping]}
+
+# Shown first, and the suggested set for first-run setup.
+starter:
+  sources: [bbc-news, guardian-world, al-jazeera-english, ars-technica, the-verge, simon-willison, carbon-brief, quanta]
+  topics: [politics, tech, science, climate, business, sport]
