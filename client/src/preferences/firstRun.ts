@@ -1,3 +1,5 @@
+import { sessionStatus } from "../auth/status";
+import { firstFeedLoad } from "../feed/useFeed";
 import { getPreferences } from "./api";
 
 export const SETUP_PATH = "/settings/preferences?setup=1";
@@ -15,10 +17,13 @@ function askedThisSession(): boolean {
 
 /**
  * First run (#338): when the server says setup isn't done, opens the preferences screen as the
- * setup screen, once. Any failure (offline, an error) leaves the feed where it is.
+ * setup screen, once. It waits for the first feed load, and skips while the session needs
+ * attention, so its answer can't race the feed's 401. Any failure leaves the feed as it is.
  */
 export async function openSetupIfNeeded(): Promise<void> {
   if (askedThisSession()) return;
+  await firstFeedLoad;
+  if (sessionStatus !== "ok") return;
   let setupDone: boolean;
   try {
     setupDone = (await getPreferences()).setup_done;
