@@ -106,6 +106,21 @@ def test_muted_articles_are_stored_with_muted_in_the_breakdown() -> None:
     assert "muted" in stored.score_breakdown
 
 
+def test_the_topic_marker_is_stored_in_the_breakdown() -> None:
+    s = services()
+    s.repository.upsert_article(article("a", title="An election is called"))
+    s.repository.upsert_article(article("b"))
+    cfg = InterestsConfig.model_validate(
+        {"topics": [{"name": "politics", "keywords": ["election"], "weight": 0}]}
+    )
+
+    rank_recent(s, cfg, since=DAY_AGO, clock=lambda: NOW)
+
+    stored = {a.title: a for a in s.repository.list_articles()}
+    assert stored["An election is called"].score_breakdown["about:politics"] == 1.0
+    assert "about:politics" not in stored["Story b"].score_breakdown
+
+
 def test_failure_on_one_article_is_logged_and_does_not_stop_the_stage(
     caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
 ) -> None:
