@@ -76,6 +76,19 @@ describe("reader feedback context", () => {
     expect(like).toMatchObject({ view: "feed", arm: "personal" });
   });
 
+  it("opening the same article again with no second write carries neither field", async () => {
+    const first = await readWith({ id: A.id, view: "feed", arm: "personal" });
+    expect(first.find((e) => e.event === "read")).toMatchObject({ view: "feed", arm: "personal" });
+    expect(sessionStorage.getItem(CONTEXT_KEY)).toBeNull();
+    vi.restoreAllMocks();
+    document.body.innerHTML = "";
+    root = document.createElement("div");
+    document.body.appendChild(root);
+    const second = await readWith(undefined);
+    const reads = second.filter((e) => e.event === "read");
+    expect(hasNeither(reads[reads.length - 1])).toBe(true);
+  });
+
   it.each([
     ["no context (opened from Liked or a shared link)", undefined],
     ["a stale context for another article", { id: "0000000000000000", view: "feed", arm: "rules" }],

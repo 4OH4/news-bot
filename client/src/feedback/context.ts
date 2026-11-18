@@ -28,11 +28,14 @@ export function writeReaderContext(id: string, context: FeedbackContext): void {
   }
 }
 
-/** The stored context if it was written for article `id`; otherwise nothing. */
+/** The stored context if it was written for article `id`, consumed on read; otherwise nothing. */
 export function readReaderContext(id: string): FeedbackContext | undefined {
   try {
     const raw = sessionStorage.getItem(READER_CONTEXT_KEY);
     if (!raw) return undefined;
+    // Read once, like reader/scroll.ts: a later open of the same article (Liked, a shared link)
+    // wasn't opened from a card and must not reuse this view and arm.
+    sessionStorage.removeItem(READER_CONTEXT_KEY);
     const parsed = JSON.parse(raw) as { id?: unknown; view?: unknown; arm?: unknown };
     if (parsed.id !== id || typeof parsed.view !== "string") return undefined;
     const arm = parsed.arm === "rules" || parsed.arm === "personal" ? parsed.arm : undefined;
