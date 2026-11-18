@@ -297,8 +297,9 @@ topics:
   # "MP" and "Reform UK" are borderline but specific enough in a UK-leaning feed.
   # Left out as too broad: "author" and "novel" (they turn up in stories about
   # reports and studies, not only books), "policy", "company" and "health"
-  # alone. Kept but borderline: "festival" and "actor" can be non-culture
-  # stories; accepted because a missed hide is cheap.
+  # alone, and bare "takeover", "festival" and "actor" (an AI "takeover" or a
+  # village festival is not business or culture). A wrong match hides a story
+  # the owner wanted, which costs more than a missed hide, so use phrases.
   - name: politics
     weight: 0
     keywords:
@@ -339,7 +340,8 @@ topics:
       - earnings
       - shareholders
       - quarterly results
-      - takeover
+      - takeover bid
+      - takeover talks
 
   - name: health
     weight: 0
@@ -371,9 +373,9 @@ topics:
       - exhibition
       - TV series
       - concert
-      - festival
+      - film festival
+      - music festival
       - bestseller
-      - actor
       - actress
       - Booker Prize
       - novelist
