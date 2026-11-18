@@ -55,6 +55,8 @@ test("a reader opened by address, with no card tap, sends neither field", async 
   await page.clock.install();
   await page.goto(`/article/${top.id}`);
   await expect(page.getByText("Invented paragraph.")).toBeVisible();
+  // The item arrives separately from the text; reading starts only once it is known.
+  await expect(page.getByRole("heading", { name: top.title })).toBeVisible();
   await page.clock.fastForward(7_000);
   await page.goto("/");
 

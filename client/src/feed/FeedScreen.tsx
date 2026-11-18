@@ -98,7 +98,7 @@ export function FeedScreen({ view = "feed" }: { view?: ViewName }) {
         feed.items.length === 0 ? (
           <p class="empty">Nothing here yet.</p>
         ) : (
-          feed.items.map((item) => <FeedItemCard key={item.id} item={item} />)
+          feed.items.map((item) => <FeedItemCard key={item.id} item={item} view={view} />)
         )
       ) : null}
       {feed?.next_cursor ? (

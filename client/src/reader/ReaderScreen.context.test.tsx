@@ -41,7 +41,8 @@ afterEach(() => {
 async function readWith(context: unknown, like = false): Promise<Record<string, unknown>[]> {
   if (context !== undefined) sessionStorage.setItem(CONTEXT_KEY, JSON.stringify(context));
   const feed = makeFeed([A]);
-  installRouter({ feed, articles: { [A.id]: bodyFor(A.id) } });
+  // A hanging send keeps every event in the queue, where the test reads it back.
+  installRouter({ feed, articles: { [A.id]: bodyFor(A.id) }, feedback: "hang" });
   const s: Stores = await loadStores();
   await s.saveFeed(feed, '"run-invented-1"');
   const { ReaderScreen } = await import("./ReaderScreen");

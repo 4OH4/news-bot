@@ -4,12 +4,19 @@
  */
 export type FeedbackEventName = "open" | "read" | "like" | "dismiss" | "mute_source";
 
+export type Arm = "rules" | "personal";
+
+/** Where an event came from (#327): the screen's view and the A/B side of the item, if any. */
+export type FeedbackContext = { view?: string; arm?: Arm };
+
 export type FeedbackPayload = {
   id: string;
   article_id: string;
   event: FeedbackEventName;
   value: number | null;
   created_at: string;
+  view?: string;
+  arm?: Arm;
 };
 
 /**
@@ -27,6 +34,7 @@ export function buildEvent(
   event: FeedbackEventName,
   value?: number,
   now: Date = new Date(),
+  context?: FeedbackContext,
 ): FeedbackPayload {
   return {
     id: newEventId(),
@@ -34,7 +42,16 @@ export function buildEvent(
     event,
     value: value ?? null,
     created_at: now.toISOString(),
+    ...contextFields(context),
   };
+}
+
+/** Only the fields that are set, so an event without them is posted exactly as before. */
+function contextFields(c?: FeedbackContext): FeedbackContext {
+  const out: FeedbackContext = {};
+  if (c?.view !== undefined) out.view = c.view;
+  if (c?.arm !== undefined) out.arm = c.arm;
+  return out;
 }
 
 /** The payload fields alone, so a stored row's extra fields (such as `seq`) are never posted. */
@@ -45,5 +62,6 @@ export function toPayload(row: FeedbackPayload): FeedbackPayload {
     event: row.event,
     value: row.value,
     created_at: row.created_at,
+    ...contextFields(row),
   };
 }

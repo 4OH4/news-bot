@@ -5,6 +5,7 @@
  */
 import { storyKey, type FeedItem } from "../feed/types";
 import { openFeedbackDb, type FeedbackDb, type StoredFeedItem } from "./db";
+import type { FeedbackContext } from "./event";
 import { enqueueFeedback } from "./queue";
 
 const listeners = new Set<() => void>();
@@ -35,8 +36,9 @@ function record(
   event: "dismiss" | "mute_source",
   value: number,
   write: (db: FeedbackDb) => Promise<unknown>,
+  context?: FeedbackContext,
 ): Promise<void> {
-  const queued = enqueueFeedback(item.id, event, value);
+  const queued = enqueueFeedback(item.id, event, value, context);
   const state = stateWrites.then(async () => {
     await write(await openFeedbackDb());
     changed();
@@ -45,27 +47,27 @@ function record(
   return Promise.all([queued, state]).then(() => undefined);
 }
 
-export function dismissStory(item: FeedItem): Promise<void> {
+export function dismissStory(item: FeedItem, context?: FeedbackContext): Promise<void> {
   const row = { key: storyKey(item), item: stored(item), at: new Date().toISOString() };
-  return record(item, "dismiss", 1, (db) => db.put("dismissed", row));
+  return record(item, "dismiss", 1, (db) => db.put("dismissed", row), context);
 }
 
 /** Shows the story again; the server takes the later `dismiss` 0 (a new event id) as the undo. */
-export function undoDismiss(item: FeedItem): Promise<void> {
-  return record(item, "dismiss", 0, (db) => db.delete("dismissed", storyKey(item)));
+export function undoDismiss(item: FeedItem, context?: FeedbackContext): Promise<void> {
+  return record(item, "dismiss", 0, (db) => db.delete("dismissed", storyKey(item)), context);
 }
 
-export function muteSource(item: FeedItem): Promise<void> {
+export function muteSource(item: FeedItem, context?: FeedbackContext): Promise<void> {
   const row = { source_id: item.source_id, item: stored(item), at: new Date().toISOString() };
-  return record(item, "mute_source", 1, (db) => db.put("muted", row));
+  return record(item, "mute_source", 1, (db) => db.put("muted", row), context);
 }
 
 /**
  * Unmutes the source of `item`, the item it was muted from. The undo event carries that item's
  * id, because the event needs an `article_id` and the item may have left the feed long ago.
  */
-export function unmuteSource(item: FeedItem): Promise<void> {
-  return record(item, "mute_source", 0, (db) => db.delete("muted", item.source_id));
+export function unmuteSource(item: FeedItem, context?: FeedbackContext): Promise<void> {
+  return record(item, "mute_source", 0, (db) => db.delete("muted", item.source_id), context);
 }
 
 export async function isHidden(item: FeedItem): Promise<boolean> {

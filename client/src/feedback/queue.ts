@@ -6,7 +6,13 @@
  */
 import { apiFetch } from "../api/client";
 import { openFeedbackDb, type FeedbackDb, type QueuedEvent } from "./db";
-import { buildEvent, toPayload, type FeedbackEventName, type FeedbackPayload } from "./event";
+import {
+  buildEvent,
+  toPayload,
+  type FeedbackContext,
+  type FeedbackEventName,
+  type FeedbackPayload,
+} from "./event";
 import { removeOutbox, writeOutbox } from "./outbox";
 
 /** Answers a retry could fix: the entry stays and the flush stops. */
@@ -41,8 +47,9 @@ export async function enqueueFeedback(
   articleId: string,
   event: FeedbackEventName,
   value?: number,
+  context?: FeedbackContext,
 ): Promise<FeedbackPayload> {
-  const payload = buildEvent(articleId, event, value);
+  const payload = buildEvent(articleId, event, value, new Date(), context);
   writeOutbox(payload);
   await storeEvent(payload);
   removeOutbox(payload.id);
