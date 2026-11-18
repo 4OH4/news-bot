@@ -33,6 +33,8 @@ export interface ViewRequest {
   /** The `next_cursor` of the previous page; omitted for page 1. */
   cursor?: string;
   limit?: number;
+  /** Compare-ranking pages (#328): serve the rules-only or personalised-only order. */
+  ranking?: "rules" | "personal";
 }
 
 /**
@@ -41,10 +43,11 @@ export interface ViewRequest {
  */
 export async function fetchView(
   view: ViewName,
-  { etag, cursor, limit = 50 }: ViewRequest,
+  { etag, cursor, limit = 50, ranking }: ViewRequest,
 ): Promise<{ feed: Feed; etag: string } | "not-modified"> {
   const params = new URLSearchParams({ view, limit: String(limit) });
   if (cursor) params.set("cursor", cursor);
+  if (ranking) params.set("ranking", ranking);
   const response = await apiFetch(`/api/feed?${params.toString()}`, {
     headers: etag ? { "If-None-Match": etag } : {},
   });

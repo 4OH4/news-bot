@@ -34,9 +34,21 @@ function HeaderLinks() {
   );
 }
 
-/** One tab's list: the view shown from the store first, refreshed behind it, paged by Load more. */
+const COMPARE_LABELS = { rules: "Rules only", personal: "Personalised only" } as const;
+
+/** The `?ranking=` of the address, when it is one the API knows (#328). */
+function compareRanking(): "rules" | "personal" | undefined {
+  const value = new URLSearchParams(location.search).get("ranking");
+  return value === "rules" || value === "personal" ? value : undefined;
+}
+
+/** One tab's list:the view shown from the store first, refreshed behind it, paged by Load more. */
 export function FeedScreen({ view = "feed" }: { view?: ViewName }) {
-  const { feed, fetchedAt, offline, notice, busy, loadingMore, refresh, loadMore } = useFeed(view);
+  const ranking = compareRanking();
+  const { feed, fetchedAt, offline, notice, busy, loadingMore, refresh, loadMore } = useFeed(
+    view,
+    ranking,
+  );
 
   const headerRef = useRef<HTMLElement>(null);
   const { offset, showButton, snapping } = useScrollChrome(headerRef);
@@ -84,6 +96,11 @@ export function FeedScreen({ view = "feed" }: { view?: ViewName }) {
           <path d="M5 12l7-7 7 7" />
         </svg>
       </button>
+      {ranking ? (
+        <p class="compare-label">
+          {COMPARE_LABELS[ranking]} · <a href="/">Back to the normal Feed</a>
+        </p>
+      ) : null}
       {offline ? (
         <p role="status" class="notice">
           You are offline. Showing the last feed.

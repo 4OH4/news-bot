@@ -44,9 +44,10 @@ export function appendPage(shown: Feed, page: Feed): Feed {
 /**
  * One view's list (ADR-0012): the stored copy at once, then a conditional refresh of page 1
  * behind it. A failed refresh never hides the list or touches the store; stored data needs
- * neither the network nor a session.
+ * neither the network nor a session. A compare-ranking list (#328) is never stored or pruned
+ * against, as it would replace the normal Feed's copy; it is online-only.
  */
-export function useFeed(view: ViewName = "feed"): UseFeed {
+export function useFeed(view: ViewName = "feed", ranking?: "rules" | "personal"): UseFeed {
   const [feed, setFeed] = useState<Feed | null>(null);
   const [fetchedAt, setFetchedAt] = useState<number | null>(null);
   const [offline, setOffline] = useState(false);
@@ -65,6 +66,7 @@ export function useFeed(view: ViewName = "feed"): UseFeed {
 
   /** Stores the shown list; storage is a convenience, so a failure is ignored. */
   async function store(next: Feed): Promise<void> {
+    if (ranking) return;
     try {
       await saveFeed(next, etag.current ?? "", view);
     } catch {
@@ -86,19 +88,22 @@ export function useFeed(view: ViewName = "feed"): UseFeed {
   async function refresh(): Promise<void> {
     setBusy(true);
     try {
-      const result = await fetchView(view, { etag: etag.current });
+      const result = await fetchView(view, { etag: etag.current, ranking });
       if (result !== "not-modified") {
         const next = result.feed;
         etag.current = result.etag || undefined;
         show(next);
         setFetchedAt(Date.now());
         await store(next);
-        try {
-          await pruneArticles(next);
-          // In the background, so the top stories open with no signal (#216).
-          void prefetchArticles(next, fetchArticle);
-        } catch {
-          // As above.
+        // A compare list isn't stored, so pruning against it would drop the Feed's articles.
+        if (!ranking) {
+          try {
+            await pruneArticles(next);
+            // In the background, so the top stories open with no signal (#216).
+            void prefetchArticles(next, fetchArticle);
+          } catch {
+            // As above.
+          }
         }
       }
       setOffline(false);
@@ -115,7 +120,7 @@ export function useFeed(view: ViewName = "feed"): UseFeed {
     if (!current?.next_cursor || loadingMore) return;
     setLoadingMore(true);
     try {
-      const result = await fetchView(view, { cursor: current.next_cursor });
+      const result = await fetchView(view, { cursor: current.next_cursor, ranking });
       if (result === "not-modified") return;
       if (result.feed.run_id !== current.run_id) etag.current = undefined;
       const next = appendPage(current, result.feed);
@@ -135,7 +140,7 @@ export function useFeed(view: ViewName = "feed"): UseFeed {
   useEffect(() => {
     void (async () => {
       try {
-        const stored = await loadFeed(view);
+        const stored = ranking ? null : await loadFeed(view);
         if (stored) {
           etag.current = stored.etag || undefined;
           show(stored.feed);
@@ -146,7 +151,7 @@ export function useFeed(view: ViewName = "feed"): UseFeed {
       }
       await refresh();
     })();
-  }, [view]);
+  }, [view, ranking]);
 
   return { feed, fetchedAt, offline, notice, busy, loadingMore, refresh, loadMore };
 }

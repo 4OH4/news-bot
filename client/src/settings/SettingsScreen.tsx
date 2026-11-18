@@ -106,6 +106,13 @@ export function SettingsScreen() {
           </label>
         ))}
       </div>
+      <h2>Compare ranking</h2>
+      <p>
+        <a href="/?ranking=rules">Feed, rules only</a>
+      </p>
+      <p>
+        <a href="/?ranking=personal">Feed, personalised only</a>
+      </p>
       <h2>Account</h2>
       <button type="button" onClick={() => void signOut()}>
         Sign out

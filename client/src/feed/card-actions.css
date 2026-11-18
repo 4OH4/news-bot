@@ -31,3 +31,36 @@
   margin: var(--space) 0;
   color: var(--muted);
 }
+
+/* "Why this story?" list and the compare-ranking label (#328). */
+.why-list {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: var(--fs-meta);
+}
+
+.why-list ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.why-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 0;
+}
+
+.why-value {
+  font-variant-numeric: tabular-nums;
+}
+
+.why-arm {
+  margin: 6px 0 0;
+}
+
+.compare-label {
+  margin: var(--space) 0;
+  color: var(--muted);
+}
