@@ -55,6 +55,15 @@ function staleSince(): number {
   }
 }
 
+let firstLoadDone: () => void = () => {};
+/**
+ * Settles when the first list load after start has an answer, whatever it was, so the
+ * first-run check (#338) runs after the session status is known.
+ */
+export const firstFeedLoad = new Promise<void>((resolve) => {
+  firstLoadDone = resolve;
+});
+
 /** `page`'s items appended to `shown`, without ids already shown. */
 export function appendPage(shown: Feed, page: Feed): Feed {
   const ids = new Set(shown.items.map((i) => i.id));
@@ -136,6 +145,7 @@ export function useFeed(view: ViewName = "feed", ranking?: "rules" | "personal")
       fail(err);
     } finally {
       setBusy(false);
+      firstLoadDone();
     }
   }
 
