@@ -4,6 +4,7 @@ Every route sits behind the app-level owner check (``api.auth``), so a route
 added later can't skip it. Content is read through the ``BlobStore`` port only;
 the read routes need no repository read. A ``score`` view is ranked at read time
 (``api.ranking``): diversity, and for an ``ab`` view the A/B interleaving (ADR-0015).
+The owner's preferences (``api.preferences``) are applied to every view as it is served.
 """
 
 from __future__ import annotations
@@ -28,9 +29,11 @@ from newsfeed.api.auth import owner_check
 from newsfeed.api.feedback import feedback_router
 from newsfeed.api.headers import SecurityHeadersMiddleware
 from newsfeed.api.local_safety import check_client_dir
-from newsfeed.api.ranking import RankingMode, rank_view
-from newsfeed.config import ViewsConfig, load_views
+from newsfeed.api.preferences import PreferencesService, preferences_router
+from newsfeed.api.ranking import ItemAdjuster, RankingMode, no_adjustment, rank_view
+from newsfeed.config import ViewsConfig, load_sources, load_views
 from newsfeed.ports import BlobNotFoundError, BlobStore, Repository, TokenVerifier
+from newsfeed.preferences import PreferencesConfig, load_preferences_config
 
 __all__ = ["create_app"]
 
@@ -42,7 +45,7 @@ ASSET_CACHE_CONTROL = "private, max-age=31536000, immutable"  # hashed file name
 SCHEMA_VERSION = 1
 PAGE_LIMIT = 50
 MAX_PAGE_LIMIT = 100
-RANKED_CACHE_SIZE = 8  # (view, mode, file) entries; one run's Feed in three modes fits
+RANKED_CACHE_SIZE = 8  # (view, mode, file, preferences) entries; one run's Feed in three modes
 
 # Matched with fullmatch: ``$`` alone would also accept a trailing newline.
 _ARTICLE_ID = re.compile(r"[0-9a-f]{16}")
@@ -67,7 +70,12 @@ def create_app(
     ``views`` says how each view is ordered; when None it is read from ``views.yaml``
     in the settings' config directory, and a missing file means no view is re-ranked.
 
-    ``repository`` is used only by the feedback route. ``client_dir`` is the built client;
+    The preferences defaults come from ``preferences.yaml`` (checked against
+    ``sources.yaml``) in the settings' config directory; a broken file raises
+    ``ConfigError``, and a missing one means no preferences are applied and the
+    preferences routes answer 503.
+
+    ``repository`` holds feedback and the owner's preferences. ``client_dir`` is the built client;
     when None, every non-API path is 404. It must pass ``check_client_dir``, or
     ``UnsafeClientDirError`` is raised. ``allowed_hosts``, when given, are the only
     ``Host`` names answered (any port); others get 400. Local mode passes
@@ -92,6 +100,12 @@ def create_app(
     app.add_middleware(SecurityHeadersMiddleware)
     app.state.repository = repository
     view_config = views if views is not None else _views_from_settings()
+    preferences_config = _preferences_from_settings()
+    service = (
+        PreferencesService(preferences_config, repository)
+        if preferences_config is not None
+        else None
+    )
     ranked = _RankedCache(RANKED_CACHE_SIZE)
 
     def no_feed_yet() -> HTTPException:
@@ -120,12 +134,16 @@ def create_app(
             if not blobs.exists(blobs.ref_for(FEED_KEY)):
                 raise no_feed_yet() from None
             raise HTTPException(status.HTTP_404_NOT_FOUND, "View not found") from None
+        # One preferences read per request, shared by every item of the view.
+        version, adjust = service.adjuster() if service is not None else (0, None)
         configured = view_config.views.get(view)
         if configured is not None and configured.order == "score":
             mode: RankingMode = ranking or configured.ranking
-            run_id, generated_at, items = ranked.get(view, mode, stored)
+            run_id, generated_at, items = ranked.get(view, mode, stored, version, adjust)
         else:
             run_id, generated_at, items = _read_view(stored)
+            if adjust is not None:
+                items = _without_hidden(items, adjust)
         page = _page(view, run_id, generated_at, items, offset, limit)
         data = json.dumps(page, ensure_ascii=False, allow_nan=False).encode("utf-8")
         return _blob_response(request, data, "application/json")
@@ -144,6 +162,7 @@ def create_app(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Article not found")
 
     app.include_router(feedback_router(blobs, repository))
+    app.include_router(preferences_router(service, repository))
 
     # Registered last, so it only catches what the API routes don't.
     @app.get("/{path:path}")
@@ -192,6 +211,32 @@ def _views_from_settings() -> ViewsConfig:
     return load_views(path) if path.is_file() else ViewsConfig()
 
 
+def _preferences_from_settings() -> PreferencesConfig | None:
+    """``preferences.yaml`` from the settings' config directory, or None if it is absent.
+
+    A file that exists but is invalid, or a missing or invalid ``sources.yaml`` next
+    to it, raises ``ConfigError``, so a typo fails at start-up like the other configs.
+    """
+    from newsfeed.settings import load_settings
+
+    settings = load_settings()
+    path = settings.config_dir / "preferences.yaml"
+    if not path.is_file():
+        return None
+    return load_preferences_config(path, load_sources(settings.sources_path))
+
+
+def _without_hidden(items: list[Any], adjust: ItemAdjuster) -> list[Any]:
+    """A ``newest`` view's items without the hidden ones, in their stored order.
+
+    Factors only reorder a ``score`` view, so they aren't added here; 503 if an
+    item isn't an object.
+    """
+    if not all(isinstance(item, dict) for item in items):
+        raise _unreadable_view()
+    return [item for item in items if not adjust(item)[0]]
+
+
 def _unreadable_view() -> HTTPException:
     return HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "View can't be read")
 
@@ -215,19 +260,32 @@ def _read_view(stored: bytes) -> tuple[str, Any, list[Any]]:
 class _RankedCache:
     """Ranked view lists, so paging through one run doesn't re-rank every page.
 
-    Keyed by view, mode and a digest of the stored file (which includes its run id),
-    so a new run, or any rewrite of the file, is ranked afresh. Every page of a run
+    Keyed by view, mode, a digest of the stored file (which includes its run id) and
+    the preferences version, so a new run, any rewrite of the file, or a saved change
+    of preferences is ranked afresh. Every page of a run
     uses the seed ``<run_id>:<view>``, so a cursor's offset names the same item.
     """
 
     def __init__(self, size: int) -> None:
         self._size = size
-        self._entries: OrderedDict[tuple[str, str, str], tuple[str, Any, list[Any]]] = OrderedDict()
+        self._entries: OrderedDict[tuple[str, str, str, int], tuple[str, Any, list[Any]]] = (
+            OrderedDict()
+        )
         self._lock = threading.Lock()  # sync routes run in a thread pool
 
-    def get(self, view: str, mode: RankingMode, stored: bytes) -> tuple[str, Any, list[Any]]:
-        """(run_id, generated_at, ranked items) for this view file in ``mode``."""
-        key = (view, mode, hashlib.sha256(stored).hexdigest())
+    def get(
+        self,
+        view: str,
+        mode: RankingMode,
+        stored: bytes,
+        version: int,
+        adjust: ItemAdjuster | None,
+    ) -> tuple[str, Any, list[Any]]:
+        """(run_id, generated_at, ranked items) for this view file in ``mode``.
+
+        ``adjust`` applies the preferences at ``version``; None applies none.
+        """
+        key = (view, mode, hashlib.sha256(stored).hexdigest(), version)
         with self._lock:
             hit = self._entries.get(key)
             if hit is not None:
@@ -237,7 +295,9 @@ class _RankedCache:
         if not all(isinstance(item, dict) for item in items):
             raise _unreadable_view()
         try:
-            ranked = rank_view(items, mode=mode, seed=f"{run_id}:{view}")
+            ranked = rank_view(
+                items, mode=mode, seed=f"{run_id}:{view}", adjust=adjust or no_adjustment
+            )
         except (TypeError, ValueError):
             raise _unreadable_view() from None
         entry = (run_id, generated_at, ranked)
