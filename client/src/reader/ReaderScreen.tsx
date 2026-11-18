@@ -3,6 +3,7 @@ import { fetchArticle } from "../api/articles";
 import { OfflineError } from "../api/client";
 import { fetchView } from "../api/feed";
 import type { FeedItem } from "../feed/types";
+import { readReaderContext } from "../feedback/context";
 import { findLiked, isLiked, setLiked } from "../feedback/liked";
 import { startReading } from "../feedback/reading";
 import { getArticleHtml, loadAllFeeds, putArticleHtml } from "../store/db";
@@ -88,6 +89,8 @@ export function ReaderScreen() {
   const [body, setBody] = useState<Body>({ state: "loading" });
   // null until the stored like state is known, so the button never shows a wrong state.
   const [liked, setLikedState] = useState<boolean | null>(null);
+  // Read once on load; only the card that opened this article may speak for it.
+  const context = useRef(readReaderContext(id));
   const likedRef = useRef(false);
   const rawHtml = useRef<string | undefined>(undefined);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -132,7 +135,7 @@ export function ReaderScreen() {
       .catch(() => {
         if (!cancelled) setLikedState(false);
       });
-    const stop = startReading(item);
+    const stop = startReading(item, context.current);
     return () => {
       cancelled = true;
       stop();
@@ -145,7 +148,7 @@ export function ReaderScreen() {
     likedRef.current = next;
     setLikedState(next);
     // Inside the tap, as leaving may follow at once; liked.ts keeps quick taps in order.
-    setLiked(item, next, rawHtml.current).catch((err: unknown) =>
+    setLiked(item, next, rawHtml.current, context.current).catch((err: unknown) =>
       console.error("could not save like", { article_id: item.id, err }),
     );
   }

@@ -5,6 +5,7 @@
 import { storyKey, type FeedItem } from "../feed/types";
 import { getArticleHtml, markKept, putArticleHtml } from "../store/db";
 import { openFeedbackDb, type StoredFeedItem } from "./db";
+import type { FeedbackContext } from "./event";
 import { enqueueFeedback } from "./queue";
 
 /** Like state writes, in tap order. `setLiked` queues its event synchronously, inside the tap. */
@@ -15,8 +16,13 @@ let stateWrites: Promise<void> = Promise.resolve();
  * the reader shows) when no text is stored yet. Unliking drops the keep mark but leaves the text
  * for normal pruning. The latest event wins on the server.
  */
-export function setLiked(item: FeedItem, liked: boolean, html?: string): Promise<void> {
-  const queued = enqueueFeedback(item.id, "like", liked ? 1 : 0);
+export function setLiked(
+  item: FeedItem,
+  liked: boolean,
+  html?: string,
+  context?: FeedbackContext,
+): Promise<void> {
+  const queued = enqueueFeedback(item.id, "like", liked ? 1 : 0, context);
   const state = stateWrites.then(() => writeLiked(item, liked, html));
   stateWrites = state.catch(() => {});
   return Promise.all([queued, state]).then(() => undefined);

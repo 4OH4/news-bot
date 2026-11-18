@@ -20,6 +20,10 @@ export interface FeedItem {
   display: "article" | "link";
   word_count: number | null;
   content_path: string | null;
+  /** The A/B side that placed this item in the Feed (#326); absent when not served interleaved. */
+  arm?: "rules" | "personal";
+  /** How much of the item the personal ranking could score; not shown yet (#328). */
+  coverage?: number;
 }
 
 /** The views the API serves (ADR-0012); each is one of the app's tabs. */

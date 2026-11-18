@@ -7,11 +7,13 @@ import {
   undoDismiss,
   unmuteSource,
 } from "../feedback/hidden";
+import { cardContext, writeReaderContext } from "../feedback/context";
+import type { FeedbackContext } from "../feedback/event";
 import { enqueueFeedback } from "../feedback/queue";
 import { isSeen, markSeen } from "../feedback/seen";
 import "./card-actions.css";
 import { relativeTime } from "./time";
-import { storyKey, type FeedItem } from "./types";
+import { storyKey, type FeedItem, type ViewName } from "./types";
 
 const STATUS_LABELS: Record<string, string> = {
   ok: "",
@@ -29,9 +31,9 @@ function statusLabel(status: string): string {
 type View = "pending" | "shown" | "gone" | "dismissed" | "muted";
 
 /** Records the open; failures are logged so the tap still navigates. */
-async function recordOpen(item: FeedItem): Promise<void> {
+async function recordOpen(item: FeedItem, context: FeedbackContext): Promise<void> {
   try {
-    await enqueueFeedback(item.id, "open");
+    await enqueueFeedback(item.id, "open", undefined, context);
     await markSeen(storyKey(item));
   } catch (err) {
     console.error("could not record the open", { article_id: item.id, err });
@@ -39,7 +41,8 @@ async function recordOpen(item: FeedItem): Promise<void> {
 }
 
 /** One story in the list. `article` items open the reader; `link` items open the site. */
-export function FeedItemCard({ item }: { item: FeedItem }) {
+export function FeedItemCard({ item, view: screen }: { item: FeedItem; view?: ViewName }) {
+  const context = cardContext(screen, item);
   const [imageFailed, setImageFailed] = useState(false);
   const [view, setView] = useState<View>("pending");
   const [seen, setSeen] = useState(false);
@@ -67,21 +70,23 @@ export function FeedItemCard({ item }: { item: FeedItem }) {
 
   const onOpen = (e: MouseEvent) => {
     setSeen(true);
+    // A full page load follows, so the reader's copy is written inside the click.
+    if (!isLink) writeReaderContext(item.id, context);
     // A new tab must open inside the tap, and this page stays alive to finish the write.
     if (isLink || e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) {
-      void recordOpen(item);
+      void recordOpen(item, context);
       return;
     }
     // The reader is a full page load, so the event is stored before leaving.
     e.preventDefault();
     const href = (e.currentTarget as HTMLAnchorElement).href;
-    void recordOpen(item).then(() => location.assign(href));
+    void recordOpen(item, context).then(() => location.assign(href));
   };
 
   const act = (kind: "dismissed" | "muted") => {
     setView(kind);
     // Inside the tap, as a full page load may follow at once; hidden.ts keeps the writes in order.
-    const done = kind === "dismissed" ? dismissStory(item) : muteSource(item);
+    const done = kind === "dismissed" ? dismissStory(item, context) : muteSource(item, context);
     done.catch((err: unknown) =>
       console.error(`could not record ${kind}`, { article_id: item.id, err }),
     );
@@ -89,7 +94,7 @@ export function FeedItemCard({ item }: { item: FeedItem }) {
 
   const undo = () => {
     const kind = view;
-    const done = kind === "muted" ? unmuteSource(item) : undoDismiss(item);
+    const done = kind === "muted" ? unmuteSource(item, context) : undoDismiss(item, context);
     setView("shown");
     done.catch((err: unknown) => console.error("could not undo", { article_id: item.id, err }));
   };

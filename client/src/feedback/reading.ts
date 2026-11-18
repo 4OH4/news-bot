@@ -8,6 +8,7 @@
  * `enqueueFeedback`, whose synchronous outbox copy (#254) the next start moves into the queue.
  */
 import type { FeedItem } from "../feed/types";
+import type { FeedbackContext } from "./event";
 import { enqueueFeedback } from "./queue";
 
 /** Readings shorter than this send nothing: a glance is not a read. */
@@ -21,7 +22,7 @@ export const MIN_READ_SECONDS = 5;
  * sent no other is sent for this opening. A reading under the floor sends nothing and doesn't
  * use up the event.
  */
-export function startReading(item: FeedItem): () => void {
+export function startReading(item: FeedItem, context?: FeedbackContext): () => void {
   let since: number | null = document.visibilityState === "visible" ? Date.now() : null;
   let sent = false;
 
@@ -32,7 +33,7 @@ export function startReading(item: FeedItem): () => void {
     if (sent || seconds < MIN_READ_SECONDS) return;
     sent = true;
     // Synchronously, inside the pagehide: the outbox entry is written before this returns.
-    enqueueFeedback(item.id, "read", seconds).catch((err: unknown) =>
+    enqueueFeedback(item.id, "read", seconds, ...(context ? [context] : [])).catch((err: unknown) =>
       console.error("could not queue read event", { article_id: item.id, err }),
     );
   };
