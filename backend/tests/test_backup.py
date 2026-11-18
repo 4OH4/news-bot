@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from collections.abc import Iterator
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -335,12 +336,17 @@ def test_cli_restore_force_leaves_feedback_behaviour_unchanged(data_dir: Path) -
         assert _dumped(repo) == before
 
 
-def test_cli_restore_help_names_feedback_and_preferences() -> None:
+def test_cli_restore_help_names_feedback_and_preferences(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Rich colours and wraps help in CI; force plain, wide output, and strip any ANSI left.
+    monkeypatch.setenv("NO_COLOR", "1")
+    monkeypatch.setenv("TERM", "dumb")
+    monkeypatch.setenv("COLUMNS", "200")
     result = runner.invoke(cli.app, ["restore-backup", "--help"])
 
     assert result.exit_code == 0
-    assert "--force" in result.output
-    assert "preferences" in " ".join(result.output.split()).lower()
+    plain = " ".join(re.sub(r"\x1b\[[0-9;]*m", "", result.output).split())
+    assert "--force" in plain
+    assert "preferences" in plain.lower()
 
 
 # --- Guards (worker's tests) ----------------------------------------------------
