@@ -78,7 +78,6 @@ export function usePreferences(): UsePreferences {
   const live = useRef<States>({});
   const saved = useRef<States>({}); // what the server holds, for putting rows back
   const version = useRef(0);
-  const loaded = useRef(false);
   const setupDone = useRef(false);
   const dirty = useRef(new Set<string>());
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -90,31 +89,20 @@ export function usePreferences(): UsePreferences {
   };
 
   useEffect(() => {
-    const load = () =>
-      getPreferences()
-        .then((r) => {
-          version.current = r.version;
-          setupDone.current = r.setup_done;
-          saved.current = statesOf(r);
-          show(saved.current);
-          setMenu(r.menu);
-          loaded.current = true;
-          setMessage("");
-        })
-        .catch((err: unknown) => {
-          // With no menu there are no controls to use until the signal is back.
-          if (err instanceof PreferencesOffline) setMessage(OFFLINE_MESSAGE);
-          else setMessage("Could not load your preferences. Try again later.");
-        });
-    void load();
-    const onOnline = () => {
-      if (!loaded.current) void load();
-    };
-    addEventListener("online", onOnline);
-    return () => {
-      clearTimeout(timer.current);
-      removeEventListener("online", onOnline);
-    };
+    getPreferences()
+      .then((r) => {
+        version.current = r.version;
+        setupDone.current = r.setup_done;
+        saved.current = statesOf(r);
+        show(saved.current);
+        setMenu(r.menu);
+      })
+      .catch((err: unknown) => {
+        // With no menu there are no controls, so nothing can be changed offline.
+        if (err instanceof PreferencesOffline) setMessage(OFFLINE_MESSAGE);
+        else setMessage("Could not load your preferences. Try again later.");
+      });
+    return () => clearTimeout(timer.current);
   }, []);
 
   async function send(): Promise<void> {
