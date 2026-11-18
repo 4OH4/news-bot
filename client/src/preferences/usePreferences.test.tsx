@@ -126,6 +126,77 @@ describe("usePreferences", () => {
     expect(fake.puts).toHaveLength(0);
   });
 
+  /** The `keepalive` flag of each PUT to /api/preferences that reached fetch. */
+  function putKeepalive(): (boolean | undefined)[] {
+    return vi
+      .mocked(globalThis.fetch)
+      .mock.calls.filter(([, init]) => init?.method === "PUT")
+      .map(([, init]) => init?.keepalive);
+  }
+
+  it("on pagehide within the debounce sends the change at once, with keepalive", async () => {
+    await mount(makeMenu({ version: 4 }));
+    hook.set(sourceKey("bbc-news"), "hide");
+    await settle(100);
+    window.dispatchEvent(new Event("pagehide"));
+    expect(fake.puts).toHaveLength(1);
+    expect(fake.puts[0]?.body).toMatchObject({ version: 4, sources: { "bbc-news": "hide" } });
+    expect(putKeepalive()).toEqual([true]);
+    await settle(700);
+    expect(fake.puts).toHaveLength(1);
+  });
+
+  it("on unmount within the debounce sends the change at once", async () => {
+    await mount();
+    hook.set(sourceKey("bbc-news"), "hide");
+    await settle(100);
+    render(null, root);
+    await settle(700);
+    expect(fake.puts).toHaveLength(1);
+    expect(fake.puts[0]?.body.sources).toEqual({ "bbc-news": "hide" });
+  });
+
+  it("on pagehide with nothing pending sends nothing", async () => {
+    await mount();
+    hook.set(sourceKey("bbc-news"), "hide");
+    await settle(700);
+    window.dispatchEvent(new Event("pagehide"));
+    await settle();
+    expect(fake.puts).toHaveLength(1);
+    expect(putKeepalive()).toEqual([false]);
+  });
+
+  it("a failed save keeps a row the owner changed again while it was in flight", async () => {
+    await mount();
+    fake.putAnswers = [{ status: 500 }, { status: 200 }];
+    hook.set(sourceKey("bbc-news"), "hide");
+    const first = hook.finishSetup();
+    hook.set(sourceKey("bbc-news"), "more");
+    await first;
+    expect(hook.get(sourceKey("bbc-news"))).toBe("more");
+    await settle(700);
+    expect(fake.puts.at(-1)?.body.sources).toEqual({ "bbc-news": "more" });
+  });
+
+  it("after a second 409 puts the row back to the newer state, not the one before", async () => {
+    await mount();
+    fake.putAnswers = [{ status: 409, body: makeMenu({ version: 6, states: { "bbc-news": "more" } }) }];
+    hook.set(sourceKey("bbc-news"), "hide");
+    await settle(800);
+    expect(fake.puts).toHaveLength(2);
+    expect(hook.get(sourceKey("bbc-news"))).toBe("more");
+  });
+
+  it("finishSetup keeps setup_done true across a 409 that says false", async () => {
+    await mount(makeMenu({ setup_done: false }));
+    fake.putAnswers = [
+      { status: 409, body: makeMenu({ version: 6, setup_done: false }) },
+      { status: 200, body: makeMenu({ version: 7 }) },
+    ];
+    await hook.finishSetup();
+    expect(fake.puts.map((p) => p.body.setup_done)).toEqual([true, true]);
+  });
+
   it("finishSetup saves at once with setup_done true", async () => {
     await mount(makeMenu({ setup_done: false }));
     await hook.finishSetup();

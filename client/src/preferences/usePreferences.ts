@@ -102,16 +102,25 @@ export function usePreferences(): UsePreferences {
         if (err instanceof PreferencesOffline) setMessage(OFFLINE_MESSAGE);
         else setMessage("Could not load your preferences. Try again later.");
       });
-    return () => clearTimeout(timer.current);
+    // Every screen is a full page load, so a change still in the debounce would be lost on
+    // leaving: send it at once, with keepalive so the request outlives the page.
+    const leave = () => {
+      if (dirty.current.size > 0) void flush(true);
+    };
+    window.addEventListener("pagehide", leave);
+    return () => {
+      window.removeEventListener("pagehide", leave);
+      leave();
+    };
   }, []);
 
-  async function send(): Promise<void> {
+  async function send(keepalive: boolean): Promise<void> {
     const keys = new Set(dirty.current);
     dirty.current.clear();
     for (let attempt = 0; attempt < 2; attempt++) {
       const sent = live.current;
       try {
-        const r = await putPreferences(bodyOf(sent, version.current, setupDone.current));
+        const r = await putPreferences(bodyOf(sent, version.current, setupDone.current), { keepalive });
         version.current = r.version;
         setupDone.current = r.setup_done;
         saved.current = sent;
@@ -144,10 +153,18 @@ export function usePreferences(): UsePreferences {
     }
   }
 
-  /** Runs one save after any in flight, so saves never overlap. */
-  function flush(): Promise<void> {
+  /**
+   * Runs one save after any in flight, so saves never overlap. With none in flight the request
+   * starts before this returns, as a `pagehide` handler needs.
+   */
+  function flush(keepalive = false): Promise<void> {
     clearTimeout(timer.current);
-    const run = (inFlight.current ?? Promise.resolve()).then(send);
+    const prev = inFlight.current;
+    const run: Promise<void> = (prev ? prev.then(() => send(keepalive)) : send(keepalive)).finally(
+      () => {
+        if (inFlight.current === run) inFlight.current = null;
+      },
+    );
     inFlight.current = run;
     return run;
   }

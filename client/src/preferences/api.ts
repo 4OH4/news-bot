@@ -35,16 +35,24 @@ async function call(init: RequestInit): Promise<Response> {
   }
 }
 
+/** Loads the owner's settings and the menu; throws `PreferencesOffline` with no signal. */
 export async function getPreferences(): Promise<PreferencesResponse> {
   const response = await call({ method: "GET" });
   if (!response.ok) throw new PreferencesHttpError(response.status);
   return (await response.json()) as PreferencesResponse;
 }
 
-/** Saves the whole set; a 409 carries the newer state so the caller can merge and retry. */
-export async function putPreferences(body: PreferencesUpdate): Promise<PreferencesResponse> {
+/**
+ * Saves the whole set and returns the stored state. A 409 throws `PreferencesConflict` with the
+ * newer state, so the caller can merge and retry. `keepalive` lets the request outlive the page.
+ */
+export async function putPreferences(
+  body: PreferencesUpdate,
+  opts: { keepalive?: boolean } = {},
+): Promise<PreferencesResponse> {
   const response = await call({
     method: "PUT",
+    keepalive: opts.keepalive ?? false,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
