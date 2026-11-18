@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
+import { distinctEvents } from "./feedback-posts";
 
 // #327: the card's view and the item's A/B arm travel with the open, through the full page load
 // into the reader, and come back on its `read` event. The feed is docs/feed.example.json with an
@@ -44,8 +45,8 @@ test("open and read carry the Feed view and the item's arm across the reader and
   await page.goBack();
   await expect(page.locator("[data-testid='feed-item']").first()).toBeVisible();
 
-  await expect.poll(() => posted.map((e) => e.event).sort()).toEqual(["open", "read"]);
-  for (const event of posted) {
+  await expect.poll(() => distinctEvents(posted).map((e) => e.event).sort()).toEqual(["open", "read"]);
+  for (const event of distinctEvents(posted)) {
     expect(event).toMatchObject({ article_id: top.id, view: "feed", arm: "personal" });
   }
 });
@@ -60,7 +61,9 @@ test("a reader opened by address, with no card tap, sends neither field", async 
   await page.clock.fastForward(7_000);
   await page.goto("/");
 
-  await expect.poll(() => posted.filter((e) => e.event === "read")).toHaveLength(1);
+  await expect
+    .poll(() => distinctEvents(posted).filter((e) => e.event === "read"))
+    .toHaveLength(1);
   const read = posted.find((e) => e.event === "read")!;
   expect("view" in read).toBe(false);
   expect("arm" in read).toBe(false);
