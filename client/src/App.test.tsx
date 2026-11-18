@@ -54,7 +54,7 @@ describe("App routes", () => {
   });
 
   // #289: Liked and Settings moved from the tab bar to header icons on the feed screens.
-  it.each(["/liked", "/settings"])(
+  it.each(["/settings"])(
     "the feed page links to %s from its header, not from the Sections bar",
     async (href) => {
       await showApp("/");
@@ -65,6 +65,19 @@ describe("App routes", () => {
       expect(link?.closest("nav")).toBeNull();
     },
   );
+
+  // #307: the heart left the header; Liked is reached from Settings.
+  it("the feed page has no link to /liked; Settings links to it", async () => {
+    await showApp("/");
+    await vi.waitFor(() => expect(root.textContent).toContain(IN_FEED.title), { timeout: 2000 });
+    expect(root.querySelector('a[href="/liked"]')).toBeNull();
+    render(null, root);
+    await showApp("/settings");
+    await vi.waitFor(() => expect(root.querySelector('a[href="/liked"]')).not.toBeNull(), {
+      timeout: 2000,
+    });
+    expect(root.querySelector('a[href="/liked"]')?.textContent).toMatch(/Liked articles/);
+  });
 
   it("/settings shows the Settings screen, not the feed", async () => {
     await showApp("/settings");

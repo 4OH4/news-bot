@@ -1,8 +1,10 @@
+import { useRef } from "preact/hooks";
 import "./feed-status.css";
 import { FeedItemCard } from "./FeedItemCard";
 import { relativeTime } from "./time";
 import type { ViewName } from "./types";
 import { useFeed } from "./useFeed";
+import { scrollToTop, useScrollChrome } from "./useScrollChrome";
 
 const TITLES: Record<ViewName, string> = { news: "News", feed: "Feed", longer: "Longer" };
 
@@ -18,15 +20,10 @@ const ICON = {
   "aria-hidden": "true",
 } as const;
 
-/** Round icon links to Liked and Settings, before Refresh in the header row (#289). */
+/** Round Settings icon link, before Refresh in the header row (#289; Liked moved to Settings in #307). */
 function HeaderLinks() {
   return (
     <>
-      <a class="icon-button" href="/liked" aria-label="Liked">
-        <svg {...ICON}>
-          <path d="M12 20s-7-4.35-7-10a4 4 0 0 1 7-2.65A4 4 0 0 1 19 10c0 5.65-7 10-7 10z" />
-        </svg>
-      </a>
       <a class="icon-button" href="/settings" aria-label="Settings">
         <svg {...ICON}>
           <circle cx="12" cy="12" r="3" />
@@ -41,9 +38,16 @@ function HeaderLinks() {
 export function FeedScreen({ view = "feed" }: { view?: ViewName }) {
   const { feed, fetchedAt, offline, notice, busy, loadingMore, refresh, loadMore } = useFeed(view);
 
+  const headerRef = useRef<HTMLElement>(null);
+  const { offset, showButton, snapping } = useScrollChrome(headerRef);
+
   return (
     <main>
-      <header class="top">
+      <header
+        class={snapping ? "top snapping" : "top"}
+        ref={headerRef}
+        style={offset > 0 ? { transform: `translateY(-${offset}px)` } : undefined}
+      >
         <div class="top-title">
           <h1>{TITLES[view]}</h1>
           {fetchedAt ? (
@@ -66,6 +70,20 @@ export function FeedScreen({ view = "feed" }: { view?: ViewName }) {
           </button>
         </div>
       </header>
+      {/* Fixed, so its place in the DOM doesn't matter; before the cards keeps `.card:last-child` true. */}
+      <button
+        type="button"
+        class={showButton ? "back-to-top shown" : "back-to-top"}
+        aria-label="Back to top"
+        aria-hidden={showButton ? undefined : "true"}
+        tabIndex={showButton ? 0 : -1}
+        onClick={scrollToTop}
+      >
+        <svg {...ICON}>
+          <path d="M12 19V5" />
+          <path d="M5 12l7-7 7 7" />
+        </svg>
+      </button>
       {offline ? (
         <p role="status" class="notice">
           You are offline. Showing the last feed.

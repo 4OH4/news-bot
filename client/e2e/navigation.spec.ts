@@ -138,8 +138,9 @@ test.describe("the current tab", () => {
     await sections(page).getByRole("link", { name: "News" }).click();
     await expect(page).toHaveURL(/\/news$/);
     await expect(sections(page).locator('a[aria-current="page"]')).toHaveText("News");
-    // #289: Liked and Settings are reached by the header icons.
-    await page.locator("header").getByRole("link", { name: "Liked" }).click();
+    // #289, #307: Settings is a header icon; Liked is a link in Settings.
+    await page.locator("header").getByRole("link", { name: "Settings" }).click();
+    await page.getByRole("link", { name: "Liked articles" }).click();
     await expect(page).toHaveURL(/\/liked$/);
     await shot(page, "liked");
     await sections(page).getByRole("link", { name: "Longer" }).click();
@@ -251,7 +252,7 @@ test.describe("the compact feed header", () => {
     expect(parseFloat(await style(updated, "font-size"))).toBeLessThan(hSize);
   });
 
-  test("the row stays stuck to the top when scrolled", async ({
+  test("the row stays stuck to the top, sliding away down the page and back on scrolling up", async ({
     page,
   }) => {
     await stubApi(page);
@@ -259,7 +260,14 @@ test.describe("the compact feed header", () => {
     await expect(page.getByTestId("feed-item").first()).toBeVisible();
     const row = page.locator(".top");
     await page.evaluate(() => window.scrollTo(0, 400));
-    expect(Math.round((await box(row)).y)).toBe(0);
+    // #307: it moves with the scroll, so it is out of view going down...
+    await expect.poll(async () => (await box(row)).y + (await box(row)).height).toBeLessThanOrEqual(0);
+    // ...and after scrolling up 30px it snaps fully back when scrolling stops, stuck to the top edge.
+    const height = Math.round((await box(row)).height);
+    await page.mouse.wheel(0, -30);
+    await expect
+      .poll(async () => Math.round((await box(row)).y + (await box(row)).height))
+      .toBe(height);
   });
 
   test("while refreshing the button is disabled and spins; afterwards it is enabled again", async ({

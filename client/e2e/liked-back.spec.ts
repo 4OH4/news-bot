@@ -64,7 +64,8 @@ test("an article opened from Liked returns to Liked by going back, at its own sc
   await page.goBack();
   await expect(feedItems(page)).toHaveCount(5);
 
-  await page.getByRole("link", { name: "Liked", exact: true }).click();
+  await page.locator("header").getByRole("link", { name: "Settings" }).click();
+  await page.getByRole("link", { name: "Liked articles" }).click();
   await expect(page.getByRole("heading", { name: "Liked", level: 1 })).toBeVisible();
   await page.getByRole("link", { name: first.title }).click();
   await expect(page.getByText(bodyText(first.id))).toBeVisible();

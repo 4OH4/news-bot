@@ -269,21 +269,19 @@ describe("Load more", () => {
 });
 
 describe("header icons", () => {
-  it.each(["/news", "/", "/longer"])("%s has Liked and Settings links, then Refresh", async (path) => {
+  it.each(["/news", "/", "/longer"])("%s has a Settings link, then Refresh, and no Liked heart (#307)", async (path) => {
     installViews(EMPTY);
     await loadStores();
     await open(path);
     await vi.waitFor(() => expect(root.querySelector('header [aria-label="Refresh"]')).not.toBeNull());
     const header = root.querySelector("header")!;
-    const liked = header.querySelector('a[aria-label="Liked"]')!;
+    expect(header.querySelector('a[aria-label="Liked"]')).toBeNull();
     const settings = header.querySelector('a[aria-label="Settings"]')!;
     const refresh = header.querySelector('[aria-label="Refresh"]')!;
-    expect(liked.getAttribute("href")).toBe("/liked");
     expect(settings.getAttribute("href")).toBe("/settings");
-    for (const el of [liked, settings]) expect(el.querySelector("svg")).not.toBeNull();
+    expect(settings.querySelector("svg")).not.toBeNull();
     const before = (a: Element, b: Element) =>
       !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(before(liked, settings)).toBe(true);
     expect(before(settings, refresh)).toBe(true);
   });
 });

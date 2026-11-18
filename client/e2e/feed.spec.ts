@@ -125,6 +125,9 @@ test("a 304 on refresh leaves the list and scroll position unchanged", async ({ 
   await page.goto("/");
   await expect(cards(page)).toHaveCount(5);
   await page.evaluate(() => window.scrollTo(0, 120));
+  // #307: the header slid away; scrolling up a little brings Refresh back without a scroll-into-view.
+  await page.mouse.wheel(0, -70);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(50);
   const before = await page.evaluate(() => window.scrollY);
   await refresh(page).click();
   await expect.poll(() => calls).toBe(2);

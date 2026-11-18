@@ -8,7 +8,7 @@
   color: var(--muted);
 }
 
-/* Liked, Settings and Refresh: one row of round 44px icon controls (#272, #289). */
+/* Settings and Refresh: one row of round 44px icon controls (#272, #289). */
 .top-actions {
   flex: none;
   display: flex;
@@ -75,5 +75,52 @@
 @media (prefers-reduced-motion: reduce) {
   .refresh-icon.spinning {
     animation: none;
+  }
+}
+
+/* Back to top (#307): round, bottom right, above the 45px tab bar and the gesture-bar inset. */
+.back-to-top {
+  position: fixed;
+  right: 16px;
+  bottom: calc(45px + 16px + env(safe-area-inset-bottom, 0px));
+  z-index: 4;
+  box-sizing: border-box;
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid var(--divider);
+  background: var(--bg);
+  color: var(--accent);
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 0.2s,
+    visibility 0.2s;
+}
+
+.back-to-top.shown {
+  opacity: 1;
+  visibility: visible;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .back-to-top {
+    transition: none;
+  }
+}
+
+/* The header follows the finger with no transition; only the snap at rest animates (#307). */
+.top.snapping {
+  transition: transform 0.15s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .top.snapping {
+    transition: none;
   }
 }

@@ -48,6 +48,9 @@ export function SettingsScreen() {
   return (
     <main>
       <h1>Settings</h1>
+      <p>
+        <a href="/liked">Liked articles</a>
+      </p>
       <h2>Muted sources</h2>
       {muted === null ? null : muted.length === 0 ? (
         <p>No sources muted. Mute one from a story's menu on the feed.</p>

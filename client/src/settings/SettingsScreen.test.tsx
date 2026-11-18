@@ -64,6 +64,16 @@ async function loadWithMutes(): Promise<{ s: Stores; hidden: typeof import("../f
 }
 
 describe("SettingsScreen", () => {
+  // #307: the heart left the feed header, so Settings is the way to the Liked screen.
+  it("has a plain Liked articles link to /liked", async () => {
+    installRouter({ online: false });
+    await loadStores();
+    await showSettings();
+    const link = [...root.querySelectorAll("a")].find((a) => a.getAttribute("href") === "/liked");
+    expect(link).toBeDefined();
+    expect(link!.textContent?.trim()).toBe("Liked articles");
+  });
+
   it("lists muted sources by domain, and Unmute queues mute_source 0 for an item no longer in the feed", async () => {
     const { s, hidden } = await loadWithMutes();
     await showSettings();
