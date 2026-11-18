@@ -37,6 +37,10 @@ test("the Settings compare link loads the Feed with ranking=personal", async ({ 
   });
   await page.goto("/settings");
   await page.getByRole("link", { name: "Feed, personalised only" }).click();
-  await expect(page.getByText("Personalised only")).toBeVisible();
-  expect(asked.some((u) => new URL(u).searchParams.get("ranking") === "personal")).toBe(true);
+  // Exact: the default substring match also finds the Settings link before it is clicked.
+  await expect(page.getByText("Personalised only", { exact: true })).toBeVisible();
+  // The label shows at once; the request follows it, so wait for the request.
+  await expect
+    .poll(() => asked.some((u) => new URL(u).searchParams.get("ranking") === "personal"))
+    .toBe(true);
 });

@@ -98,7 +98,7 @@ export function FeedScreen({ view = "feed" }: { view?: ViewName }) {
       </button>
       {ranking ? (
         <p class="compare-label">
-          {COMPARE_LABELS[ranking]} · <a href="/">Back to the normal Feed</a>
+          <span>{COMPARE_LABELS[ranking]}</span> · <a href="/">Back to the normal Feed</a>
         </p>
       ) : null}
       {offline ? (
