@@ -448,17 +448,23 @@ def inspect_feedback(
         typer.echo(q.render(q.group_feedback(rows, group_by), [group_by, "count"], fmt))
 
 
+def _utc_now() -> datetime:
+    """The current time; a seam so tests can fix "now"."""
+    return datetime.now(UTC)
+
+
 @inspect_app.command("ab")
 def inspect_ab(
     since: Annotated[str, typer.Option(help="Created at or after: 24h, 21d, a date")] = "365d",
     fmt: FormatOption = "text",
 ) -> None:
     """Summarise the A/B check: credited opens and reads per arm and the stopping rule."""
+    now = _utc_now()
     with _inspect_repository() as repository:
-        since_at = q.parse_since(since)
+        since_at = q.parse_since(since, now)
         q.check_choice("--format", fmt, q.FORMATS)
         events = repository.list_feedback(since=since_at)
-    summary = q.ab_summary(events, now=datetime.now(UTC), since=since_at)
+    summary = q.ab_summary(events, now=now, since=since_at)
     typer.echo(q.render(q.ab_rows(summary), q.AB_COLUMNS, fmt))
 
 

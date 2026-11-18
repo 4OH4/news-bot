@@ -124,13 +124,16 @@ def run_ab(data: Path, events: list[Feedback], *args: str) -> str:
     return str(result.stdout)
 
 
+@pytest.fixture(autouse=True)
+def fixed_clock(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin the command's "now" so results don't depend on the time of day."""
+    monkeypatch.setattr("newsfeed.cli._utc_now", lambda: NOW)
+
+
 def recent(personal: int, rules: int, days: int) -> list[Feedback]:
-    """Credited opens ending today, with ids that must never be printed."""
-    now = datetime.now(UTC)
+    """Credited opens ending at the fixed NOW, with ids that must never be printed."""
     return [
-        e.model_copy(
-            update={"created_at": now - (NOW - e.created_at), "article_id": "SECRET" + e.article_id}
-        )
+        e.model_copy(update={"article_id": "SECRET" + e.article_id})
         for e in opens(personal, rules, days)
     ]
 
@@ -148,7 +151,7 @@ def test_reports_the_daily_rate_and_the_projected_date_of_the_stopping_rule(
 ) -> None:
     out = run_ab(data_dir, recent(20, 20, 10))  # 4 credited opens a day, 160 still to find
 
-    expected = datetime.now(UTC).date() + timedelta(days=40)
+    expected = NOW.date() + timedelta(days=40)
     found = [date.fromisoformat(d) for d in re.findall(r"\d{4}-\d{2}-\d{2}", out)]
     assert any(abs((d - expected).days) <= 4 for d in found), out
 

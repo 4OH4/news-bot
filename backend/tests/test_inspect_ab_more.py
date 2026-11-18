@@ -9,7 +9,7 @@ from pathlib import Path
 from newsfeed.inspect import ab_rows, ab_summary
 from newsfeed.models import Feedback, FeedbackEvent, RankingArm
 from tests.test_cli_inspect import data_dir  # noqa: F401  (fixture)
-from tests.test_inspect_ab import NOW, PERSONAL, RULES, SINCE, fb, opens, recent
+from tests.test_inspect_ab import NOW, PERSONAL, RULES, SINCE, fb, fixed_clock, opens, recent  # noqa: F401
 
 
 def test_default_window_covers_a_long_record(data_dir: Path) -> None:  # noqa: F811
