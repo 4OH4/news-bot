@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { distinctEvents } from "./feedback-posts";
 
 // #217: open, dismiss and mute on the feed, and the Settings screen. Every screen is a full page
 // load, so each test moves between screens the way the owner does and checks what survived.
@@ -62,7 +63,9 @@ function looksSeen(scope: Locator): Promise<boolean> {
 }
 
 function events(posted: Record<string, unknown>[], name: string) {
-  return posted.filter((e) => e.event === name).map((e) => [e.article_id, e.value]);
+  return distinctEvents(posted)
+    .filter((e) => e.event === name)
+    .map((e) => [e.article_id, e.value]);
 }
 
 test("a dismissed story is still hidden after a reload, with no Undo row", async ({ page }) => {
