@@ -1,7 +1,8 @@
 import { useState } from "preact/hooks";
+import "../preferences/preferences.css";
 import "./lab.css";
 import { MORE_TOPICS, KINDS, REGIONS, SOURCES, STARTER_TOPICS, type MockSource } from "./mock-catalogue";
-import { iconFor, PreferenceControl, type PreferenceState } from "./PreferenceControl";
+import { iconFor, PreferenceControl, type PreferenceState } from "../preferences/PreferenceControl";
 
 // #332: hidden prototype of the preferences screen on mock data. State lives in memory only.
 

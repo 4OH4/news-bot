@@ -1,5 +1,5 @@
 /** The `/api/preferences` contract (#337), as the client reads and writes it. */
-import type { PreferenceState } from "../lab/PreferenceControl";
+import type { PreferenceState } from "./PreferenceControl";
 
 export type { PreferenceState };
 
