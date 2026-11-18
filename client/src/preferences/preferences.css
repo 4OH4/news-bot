@@ -1,0 +1,11 @@
+.pref-control { display: flex; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.pref-opt {
+  flex: 1; min-height: 44px; min-width: 0; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; border: 0; border-right: 1px solid var(--border); background: transparent; cursor: pointer;
+}
+.pref-opt:last-child { border-right: 0; }
+.pref-opt:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.pref-icon { font-size: 1rem; line-height: 1; }
+.pref-word { font-size: 0.7rem; }
+.pref-opt[aria-checked="true"] { background: var(--accent); color: var(--bg); font-weight: 600; }
+.pref-opt.pref-hide[aria-checked="true"] { background: var(--muted); }
