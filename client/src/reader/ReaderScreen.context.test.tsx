@@ -86,7 +86,7 @@ describe("reader feedback context", () => {
     document.body.appendChild(root);
     const second = await readWith(undefined);
     const reads = second.filter((e) => e.event === "read");
-    expect(hasNeither(reads[reads.length - 1])).toBe(true);
+    expect(hasNeither(reads[reads.length - 1]!)).toBe(true);
   });
 
   it.each([
