@@ -3,7 +3,13 @@
 // #338: the preferences API client.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installPrefs, makeMenu } from "../../test/preferences-env";
-import { getPreferences, PreferencesConflict, PreferencesOffline, putPreferences } from "./api";
+import {
+  getPreferences,
+  PreferencesConflict,
+  PreferencesOffline,
+  putPreferences,
+  setSourceState,
+} from "./api";
 
 const BODY = {
   version: 3,
@@ -66,5 +72,43 @@ describe("preferences api", () => {
   it("a network failure rejects with PreferencesOffline", async () => {
     installPrefs(makeMenu(), { online: false });
     await expect(putPreferences(BODY)).rejects.toBeInstanceOf(PreferencesOffline);
+  });
+});
+
+// #339: one source's state changes; everything else is sent back as the server has it.
+describe("setSourceState", () => {
+  it("reads the current preferences and PUTs them with the one source set to hide", async () => {
+    const fake = installPrefs(makeMenu({ version: 5, states: { wired: "fewer", sport: "more" } }));
+    await setSourceState("bbc-news", "hide");
+    expect(fake.puts).toHaveLength(1);
+    expect(fake.puts[0]?.body).toEqual({
+      version: 5,
+      sources: { "bbc-news": "hide", wired: "fewer" },
+      topics: { sport: "more" },
+      setup_done: true,
+    });
+  });
+
+  it("show removes the source from the PUT, since only non-Show states are sent", async () => {
+    const fake = installPrefs(makeMenu({ states: { "bbc-news": "hide", wired: "fewer" } }));
+    await setSourceState("bbc-news", "show");
+    expect(fake.puts[0]?.body.sources).toEqual({ wired: "fewer" });
+  });
+
+  it("a 409 reloads the preferences and retries once, with the change on the newer state", async () => {
+    const newer = makeMenu({ version: 9, states: { wired: "fewer" } });
+    // The fake's GET is static, so it serves the newer state throughout; the first PUT is
+    // refused anyway, as if another device had saved in between.
+    const fake = installPrefs(newer);
+    fake.putAnswers = [
+      { status: 409, body: newer },
+      { status: 200, body: makeMenu({ version: 10 }) },
+    ];
+    await setSourceState("bbc-news", "hide");
+    expect(fake.puts).toHaveLength(2);
+    expect(fake.puts[1]?.body).toMatchObject({
+      version: 9,
+      sources: { "bbc-news": "hide", wired: "fewer" },
+    });
   });
 });

@@ -101,26 +101,53 @@ test("tapping an article sends open, and back on the feed its card shows as seen
   expect(await looksSeen(card(page, other))).toBe(false);
 });
 
-test("a source muted on the feed is unmuted in Settings, and its story comes back", async ({
+// #339: replaces "muted on the feed is unmuted in Settings", which pinned the phone-only mute.
+test("muting a source PUTs it as hide, and after leaving the feed and coming back it is gone", async ({
   page,
 }) => {
   const posted = await stubApi(page);
+  const puts: Record<string, unknown>[] = [];
+  let hidden = false;
+  // Recorded on the request event: a keepalive save can be cancelled in the route if the page goes.
+  page.context().on("request", (req) => {
+    if (req.method() === "PUT" && new URL(req.url()).pathname === "/api/preferences") {
+      puts.push(req.postDataJSON() as Record<string, unknown>);
+      hidden = (puts.at(-1)!.sources as Record<string, string>)[article.source_id] === "hide";
+    }
+  });
+  const prefs = () => ({
+    version: puts.length + 1,
+    setup_done: true,
+    menu: {
+      sections: [
+        {
+          id: "news",
+          label: "News sources",
+          sources: [
+            { id: article.source_id, label: "Invented", state: hidden ? "hide" : "show", starter: true },
+          ],
+        },
+      ],
+      topics: [],
+      multipliers: { hide: 0, fewer: 0.5, show: 1, more: 2 },
+    },
+  });
+  await page.route("**/api/preferences", (route) => route.fulfill({ json: prefs() }));
+  // Not "**/api/feed**": that glob would also swallow POST /api/feedback and hide the events.
+  await page.route(/\/api\/feed(\?.*)?$/, (route) =>
+    route.fulfill({
+      json: { ...feed, items: feed.items.filter((i) => !(hidden && i.source_id === article.source_id)) },
+    }),
+  );
+
   await page.goto("/");
   await choose(page, card(page, article), new RegExp(`mute ${article.domain}`, "i"));
-  await expect(page.getByText(article.title)).toHaveCount(0);
-
   await page.locator("header").getByRole("link", { name: "Settings" }).click();
   await expect(page).toHaveURL(/\/settings$/);
-  await expect(page.getByText(article.domain).first()).toBeVisible();
-  await page.getByRole("button", { name: /unmute/i }).click();
-  await expect(page.getByText(article.domain)).toHaveCount(0);
-
   await page.getByRole("navigation", { name: "Sections" }).getByRole("link", { name: /feed/i }).click();
-  await expect(card(page, article)).toBeVisible();
-  await expect
-    .poll(() => events(posted, "mute_source"))
-    .toEqual([
-      [article.id, 1],
-      [article.id, 0],
-    ]);
+
+  await expect.poll(() => puts.length).toBeGreaterThan(0);
+  expect(puts[0]!.sources).toMatchObject({ [article.source_id]: "hide" });
+  await expect(page.getByText(article.title)).toHaveCount(0);
+  await expect.poll(() => events(posted, "mute_source")).toEqual([[article.id, 1]]);
 });

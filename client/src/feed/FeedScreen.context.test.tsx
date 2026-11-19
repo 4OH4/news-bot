@@ -28,6 +28,7 @@ beforeEach(() => {
     vi.spyOn(console, m).mockImplementation(() => {});
   }
   sessionStorage.clear();
+  localStorage.clear(); // #339: a mute left in the pending-source-states outbox must not leak between tests
   root = document.createElement("div");
   document.body.appendChild(root);
   root.addEventListener("click", (e) => e.preventDefault());
