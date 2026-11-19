@@ -49,7 +49,8 @@ export async function getPreferences(): Promise<PreferencesResponse> {
  */
 export async function putPreferences(
   body: PreferencesUpdate,
-  // Kept so existing callers compile; the flag is now always on.
+  // Unused on purpose: usePreferences.ts still passes it, and changing that is out of scope for #395.
+  // The flag is now always on, so the disable below is justified.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   _opts: { keepalive?: boolean } = {},
 ): Promise<PreferencesResponse> {
