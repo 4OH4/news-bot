@@ -44,15 +44,19 @@ export async function getPreferences(): Promise<PreferencesResponse> {
 
 /**
  * Saves the whole set and returns the stored state. A 409 throws `PreferencesConflict` with the
- * newer state, so the caller can merge and retry. `keepalive` lets the request outlive the page.
+ * newer state, so the caller can merge and retry. Every save sets `keepalive`, so one already in
+ * flight when the page closes still finishes (#395); the body is far under the 64 KB limit.
  */
 export async function putPreferences(
   body: PreferencesUpdate,
-  opts: { keepalive?: boolean } = {},
+  // Unused on purpose: usePreferences.ts still passes it, and changing that is out of scope for #395.
+  // The flag is now always on, so the disable below is justified.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _opts: { keepalive?: boolean } = {},
 ): Promise<PreferencesResponse> {
   const response = await call({
     method: "PUT",
-    keepalive: opts.keepalive ?? false,
+    keepalive: true,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
