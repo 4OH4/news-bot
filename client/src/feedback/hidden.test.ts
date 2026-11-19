@@ -98,20 +98,23 @@ describe("muteSource and unmuteSource", () => {
 
   // #407: nothing reads the store but the one-off migration, so a mute no longer fills it.
   it("a mute leaves no row in the phone's muted store, and Undo leaves none either", async () => {
+    installStorage();
+    // A source the fake menu offers, so the server save is not skipped.
+    const offered = makeItem(A.id, { source_id: "bbc-news", domain: "bbc.example.test" });
     const fake = installPrefs(makeMenu(), { online: true });
     await loadStores();
     const hidden = await import("./hidden");
     const db = await (await import("./db")).openFeedbackDb();
 
-    await hidden.muteSource(A);
+    await hidden.muteSource(offered);
     await settle();
 
     expect(await db.getAll("muted")).toEqual([]);
-    expect(await db.count("muted", A.source_id)).toBe(0);
+    expect(await db.count("muted", offered.source_id)).toBe(0);
     expect(fake.puts).toHaveLength(1);
-    expect(fake.puts[0]!.body.sources).toEqual({ [A.source_id]: "hide" });
+    expect(fake.puts[0]!.body.sources).toEqual({ "bbc-news": "hide" });
 
-    await hidden.unmuteSource(A);
+    await hidden.unmuteSource(offered);
     await settle();
     expect(await db.getAll("muted")).toEqual([]);
   });
