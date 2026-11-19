@@ -21,6 +21,7 @@ Failure patterns taken from real defects in this repo. Test authors and workers 
 - An empty environment variable that holds a path becomes `Path('.')`, the current directory. Treat empty as unset.
 - A stopping-rule or verdict check must be able to see the whole record it judges: no default window shorter than the record, and day counts must be calendar days, not days with data. Instance: PR #351.
 - Matching items by a key must handle a missing or duplicate key, or items vanish silently. Instance: PR #349, where `ab` mode collapsed items without a unique `id`.
+- An outbox that sends its pending entries in one batch must drop or set aside an entry the server rejects permanently (a 4xx other than a retryable one such as 408 or 429), or that one entry blocks every later one for good. Test it with one bad entry queued ahead of a good one. Instance: the mute outbox (`pending-source-states`, #339, PR #400).
 
 ## Polite fetching and safety
 
