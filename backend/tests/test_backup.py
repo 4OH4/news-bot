@@ -193,7 +193,10 @@ def test_restore_keeps_stored_preferences_unless_the_backup_is_newer(
 
     restored = restore_backup(empty, blobs, day=DAY, dry_run=False)
 
-    assert empty.get_preferences("owner") == (stored if kept else backed_up)
+    # A replaced record carries the stored version plus one, never a lower one (#396).
+    assert empty.get_preferences("owner") == (
+        stored if kept else backed_up.model_copy(update={"version": stored.version + 1})
+    )
     assert restored == (0 if kept else 1)
     kept_logs = [
         r
@@ -368,7 +371,12 @@ def test_cli_restore_says_what_it_did_with_preferences_and_force_overrides_newer
     assert SECRET_SOURCE not in result.output
     with SqliteRepository(data_dir / "newsfeed.db") as repo:
         stored = repo.get_preferences("owner")
-    assert stored == (_prefs_on(9, "more") if written else _prefs_on(16, "fewer"))
+    # A replaced record carries the stored version plus one (#396).
+    assert stored == (
+        _prefs_on(9, "more").model_copy(update={"version": 1})
+        if written
+        else _prefs_on(16, "fewer")
+    )
 
 
 def test_cli_restore_force_leaves_feedback_behaviour_unchanged(data_dir: Path) -> None:
