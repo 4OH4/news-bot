@@ -85,6 +85,12 @@ def _dump_preferences(repository: Repository) -> list[ReaderPreferences]:
 
 def _save_preferences(repository: Repository, item: BaseModel) -> None:
     assert isinstance(item, ReaderPreferences)
+    stored = repository.get_preferences(item.user_id)
+    if stored is not None:
+        # The version only ever goes up: a device holding an old number must
+        # conflict after a restore, and the API's ranked-feed cache is keyed on
+        # it (#396).
+        item = item.model_copy(update={"version": max(stored.version, item.version) + 1})
     repository.save_preferences(item)
 
 

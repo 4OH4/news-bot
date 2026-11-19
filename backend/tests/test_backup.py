@@ -193,7 +193,10 @@ def test_restore_keeps_stored_preferences_unless_the_backup_is_newer(
 
     restored = restore_backup(empty, blobs, day=DAY, dry_run=False)
 
-    assert empty.get_preferences("owner") == (stored if kept else backed_up)
+    # A replaced record carries the stored version plus one, never a lower one (#396).
+    assert empty.get_preferences("owner") == (
+        stored if kept else backed_up.model_copy(update={"version": stored.version + 1})
+    )
     assert restored == (0 if kept else 1)
     kept_logs = [
         r
@@ -224,6 +227,56 @@ def test_dry_run_counts_preferences_by_the_same_rule_and_writes_nothing(
     empty.save_preferences(_prefs(10))
     assert restore_backup(empty, blobs, day=DAY, dry_run=True) == 0
     assert empty.get_preferences("owner") == _prefs(10)
+
+
+def _versioned(hour: int, version: int, topic_state: str = "fewer") -> ReaderPreferences:
+    return _prefs(hour, topic_state).model_copy(update={"version": version})
+
+
+@pytest.mark.parametrize(
+    ("stored", "backed_up", "force", "expected_version", "expected_topic"),
+    [
+        (_versioned(10, 10), _versioned(9, 5, "more"), True, 11, "more"),
+        (None, _versioned(9, 5, "more"), False, 5, "more"),
+        (_versioned(8, 3), _versioned(9, 7, "more"), False, 8, "more"),
+    ],
+    ids=["forced-over-higher-stored", "nothing-stored-keeps-backup-version", "newer-backup-wins"],
+)
+def test_restore_never_lowers_the_stored_preferences_version(
+    empty: SqliteRepository,
+    blobs: LocalBlobStore,
+    tmp_path: Path,
+    stored: ReaderPreferences | None,
+    backed_up: ReaderPreferences,
+    force: bool,
+    expected_version: int,
+    expected_topic: str,
+) -> None:
+    with SqliteRepository(tmp_path / "backed-up.db") as source:
+        source.save_preferences(backed_up)
+        write_backup(source, blobs, day=DAY, run_id=None)
+    if stored is not None:
+        empty.save_preferences(stored)
+
+    restore_backup(empty, blobs, day=DAY, dry_run=False, force=force)
+
+    restored = empty.get_preferences("owner")
+    assert restored is not None
+    assert restored.version == expected_version
+    assert restored.topics == {"sport": expected_topic}
+
+
+def test_dry_run_restore_leaves_the_stored_preferences_version_alone(
+    empty: SqliteRepository, blobs: LocalBlobStore, tmp_path: Path
+) -> None:
+    with SqliteRepository(tmp_path / "backed-up.db") as source:
+        source.save_preferences(_versioned(9, 5, "more"))
+        write_backup(source, blobs, day=DAY, run_id=None)
+    empty.save_preferences(_versioned(8, 10))
+
+    restore_backup(empty, blobs, day=DAY, dry_run=True, force=True)
+
+    assert empty.get_preferences("owner") == _versioned(8, 10)
 
 
 # --- CLI -----------------------------------------------------------------------
@@ -318,7 +371,12 @@ def test_cli_restore_says_what_it_did_with_preferences_and_force_overrides_newer
     assert SECRET_SOURCE not in result.output
     with SqliteRepository(data_dir / "newsfeed.db") as repo:
         stored = repo.get_preferences("owner")
-    assert stored == (_prefs_on(9, "more") if written else _prefs_on(16, "fewer"))
+    # A replaced record carries the stored version plus one (#396).
+    assert stored == (
+        _prefs_on(9, "more").model_copy(update={"version": 1})
+        if written
+        else _prefs_on(16, "fewer")
+    )
 
 
 def test_cli_restore_force_leaves_feedback_behaviour_unchanged(data_dir: Path) -> None:
