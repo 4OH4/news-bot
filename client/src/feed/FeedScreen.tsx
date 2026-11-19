@@ -1,4 +1,5 @@
-import { useRef } from "preact/hooks";
+import { useEffect, useRef } from "preact/hooks";
+import { migrateMutedSources } from "../feedback/hidden";
 import "./feed-status.css";
 import { FeedItemCard } from "./FeedItemCard";
 import { relativeTime } from "./time";
@@ -49,6 +50,11 @@ export function FeedScreen({ view = "feed" }: { view?: ViewName }) {
     view,
     ranking,
   );
+
+  // Once, on the first online load after #339; a no-op after that (flag in localStorage).
+  useEffect(() => {
+    void migrateMutedSources();
+  }, []);
 
   const headerRef = useRef<HTMLElement>(null);
   const { offset, showButton, snapping } = useScrollChrome(headerRef);

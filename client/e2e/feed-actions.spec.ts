@@ -133,7 +133,8 @@ test("muting a source PUTs it as hide, and after leaving the feed and coming bac
     },
   });
   await page.route("**/api/preferences", (route) => route.fulfill({ json: prefs() }));
-  await page.route("**/api/feed**", (route) =>
+  // Not "**/api/feed**": that glob would also swallow POST /api/feedback and hide the events.
+  await page.route(/\/api\/feed(\?.*)?$/, (route) =>
     route.fulfill({
       json: { ...feed, items: feed.items.filter((i) => !(hidden && i.source_id === article.source_id)) },
     }),

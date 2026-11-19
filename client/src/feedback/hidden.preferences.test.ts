@@ -32,6 +32,9 @@ async function load(over: Parameters<typeof makeMenu>[0] = {}) {
 describe("muteSource and unmuteSource set the source preference", () => {
   it("mute queues mute_source and PUTs the source as hide; undo PUTs it back to show", async () => {
     const { fake, stores, hidden } = await load({ version: 4, states: { wired: "fewer" } });
+    // 401 is a retryable answer, so the queue keeps its events for the assertions below; with the
+    // default 204 the flush would send and clear them before we look.
+    fake.router.feedback = 401;
 
     await hidden.muteSource(BBC);
     await settle();

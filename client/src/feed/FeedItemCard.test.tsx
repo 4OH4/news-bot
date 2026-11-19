@@ -42,6 +42,7 @@ beforeEach(() => {
   for (const m of ["error", "warn", "log", "info"] as const) {
     vi.spyOn(console, m).mockImplementation(() => {});
   }
+  localStorage.clear(); // #339: a mute left in the pending-source-states outbox must not leak between tests
   root = document.createElement("div");
   document.body.appendChild(root);
   // Keep happy-dom from following links; the card's own handler still runs.
