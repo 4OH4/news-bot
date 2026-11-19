@@ -30,15 +30,23 @@ const feed = {
   items: [],
 };
 
-/** Serves the menu and records each PUT body. */
+/**
+ * Serves the menu and records each PUT body as the browser sends it. Recording on the request
+ * event rather than in the route: Chromium cancels an intercepted keepalive request once the
+ * page that sent it has gone, sometimes before the route sees it, though the request was sent.
+ */
 async function serve(page: Page, setupDone: boolean): Promise<Record<string, unknown>[]> {
   const puts: Record<string, unknown>[] = [];
+  page.context().on("request", (req) => {
+    if (req.method() === "PUT" && new URL(req.url()).pathname === "/api/preferences") {
+      puts.push(req.postDataJSON() as Record<string, unknown>);
+    }
+  });
   await page.route("**/api/feed?*", (route) => route.fulfill({ json: feed }));
   await page.route("**/api/preferences", async (route) => {
     const req = route.request();
     if (req.method() === "PUT") {
       const body = req.postDataJSON() as Record<string, unknown>;
-      puts.push(body);
       await route.fulfill({ json: menu(Boolean(body.setup_done) || setupDone, Number(body.version) + 1) });
     } else {
       await route.fulfill({ json: menu(setupDone) });
@@ -64,4 +72,22 @@ test("a fresh install opens setup once, and Start reading finishes it", async ({
   await expect.poll(() => puts.length).toBe(1);
   expect(puts[0]).toMatchObject({ setup_done: true });
   await expect(page).toHaveURL(/\/$/);
+});
+
+test("a change followed at once by a tab link is still sent", async ({ page }) => {
+  const puts = await serve(page, true);
+  await page.goto("/settings/preferences");
+  const hide = page.getByRole("radiogroup", { name: "BBC News" }).getByRole("radio", { name: "Hide" });
+  await expect(hide).toBeVisible();
+
+  // Tap and follow a full page link in the same step, well inside the save debounce, so only
+  // the pagehide flush can send the change.
+  await hide.evaluate((el) => {
+    (el as HTMLElement).click();
+    document.querySelector<HTMLAnchorElement>('nav.tab-bar a[href="/news"]')!.click();
+  });
+
+  await expect(page).toHaveURL(/\/news$/);
+  await expect.poll(() => puts.length, { timeout: 3000 }).toBe(1);
+  expect(puts[0]).toMatchObject({ version: 1, sources: { "bbc-news": "hide" } });
 });
