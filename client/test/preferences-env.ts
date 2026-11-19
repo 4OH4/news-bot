@@ -72,6 +72,8 @@ export interface FakePrefs {
   feedConditions: (string | null)[];
   /** What GET /api/preferences returns; null answers 500. */
   get: PreferencesResponse | null;
+  /** When set, each PUT is recorded in `puts` at once but answered only after this resolves. */
+  putGate: Promise<void> | null;
 }
 
 /** Installs the router plus `/api/preferences`, with the menu `get`. */
@@ -81,7 +83,7 @@ export function installPrefs(
 ): FakePrefs {
   const router = installRouter(initial);
   const base = globalThis.fetch;
-  const fake: FakePrefs = { router, putAnswers: [], puts: [], feedConditions: [], get };
+  const fake: FakePrefs = { router, putAnswers: [], puts: [], feedConditions: [], get, putGate: null };
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: unknown, init: RequestInit = {}): Promise<Response> => {
@@ -102,6 +104,7 @@ export function installPrefs(
       }
       const body = JSON.parse(String(init.body)) as Record<string, unknown>;
       fake.puts.push({ body, headers: new Headers(init.headers) });
+      if (fake.putGate) await fake.putGate;
       const answer = fake.putAnswers[Math.min(fake.puts.length - 1, fake.putAnswers.length - 1)];
       if (!answer) return json({ ...(fake.get ?? makeMenu()), version: Number(body.version) + 1 });
       return answer.body ? json(answer.body, answer.status) : new Response(null, { status: answer.status });

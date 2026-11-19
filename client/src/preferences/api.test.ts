@@ -9,6 +9,7 @@ import {
   PreferencesOffline,
   putPreferences,
   setSourceState,
+  setSourceStates,
 } from "./api";
 
 const BODY = {
@@ -96,10 +97,9 @@ describe("setSourceState", () => {
   });
 
   it("a 409 reloads the preferences and retries once, with the change on the newer state", async () => {
-    const newer = makeMenu({ version: 9, states: { wired: "fewer" } });
-    // The fake's GET is static, so it serves the newer state throughout; the first PUT is
-    // refused anyway, as if another device had saved in between.
-    const fake = installPrefs(newer);
+    // GET and the 409 body differ, so the retry is right only if it builds on the 409's state.
+    const fake = installPrefs(makeMenu({ version: 5, states: { wired: "fewer" } }));
+    const newer = makeMenu({ version: 9, states: { "n-four": "hide" } });
     fake.putAnswers = [
       { status: 409, body: newer },
       { status: 200, body: makeMenu({ version: 10 }) },
@@ -108,7 +108,30 @@ describe("setSourceState", () => {
     expect(fake.puts).toHaveLength(2);
     expect(fake.puts[1]?.body).toMatchObject({
       version: 9,
-      sources: { "bbc-news": "hide", wired: "fewer" },
+      sources: { "bbc-news": "hide", "n-four": "hide" },
     });
+    expect(fake.puts[1]?.body.sources).not.toHaveProperty("wired");
+  });
+});
+
+// #406: a source the menu no longer offers must never reach a PUT (the server answers 422).
+describe("setSourceStates with an unknown source", () => {
+  it("sends no PUT and resolves when nothing offered is given, logging the id once", async () => {
+    const fake = installPrefs();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await expect(setSourceStates({ "invented-gone": "hide" })).resolves.toBeUndefined();
+    expect(fake.puts).toEqual([]);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith("skipping a source the menu does not offer", {
+      source_id: "invented-gone",
+    });
+  });
+
+  it("leaves the unknown id out of the PUT and applies the offered one", async () => {
+    const fake = installPrefs();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    await setSourceStates({ "invented-gone": "hide", "bbc-news": "hide" });
+    expect(fake.puts).toHaveLength(1);
+    expect(fake.puts[0]?.body.sources).toEqual({ "bbc-news": "hide" });
   });
 });
