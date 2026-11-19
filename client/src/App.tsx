@@ -3,7 +3,6 @@ import { NotAllowed } from "./auth/NotAllowed";
 import { ReconnectBanner } from "./auth/ReconnectBanner";
 import { useSessionStatus } from "./auth/useSessionStatus";
 import { FeedScreen } from "./feed/FeedScreen";
-import { PreferencesLab } from "./lab/PreferencesLab";
 import { LikedScreen } from "./liked/LikedScreen";
 import { openSetupIfNeeded } from "./preferences/firstRun";
 import { PreferencesScreen } from "./preferences/PreferencesScreen";
@@ -25,7 +24,6 @@ function clean(path: string): string {
 function Screen({ path }: { path: string }) {
   if (path.startsWith("/article/")) return <ReaderScreen />;
   const p = clean(path);
-  if (p === "/lab/preferences") return <PreferencesLab />;
   if (p === "/liked") return <LikedScreen />;
   if (p === "/settings") return <SettingsScreen />;
   if (p === "/settings/preferences") {
@@ -67,7 +65,6 @@ function TabBar({ path }: { path: string }) {
 export function App() {
   const status = useSessionStatus();
   const isArticle = location.pathname.startsWith("/article/");
-  const isLab = clean(location.pathname).startsWith("/lab/");
   const isFeed = ["/", "/news", "/longer"].includes(clean(location.pathname));
   useEffect(() => {
     // The first feed screen of a fresh install opens setup first (#338).
@@ -91,7 +88,7 @@ export function App() {
       ) : (
         <>
           <Screen path={location.pathname} />
-          {isArticle || isLab ? null : (
+          {isArticle ? null : (
             <>
               <p id="version" data-version={__APP_VERSION__} hidden />
               <TabBar path={location.pathname} />
