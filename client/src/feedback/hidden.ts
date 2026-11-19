@@ -7,10 +7,12 @@
 import { storyKey, type FeedItem } from "../feed/types";
 import { openFeedbackDb, type FeedbackDb, type StoredFeedItem } from "./db";
 import type { FeedbackContext } from "./event";
-import { setSourceStates } from "../preferences/api";
+import { PreferencesHttpError, setSourceStates } from "../preferences/api";
 import { enqueueFeedback } from "./queue";
 
 const PENDING_KEY = "pending-source-states";
+/** Sources muted on this page, so their other cards go too; memory only, a reload starts empty. */
+const mutedThisPage = new Set<string>();
 const MIGRATED_KEY = "muted-migrated";
 type SourceChanges = Record<string, "hide" | "show">;
 
@@ -33,6 +35,11 @@ function writePending(pending: SourceChanges): void {
   }
 }
 
+/** A 4xx the same request will get again (422 for an id the menu dropped); not auth, timeout or rate limit. */
+function isPermanentRejection(status: number): boolean {
+  return status >= 400 && status < 500 && ![401, 408, 429].includes(status);
+}
+
 /** Sends every pending change in one PUT; failures leave the outbox for the next successful call. */
 async function flushPending(): Promise<void> {
   const sent = readPending();
@@ -40,8 +47,12 @@ async function flushPending(): Promise<void> {
   try {
     await setSourceStates(sent);
   } catch (err) {
-    console.warn("could not send pending source changes", err);
-    return;
+    // The server refuses these changes for good, so keeping them would block every later save.
+    if (!(err instanceof PreferencesHttpError && isPermanentRejection(err.status))) {
+      console.warn("could not send pending source changes", err);
+      return;
+    }
+    console.warn("dropping source changes the server rejected", err);
   }
   // Keep entries changed while the PUT was in flight.
   const now = readPending();
@@ -124,6 +135,8 @@ function setSource(
   state: "hide" | "show",
   context?: FeedbackContext,
 ): Promise<void> {
+  if (state === "hide") mutedThisPage.add(item.source_id);
+  else mutedThisPage.delete(item.source_id);
   // Written inside the tap, so a page change straight after can't lose it.
   writePending({ ...readPending(), [item.source_id]: state });
   // The `muted` store no longer filters; it only feeds Settings' "Muted sources" list.
@@ -150,8 +163,11 @@ export function unmuteSource(item: FeedItem, context?: FeedbackContext): Promise
 
 export async function isHidden(item: FeedItem): Promise<boolean> {
   const dismissed = await (await openFeedbackDb()).count("dismissed", storyKey(item));
-  // A mute not yet sent still hides the source, so an offline mute works at once.
-  return dismissed > 0 || readPending()[item.source_id] === "hide";
+  // A mute not yet sent still hides the source, so an offline mute works at once; one sent this
+  // page keeps hiding it until the next load, when the server filters it.
+  return (
+    dismissed > 0 || readPending()[item.source_id] === "hide" || mutedThisPage.has(item.source_id)
+  );
 }
 
 /** Sources muted on the phone before #339, newest first; Unmute sets them to Show. */
