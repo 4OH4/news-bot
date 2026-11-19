@@ -16,6 +16,8 @@ beforeEach(() => {
   }
   root = document.createElement("div");
   document.body.appendChild(root);
+  // The first-run "asked" mark lives in sessionStorage, which outlives each test.
+  sessionStorage.clear();
 });
 
 afterEach(() => {
