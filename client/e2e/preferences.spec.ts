@@ -72,6 +72,37 @@ test("a fresh install opens setup once, and Start reading finishes it", async ({
   await expect.poll(() => puts.length).toBe(1);
   expect(puts[0]).toMatchObject({ setup_done: true });
   await expect(page).toHaveURL(/\/$/);
+
+  // The GET still says setup_done false, so only the once-per-session mark stops a second
+  // redirect. Load the feed again and let it settle: no further GET, and still on the Feed.
+  const gets = await countGets(page);
+  await page.reload();
+  await page.waitForLoadState("networkidle");
+  await expect(page).toHaveURL(/\/$/);
+  expect(gets.length).toBe(0);
+});
+
+/** Records each GET /api/preferences from now on. */
+async function countGets(page: Page): Promise<string[]> {
+  await page.waitForLoadState("networkidle");
+  const gets: string[] = [];
+  page.on("request", (req) => {
+    if (req.method() === "GET" && new URL(req.url()).pathname === "/api/preferences") {
+      gets.push(req.url());
+    }
+  });
+  return gets;
+}
+
+test("once setup is done, a feed load in the same session sends no preferences request", async ({
+  page,
+}) => {
+  await serve(page, true);
+  await page.goto("/");
+  const gets = await countGets(page);
+  await page.goto("/news");
+  await page.waitForLoadState("networkidle");
+  expect(gets.length).toBe(0);
 });
 
 test("a change followed at once by a tab link is still sent", async ({ page }) => {
