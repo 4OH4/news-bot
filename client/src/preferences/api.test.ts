@@ -37,6 +37,23 @@ describe("preferences api", () => {
     expect(fake.puts[0]?.headers.get("Content-Type")).toMatch(/application\/json/);
   });
 
+  it("every PUT sets keepalive so a save in flight survives the page closing (#395)", async () => {
+    installPrefs();
+    await putPreferences(BODY);
+    await putPreferences(BODY, { keepalive: false });
+    const puts = vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === "PUT");
+    expect(puts).toHaveLength(2);
+    for (const [, init] of puts) expect(init?.keepalive).toBe(true);
+  });
+
+  it("GET /api/preferences does not set keepalive (#395)", async () => {
+    installPrefs();
+    await getPreferences();
+    const [, init] = vi.mocked(fetch).mock.calls[0] ?? [];
+    expect(init?.method).toBe("GET");
+    expect(init?.keepalive).toBeUndefined();
+  });
+
   it("a 409 rejects with PreferencesConflict carrying the server's current state", async () => {
     const fake = installPrefs();
     const current = makeMenu({ version: 9, states: { wired: "fewer" } });
