@@ -156,6 +156,22 @@ Links that exist only to avoid editing the same files at once: #324 after #323 (
 
 **Carried in.** #307 (feed screens; PR #319). #89 (live extraction check, `needs-human`) and #92 (page headline as title, not `agent-ready`) stay in the milestone untouched; neither blocks this phase.
 
+### Closing batch for the epic (batch 18 follow-ups, #405)
+
+Four follow-ups from PR #400 and PR #402 (#314), grouped by the files they share:
+
+```
+#406 mute outbox can't be blocked; online mute hides the whole source; FeedItemCard flake
+ └── #407 remove Settings "Muted sources" and the muted-store writes (needs-human)
+```
+
+| Issue | Files (source) | Tests | Tier (expected) |
+|---|---|---|---|
+| #406 | `preferences/api.ts`, `feedback/hidden.ts`, `feed/FeedItemCard.tsx` (one line) | `api.test.ts`, `hidden.preferences.test.ts`, `FeedItemCard.test.tsx`, `test/preferences-env.ts` | A |
+| #407 | `settings/SettingsScreen.tsx`, `feedback/hidden.ts`, `test/cards.ts` | `SettingsScreen.test.tsx`, `hidden.test.ts` | A, owner merges (`needs-human`) |
+
+The flake shares `FeedItemCard.test.tsx` with the online-mute card test, so it joins #406 rather than running alone. #407 follows #406 only because both edit `setSource` in `hidden.ts`. #407 removes a Settings section, so the owner sees before and after screenshots and merges it.
+
 ## Contract changes and ADRs
 
 - **#320** (Tier B): `Embedder` port and `EmbeddingError`; `Article.embedding`, `embedding_model`; `Profile` with `InterestCentroid`, keyed by `user_id`; `Repository.get_profile`/`save_profile`; `Feedback.user_id`, `view`, `arm`; `RankingArm`; `DEFAULT_USER_ID = "owner"`. `docs/feed.schema.json` gains optional `coverage` and `arm` (additive, `schema_version` stays 1). ADR-0014 (personal ranking) and ADR-0015 (A/B by interleaving). No stored-data migration: every new field has a default.
@@ -213,3 +229,7 @@ No change from `CLAUDE.md` (confirmed for Phase 4 by PR #308). Where it bites in
 | Preference multipliers 0 / 0.5 / 1 / 2, product clamped to 0.25 to 4; starter set of 8 sources and 6 topics | The owner's starting values | Edit `config/preferences.yaml` |
 | "Mute source" sets the source to Hide; local mutes migrated once | One place for source control, visible and reversible | Restore the client-only mute |
 | The selectable sources are the enabled ones in `config/sources.yaml` (26 today; the two disabled examples are left out) | Disabled sources produce no articles | Include disabled sources |
+| A source change for an id the preferences menu doesn't offer is skipped and logged, and a 422 clears the entries that save sent (#406) | One rejected id must not block every later mute, Undo and migration (`REVIEW.md`); losing one change is cheap | Keep the outbox on every error again |
+| Online, a mute hides all of that source's cards until the next full page load, held in memory only (#406) | Matches offline; the server filters the source from the next load | Drop the in-memory set in `hidden.ts` |
+| The card's mount-time seen read can't undo a tap's seen state (#406) | A real if rare race, and a candidate cause of the flake | Revert to `setSeen(s)` |
+| Settings loses "Muted sources", and mute no longer writes the phone's `muted` store; the store itself is kept for the one-off migration (#407) | The preferences screen shows every hidden source; the list showed only phone mutes and could disagree with the feed | Revert #407's PR |
