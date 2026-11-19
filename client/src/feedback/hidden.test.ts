@@ -9,6 +9,7 @@ import {
   type Stores,
   settle,
 } from "../../test/test-env";
+import { installPrefs, makeMenu } from "../../test/preferences-env";
 import { installStorage, outboxEntries } from "./test-env";
 
 const A = makeItem("a1a1a1a1a1a1a1a1", { story_id: "story-invented-a" });
@@ -75,25 +76,14 @@ describe("dismissStory and undoDismiss", () => {
 });
 
 describe("muteSource, unmuteSource and listMuted", () => {
-  it("hides every item from a muted source, in a later feed too, and unmuting brings them back", async () => {
-    const { s, hidden } = await load();
-    const later = [
-      makeItem("f6f6f6f6f6f6f6f6", { story_id: "story-invented-f" }),
-      makeItem("a7a7a7a7a7a7a7a7", { story_id: "story-invented-g" }),
-    ];
+  // #339: replaces "hides every item from a muted source", which pinned the local source filter.
+  // The server filters by source now; the phone keeps hiding only dismissed stories.
+  it("a row in the phone's muted store no longer hides that source's items (#339)", async () => {
+    const { hidden } = await load();
+    const db = await (await import("./db")).openFeedbackDb();
+    await db.put("muted", { source_id: A.source_id, item: A as never, at: "2026-11-01T00:00:00Z" });
 
-    await hidden.muteSource(A);
-    for (const item of later) expect(await hidden.isHidden(item)).toBe(true);
-    expect(await hidden.isHidden(B)).toBe(false);
-
-    await hidden.unmuteSource(A);
-    for (const item of [A, ...later]) expect(await hidden.isHidden(item)).toBe(false);
-    expect(await hidden.listMuted()).toEqual([]);
-    const queued = await queuedEvents(s);
-    expect(queued.map((e) => [e.article_id, e.event, e.value])).toEqual([
-      [A.id, "mute_source", 1],
-      [A.id, "mute_source", 0],
-    ]);
+    expect(await hidden.isHidden(A)).toBe(false);
   });
 
   it("unmuting a source whose item has left the feed queues mute_source 0 with that item's id", async () => {
@@ -247,7 +237,8 @@ describe("a page that closes straight after the tap", () => {
 
 describe("the queue is the only way out", () => {
   it("every change is queued through enqueueFeedback and nothing is posted directly", async () => {
-    const router = installRouter({ online: true });
+    // Mute and Undo also call /api/preferences now (#339), so the fake serves it.
+    const { router } = installPrefs(makeMenu(), { online: true });
     const enqueueFeedback = vi.fn(async () => ({}));
     vi.doMock("./queue", () => ({ enqueueFeedback, flushQueue: vi.fn(async () => {}) }));
     await loadStores();
@@ -257,6 +248,7 @@ describe("the queue is the only way out", () => {
     await hidden.undoDismiss(A);
     await hidden.muteSource(B);
     await hidden.unmuteSource(B);
+    await settle();
 
     const calls = enqueueFeedback.mock.calls as unknown[][];
     expect(calls.map((c) => [c[0], c[1], c[2] ?? null])).toEqual([

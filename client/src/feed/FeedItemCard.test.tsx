@@ -172,18 +172,16 @@ describe("the card menu", () => {
     expect(events[1]!.id).not.toBe(events[0]!.id);
   });
 
-  it("muting from one card hides both cards from that source, without reloading", async () => {
+  // #339: was "hides both cards from that source"; the server filters by source now, so the card
+  // only shows its Undo row and the card of another source is untouched.
+  it("muting from a card shows its Undo row and queues the event; another source's card stays", async () => {
     const s = await load();
     await showCards(ARTICLE, OTHER, ELSEWHERE);
 
     await chooseAction(cardFor(ARTICLE)!, /mute/i);
 
-    await vi.waitFor(() => {
-      expect(root.textContent).not.toContain(ARTICLE.title);
-      expect(root.textContent).not.toContain(OTHER.title);
-    });
+    await vi.waitFor(() => expect(root.textContent).not.toContain(ARTICLE.title));
     expect(root.textContent).toContain(ELSEWHERE.title);
-    // Only the card the action was taken on offers Undo.
     expect(buttonsNamed(root, /undo/i)).toHaveLength(1);
     const mutes = (await queuedEvents(s)).filter((e) => e.event === "mute_source");
     expect(mutes.map((e) => [e.article_id, e.value])).toEqual([[ARTICLE.id, 1]]);
@@ -224,18 +222,15 @@ describe("the card menu", () => {
     ]);
   });
 
-  it("Undo after a mute queues mute_source 0, not dismiss 0, and the source's other cards show again", async () => {
+  it("Undo after a mute queues mute_source 0, not dismiss 0, and the card shows again", async () => {
     const s = await load();
     await showCards(ARTICLE, OTHER, ELSEWHERE);
     await chooseAction(cardFor(ARTICLE)!, /mute/i);
-    await vi.waitFor(() => expect(root.textContent).not.toContain(OTHER.title));
+    await vi.waitFor(() => expect(root.textContent).not.toContain(ARTICLE.title));
 
     buttonsNamed(root, /undo/i)[0]!.click();
 
-    await vi.waitFor(() => {
-      expect(root.textContent).toContain(ARTICLE.title);
-      expect(root.textContent).toContain(OTHER.title);
-    });
+    await vi.waitFor(() => expect(root.textContent).toContain(ARTICLE.title));
     await settle();
     const events = (await queuedEvents(s)).map((e) => [e.article_id, e.event, e.value]);
     expect(events).toEqual([
@@ -248,7 +243,9 @@ describe("the card menu", () => {
     await load();
     const hidden = await import("../feedback/hidden");
     await hidden.dismissStory(ARTICLE);
-    await hidden.muteSource(ELSEWHERE);
+    // #339: a row in the old `muted` store no longer hides anything; the server filters sources.
+    const db = await (await import("../feedback/db")).openFeedbackDb();
+    await db.put("muted", { source_id: ELSEWHERE.source_id, item: ELSEWHERE as never, at: "2026-11-01T00:00:00Z" });
 
     const { FeedItemCard } = await import("./FeedItemCard");
     render(
@@ -258,7 +255,7 @@ describe("the card menu", () => {
     await vi.waitFor(() => expect(root.textContent).toContain(LINK.title));
     await settle();
     expect(root.textContent).not.toContain(ARTICLE.title);
-    expect(root.textContent).not.toContain(ELSEWHERE.title);
+    expect(root.textContent).toContain(ELSEWHERE.title);
     expect(buttonsNamed(root, /undo/i)).toHaveLength(0);
   });
 });
