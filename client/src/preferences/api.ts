@@ -67,6 +67,10 @@ export async function putPreferences(
   return (await response.json()) as PreferencesResponse;
 }
 
+function offeredSourceIds(current: PreferencesResponse): Set<string> {
+  return new Set(current.menu.sections.flatMap((section) => section.sources.map((s) => s.id)));
+}
+
 /** The body that saves `current` with `changes` applied; only non-Show states are sent. */
 function withChanges(
   current: PreferencesResponse,
@@ -78,7 +82,10 @@ function withChanges(
     for (const s of section.sources) if (s.state !== "show") sources[s.id] = s.state;
   }
   for (const t of current.menu.topics) if (t.state !== "show") topics[t.id] = t.state;
+  const offered = offeredSourceIds(current);
   for (const [id, state] of Object.entries(changes)) {
+    // A source the menu no longer offers would make the server answer 422 for the whole save.
+    if (!offered.has(id)) continue;
     if (state === "show") delete sources[id];
     else sources[id] = state;
   }
@@ -91,10 +98,17 @@ function withChanges(
  */
 export async function setSourceStates(changes: Record<string, "hide" | "show">): Promise<void> {
   const current = await getPreferences();
+  const offered = offeredSourceIds(current);
+  const unknown = Object.keys(changes).filter((id) => !offered.has(id));
+  for (const source_id of unknown) {
+    console.warn("skipping a source the menu does not offer", { source_id });
+  }
+  if (unknown.length === Object.keys(changes).length) return;
   try {
     await putPreferences(withChanges(current, changes));
   } catch (err) {
     if (!(err instanceof PreferencesConflict)) throw err;
+    // The retry is based on the server's newer state, not the one this save read first.
     await putPreferences(withChanges(err.current, changes));
   }
 }

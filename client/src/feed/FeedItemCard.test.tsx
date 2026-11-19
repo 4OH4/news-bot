@@ -15,6 +15,7 @@ import {
   settle,
   type Stores,
 } from "../../test/test-env";
+import { installPrefs, makeMenu } from "../../test/preferences-env";
 import { outboxEntries } from "../feedback/test-env";
 import type { FeedItem } from "./types";
 
@@ -53,6 +54,7 @@ afterEach(() => {
   render(null, root);
   document.body.innerHTML = "";
   vi.doUnmock("../feedback/queue");
+  vi.doUnmock("../feedback/seen");
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -173,8 +175,8 @@ describe("the card menu", () => {
     expect(events[1]!.id).not.toBe(events[0]!.id);
   });
 
-  // #339: was "hides both cards from that source"; the server filters by source now, so the card
-  // only shows its Undo row and the card of another source is untouched.
+  // #339/#406: offline, the pending Hide hides every card of the source at once; the tapped card
+  // keeps its Undo row. A card of another source is untouched. Online is tested below.
   it("muting from a card shows its Undo row and queues the event; another source's card stays", async () => {
     const s = await load();
     await showCards(ARTICLE, OTHER, ELSEWHERE);
@@ -186,6 +188,64 @@ describe("the card menu", () => {
     expect(buttonsNamed(root, /undo/i)).toHaveLength(1);
     const mutes = (await queuedEvents(s)).filter((e) => e.event === "mute_source");
     expect(mutes.map((e) => [e.article_id, e.value])).toEqual([[ARTICLE.id, 1]]);
+  });
+
+  // #406: A and B are from one source, C from another.
+  describe.each([
+    ["online", true],
+    ["offline", false],
+  ])("muting a source %s", (_mode, online) => {
+    const A = makeItem("e1e1e1e1e1e1e1e1", { title: "Invented story about kite makers", source_id: "bbc-news" });
+    const B = makeItem("e2e2e2e2e2e2e2e2", { title: "Invented story about tide tables", source_id: "bbc-news", story_id: "story-invented-tide" });
+    const C = makeItem("e3e3e3e3e3e3e3e3", { title: "Invented story about hedge laying", source_id: "wired", story_id: "story-invented-hedge" });
+
+    it("hides the source's other cards, keeps the tapped card's Undo row and the other source's card", async () => {
+      installPrefs(makeMenu(), { online });
+      await loadStores();
+      await showCards(A, B, C);
+
+      await chooseAction(cardFor(A)!, /mute/i);
+
+      await vi.waitFor(() => expect(root.textContent).not.toContain(B.title));
+      expect(root.textContent).toContain(C.title);
+      expect(root.textContent).not.toContain(A.title);
+      expect(buttonsNamed(root, /undo/i)).toHaveLength(1);
+    });
+
+    it.runIf(online)("Undo shows both cards again, sends Show, and empties the outbox", async () => {
+      const fake = installPrefs(makeMenu(), { online });
+      await loadStores();
+      await showCards(A, B, C);
+      await chooseAction(cardFor(A)!, /mute/i);
+      await vi.waitFor(() => expect(root.textContent).not.toContain(B.title));
+
+      buttonsNamed(root, /undo/i)[0]!.click();
+
+      await vi.waitFor(() => {
+        expect(root.textContent).toContain(A.title);
+        expect(root.textContent).toContain(B.title);
+      });
+      await vi.waitFor(() => {
+        expect(fake.puts.at(-1)!.body.sources).not.toHaveProperty("bbc-news");
+        expect(localStorage.getItem("pending-source-states")).toBeNull();
+      });
+    });
+  });
+
+  // The mount-time `isSeen` read can answer after the tap; it must not undo the tap's seen state.
+  it("a seen read that answers false after the tap does not undo the card's seen state", async () => {
+    let answer!: (seen: boolean) => void;
+    const read = new Promise<boolean>((r) => (answer = r));
+    vi.doMock("../feedback/seen", () => ({ isSeen: vi.fn(() => read), markSeen: vi.fn(async () => {}) }));
+    await load();
+    await showCards(ARTICLE);
+
+    titleLink(ARTICLE).click();
+    await vi.waitFor(() => expect(looksSeen(cardFor(ARTICLE)!)).toBe(true));
+    answer(false);
+    await settle();
+
+    expect(looksSeen(cardFor(ARTICLE)!)).toBe(true);
   });
 
   // #254: a full page load can follow the tap at once, so the event is in the outbox before the

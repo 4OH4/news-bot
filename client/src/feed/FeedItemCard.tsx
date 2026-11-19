@@ -84,7 +84,7 @@ export function FeedItemCard({ item, view: screen }: { item: FeedItem; view?: Vi
     };
     check();
     isSeen(storyKey(item))
-      .then(setSeen)
+      .then((s) => setSeen((prev) => prev || s))
       .catch(() => {});
     return subscribeHidden(check);
   }, [item]);
