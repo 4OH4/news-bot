@@ -163,7 +163,8 @@ describe("usePreferences", () => {
     window.dispatchEvent(new Event("pagehide"));
     await settle();
     expect(fake.puts).toHaveLength(1);
-    expect(putKeepalive()).toEqual([false]);
+    // Every save sets keepalive now (#395), not only the one sent as the page hides.
+    expect(putKeepalive()).toEqual([true]);
   });
 
   it("a failed save keeps a row the owner changed again while it was in flight", async () => {
