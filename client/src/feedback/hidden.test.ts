@@ -75,7 +75,7 @@ describe("dismissStory and undoDismiss", () => {
   });
 });
 
-describe("muteSource, unmuteSource and listMuted", () => {
+describe("muteSource and unmuteSource", () => {
   // #339: replaces "hides every item from a muted source", which pinned the local source filter.
   // The server filters by source now; the phone keeps hiding only dismissed stories.
   it("a row in the phone's muted store no longer hides that source's items (#339)", async () => {
@@ -90,26 +90,35 @@ describe("muteSource, unmuteSource and listMuted", () => {
     const { s, hidden } = await load();
 
     await hidden.muteSource(A);
-    // Settings passes the stored item (#254), which is long gone from the feed.
-    const [stored] = await hidden.listMuted();
-    await hidden.unmuteSource(stored!);
+    await hidden.unmuteSource(A);
 
     const last = (await queuedEvents(s)).at(-1)!;
     expect(last).toMatchObject({ article_id: A.id, event: "mute_source", value: 0 });
   });
 
-  it("lists muted sources' items most recently muted first", async () => {
-    vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(new Date("2026-11-07T09:00:00Z"));
-    const { hidden } = await load();
+  // #407: nothing reads the store but the one-off migration, so a mute no longer fills it.
+  it("a mute leaves no row in the phone's muted store, and Undo leaves none either", async () => {
+    const fake = installPrefs(makeMenu(), { online: true });
+    await loadStores();
+    const hidden = await import("./hidden");
+    const db = await (await import("./db")).openFeedbackDb();
 
     await hidden.muteSource(A);
-    vi.setSystemTime(new Date("2026-11-07T09:05:00Z"));
-    await hidden.muteSource(B);
+    await settle();
 
-    const list = await hidden.listMuted();
-    expect(list.map((i) => i.source_id)).toEqual([B.source_id, A.source_id]);
-    expect(list[0]).toEqual(B);
+    expect(await db.getAll("muted")).toEqual([]);
+    expect(await db.count("muted", A.source_id)).toBe(0);
+    expect(fake.puts).toHaveLength(1);
+    expect(fake.puts[0]!.body.sources).toEqual({ [A.source_id]: "hide" });
+
+    await hidden.unmuteSource(A);
+    await settle();
+    expect(await db.getAll("muted")).toEqual([]);
+  });
+
+  it("no longer exports listMuted (#407)", async () => {
+    const { hidden } = await load();
+    expect("listMuted" in hidden).toBe(false);
   });
 });
 
