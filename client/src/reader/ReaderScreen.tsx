@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import { fetchArticle } from "../api/articles";
 import { OfflineError } from "../api/client";
 import { fetchView } from "../api/feed";
+import { MetaLine } from "../feed/MetaLine";
 import type { FeedItem } from "../feed/types";
 import { readReaderContext } from "../feedback/context";
 import { findLiked, isLiked, setLiked } from "../feedback/liked";
@@ -174,11 +175,15 @@ export function ReaderScreen() {
         {item ? (
           <div class="reader-byline">
             <div class="reader-byline-text">
-              <p class="reader-meta">
-                {[item.domain, item.author, date, minutes ? `${minutes} min read` : ""]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </p>
+              <MetaLine
+                className="reader-meta"
+                items={[
+                  { key: "domain", content: item.domain },
+                  ...(item.author ? [{ key: "author", content: item.author, wrap: true }] : []),
+                  ...(date ? [{ key: "date", content: date }] : []),
+                  ...(minutes ? [{ key: "read", content: `${minutes} min read` }] : []),
+                ].filter((i) => i.content)}
+              />
               <p>
                 <a href={item.url} target="_blank" rel="noopener noreferrer">
                   Original article

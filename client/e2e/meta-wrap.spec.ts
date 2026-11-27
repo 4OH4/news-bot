@@ -40,7 +40,10 @@ async function openReader(page: Page, feed: FeedBody): Promise<Locator> {
 async function openCard(page: Page, feed: FeedBody): Promise<Locator> {
   await stub(page, feed);
   await page.goto("/");
-  return page.locator("[data-testid='feed-item']").first().locator(".card-meta");
+  const meta = page.locator("[data-testid='feed-item']").first().locator(".card-meta");
+  // The feed loads after navigation; count() does not wait, so wait for the line first.
+  await expect(meta).toBeVisible();
+  return meta;
 }
 
 /**
