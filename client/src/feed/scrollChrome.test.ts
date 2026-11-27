@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { INITIAL_CHROME, nextChrome, snapChrome } from "./scrollChrome";
+import * as scrollChrome from "./scrollChrome";
+import { INITIAL_CHROME, nextChrome } from "./scrollChrome";
 
 const VP = 800;
 const H = 60;
@@ -46,41 +47,8 @@ describe("nextChrome", () => {
   });
 });
 
-describe("snapChrome", () => {
-  it("finishes a part-shown header hidden after a downward move", () => {
-    let s = nextChrome(INITIAL_CHROME, 200, VP, H);
-    s = nextChrome(s, 170, VP, H);
-    s = nextChrome(s, 180, VP, H);
-    expect(s.dir).toBe(1);
-    expect(s.offset).toBeLessThan(H);
-    expect(snapChrome(s, H).offset).toBe(H);
-  });
-
-  it("near the top, hides the header only as far as the page has scrolled", () => {
-    const s = nextChrome(INITIAL_CHROME, 40, VP, H, 16);
-    expect(s.offset).toBe(24);
-    expect(snapChrome(s, H, 16).offset).toBe(24);
-    const t = nextChrome(INITIAL_CHROME, 30, VP, H);
-    expect(snapChrome(t, H).offset).toBe(30);
-  });
-
-  it("finishes a part-shown header shown after an upward move", () => {
-    let s = nextChrome(INITIAL_CHROME, 500, VP, H);
-    s = nextChrome(s, 470, VP, H);
-    expect(s.dir).toBe(-1);
-    expect(snapChrome(s, H).offset).toBe(0);
-  });
-
-  it("leaves a fully shown or fully hidden header alone", () => {
-    const hidden = nextChrome(INITIAL_CHROME, 500, VP, H);
-    expect(snapChrome(hidden, H)).toBe(hidden);
-    const shown = nextChrome(hidden, 300, VP, H);
-    expect(snapChrome({ ...shown, offset: 0 }, H).offset).toBe(0);
-  });
-
-  it("is always fully shown at the top, whatever the direction", () => {
-    const part = { ...INITIAL_CHROME, y: 10, offset: 20, dir: 1 as const };
-    expect(snapChrome(part, H, 16).offset).toBe(0);
-    expect(snapChrome({ ...part, y: 0 }, H).offset).toBe(0);
+describe("module surface", () => {
+  it("has no snap step: the header position depends only on the scroll", () => {
+    expect(scrollChrome).not.toHaveProperty("snapChrome");
   });
 });
