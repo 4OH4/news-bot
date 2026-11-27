@@ -2,7 +2,9 @@
  * Dismissed stories and muted sources (#217). Each change is owner feedback, so its event is
  * queued first. A dismissed story is kept in the `dismissed` store by `storyKey`, so it stays
  * hidden when a later feed re-keys it. Muting a source sets it to Hide on the server (#339): the
- * server filters the feed, and until a change is sent it waits in a `localStorage` outbox.
+ * server filters the feed, and until a change is sent it waits in a `localStorage` outbox. Until
+ * the next load, a per-page in-memory set (#406) also hides the muted source's other cards. The
+ * `muted` store is no longer written; it is only read once, by `migrateMutedSources`.
  */
 import { storyKey, type FeedItem } from "../feed/types";
 import { openFeedbackDb, type FeedbackDb, type StoredFeedItem } from "./db";
@@ -97,7 +99,7 @@ function stored(item: FeedItem): StoredFeedItem {
   return item as unknown as StoredFeedItem;
 }
 
-/** The `dismissed` and `muted` writes, in the order tapped, so an Undo can't land first. */
+/** The `dismissed` writes and outbox flushes, in the order tapped, so an Undo can't land first. */
 let stateWrites: Promise<void> = Promise.resolve();
 
 /**
@@ -139,12 +141,7 @@ function setSource(
   else mutedThisPage.delete(item.source_id);
   // Written inside the tap, so a page change straight after can't lose it.
   writePending({ ...readPending(), [item.source_id]: state });
-  // The `muted` store no longer filters; it only feeds Settings' "Muted sources" list.
-  const row = { source_id: item.source_id, item: stored(item), at: new Date().toISOString() };
-  const write = async (db: FeedbackDb) => {
-    await (state === "hide" ? db.put("muted", row) : db.delete("muted", item.source_id));
-    await flushPending();
-  };
+  const write = () => flushPending();
   return record(item, "mute_source", state === "hide" ? 1 : 0, write, context);
 }
 
@@ -168,11 +165,4 @@ export async function isHidden(item: FeedItem): Promise<boolean> {
   return (
     dismissed > 0 || readPending()[item.source_id] === "hide" || mutedThisPage.has(item.source_id)
   );
-}
-
-/** Sources muted on the phone before #339, newest first; Unmute sets them to Show. */
-export async function listMuted(): Promise<FeedItem[]> {
-  const rows = await (await openFeedbackDb()).getAll("muted");
-  rows.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
-  return rows.map((row) => row.item as unknown as FeedItem);
 }

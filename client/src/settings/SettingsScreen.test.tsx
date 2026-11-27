@@ -1,10 +1,9 @@
 // @vitest-environment happy-dom
 //
-// The Settings screen (#217) at /settings: muted sources with Unmute, Sign out through #184's
-// guard, and the app version.
+// The Settings screen at /settings: the Liked and Sources-and-topics links, no "Muted sources"
+// list (#407), Sign out through #184's guard, and the app version.
 import { h, render } from "preact";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { unmuteButtonFor } from "../../test/cards";
 import {
   buttonsNamed,
   installRouter,
@@ -13,15 +12,8 @@ import {
   makeItem,
   queuedEvents,
   settle,
-  type Stores,
 } from "../../test/test-env";
-import { outboxEntries } from "../feedback/test-env";
 
-const GONE = makeItem("a0b1c2d3e4f5a6b7", {
-  title: "Invented story about rooftop beehives",
-  source_id: "invented-hives",
-  domain: "hives.example.test",
-});
 const KEPT = makeItem("b1c2d3e4f5a6b7c8", {
   title: "Invented story about ferry timetables",
   source_id: "invented-ferries",
@@ -54,15 +46,6 @@ async function showSettings(): Promise<void> {
   render(h(SettingsScreen, null), root);
 }
 
-async function loadWithMutes(): Promise<{ s: Stores; hidden: typeof import("../feedback/hidden") }> {
-  installRouter({ online: false });
-  const s = await loadStores();
-  const hidden = await import("../feedback/hidden");
-  await hidden.muteSource(GONE);
-  await hidden.muteSource(KEPT);
-  return { s, hidden };
-}
-
 describe("SettingsScreen", () => {
   // #307: the heart left the feed header, so Settings is the way to the Liked screen.
   it("has a plain Liked articles link to /liked", async () => {
@@ -74,39 +57,29 @@ describe("SettingsScreen", () => {
     expect(link!.textContent?.trim()).toBe("Liked articles");
   });
 
-  it("lists muted sources by domain, and Unmute queues mute_source 0 for an item no longer in the feed", async () => {
-    const { s, hidden } = await loadWithMutes();
+  it("has no Muted sources section, and keeps the Sources and topics link (#407)", async () => {
+    installRouter({ online: false });
+    const s = await loadStores();
+    const hidden = await import("../feedback/hidden");
+    await hidden.muteSource(KEPT);
     await showSettings();
-    await vi.waitFor(() => expect(unmuteButtonFor(root, GONE.domain)).toBeDefined());
-    expect(unmuteButtonFor(root, KEPT.domain)).toBeDefined();
-
-    unmuteButtonFor(root, GONE.domain)!.click();
-
-    await vi.waitFor(() => expect(root.textContent).not.toContain(GONE.domain));
-    expect(root.textContent).toContain(KEPT.domain);
-    const later = makeItem("c2d3e4f5a6b7c8d9", { source_id: GONE.source_id, domain: GONE.domain });
-    expect(await hidden.isHidden(later)).toBe(false);
-    const last = (await queuedEvents(s)).at(-1)!;
-    expect(last).toMatchObject({ article_id: GONE.id, event: "mute_source", value: 0 });
-  });
-
-  // #254: a full page load can follow the tap at once.
-  it("Unmute writes mute_source 0 with the stored item's id to the outbox inside the tap", async () => {
-    await loadWithMutes();
-    await showSettings();
-    await vi.waitFor(() => expect(unmuteButtonFor(root, GONE.domain)).toBeDefined());
+    await vi.waitFor(() => expect(root.textContent).toContain("Sources and topics"));
     await settle();
-    localStorage.clear();
 
-    unmuteButtonFor(root, GONE.domain)!.click();
-
-    expect(outboxEntries()).toEqual([
-      expect.objectContaining({ article_id: GONE.id, event: "mute_source", value: 0 }),
-    ]);
+    expect(root.textContent).not.toMatch(/muted sources/i);
+    expect(root.textContent).not.toMatch(/no sources muted/i);
+    expect(buttonsNamed(root, /unmute/i)).toEqual([]);
+    expect(root.textContent).not.toContain(KEPT.domain);
+    const link = [...root.querySelectorAll("a")].find(
+      (a) => a.getAttribute("href") === "/settings/preferences",
+    );
+    expect(link?.textContent?.trim()).toBe("Sources and topics");
+    expect(await queuedEvents(s)).toHaveLength(1);
   });
 
   it("with queued feedback, Sign out shows #184's warning and clears nothing before a choice", async () => {
-    const { s, hidden } = await loadWithMutes();
+    installRouter({ online: false });
+    const s = await loadStores();
     const { startFeedback } = await import("../feedback/start");
     startFeedback();
     await s.enqueueFeedback(KEPT.id, "open");
@@ -119,7 +92,6 @@ describe("SettingsScreen", () => {
     await vi.waitFor(() => expect(document.querySelector("[role='alertdialog']")).not.toBeNull());
     await settle();
     expect(await queuedEvents(s)).toEqual(queuedBefore);
-    expect((await hidden.listMuted()).map((i) => i.id).sort()).toEqual([GONE.id, KEPT.id].sort());
     expect(here.replace).not.toHaveBeenCalled();
   });
 

@@ -130,7 +130,7 @@ for (const [label, name, event] of [
   });
 }
 
-test("Unmute tapped in Settings and the page left at once still posts mute_source 0", async ({
+test("Undo tapped on a muted card and the page left at once still posts mute_source 0", async ({
   page,
 }) => {
   const posted = await stubApi(page);
@@ -138,13 +138,12 @@ test("Unmute tapped in Settings and the page left at once still posts mute_sourc
   const mute = await menuAction(card(page, article), new RegExp(`mute ${article.domain}`, "i"));
   await mute.click();
   await expect.poll(() => events(posted, "mute_source")).toEqual([[article.id, 1]]);
-  await page.goto("/settings");
-  const unmute = page.getByRole("button", { name: /unmute/i });
-  await expect(unmute).toBeVisible();
+  const undo = page.getByRole("button", { name: /^undo$/i });
+  await expect(undo).toBeVisible();
 
-  await tapAndLeave(unmute, "/");
+  await tapAndLeave(undo, "/settings");
 
-  await feedLoaded(page);
+  await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
   await expect
     .poll(() => events(posted, "mute_source"))
     .toEqual([

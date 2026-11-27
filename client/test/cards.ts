@@ -40,17 +40,3 @@ export async function chooseAction(scope: ParentNode, name: RegExp): Promise<voi
   if (!action) throw new Error(`no action named ${name} in the card`);
   action.click();
 }
-
-/** The Unmute button on the Settings row for `domain`. */
-export function unmuteButtonFor(scope: ParentNode, domain: string): HTMLButtonElement | undefined {
-  return buttonsNamed(scope, /unmute/i).find((b) => {
-    if (nameOf(b).includes(domain)) return true;
-    // Walk up to the smallest ancestor holding only this Unmute button.
-    let el: Element | null = b.parentElement;
-    while (el && buttonsNamed(el, /unmute/i).length === 1) {
-      if ((el.textContent ?? "").includes(domain)) return true;
-      el = el.parentElement;
-    }
-    return false;
-  });
-}
