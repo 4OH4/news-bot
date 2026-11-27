@@ -140,6 +140,32 @@ describe("header while scrolling in small steps", () => {
   });
 });
 
+describe("header at rest (no snap, #411)", () => {
+  it.each([
+    ["up", [500, 480], HEADER - 20],
+    ["down", [500, 470, 480, 490], HEADER - 10],
+  ])("stays exactly where a short scroll %s left it, after scrollend and a pause", async (_dir, steps, expected) => {
+    await showFeedScreen();
+    for (const y of steps as number[]) await scrollBy(y);
+    expect(headerOffset()).toBe(expected);
+    window.dispatchEvent(new Event("scrollend"));
+    document.dispatchEvent(new Event("scrollend"));
+    await new Promise((r) => setTimeout(r, 300));
+    expect(headerOffset()).toBe(expected);
+  });
+
+  it("never has a snapping class", async () => {
+    await showFeedScreen();
+    await scrollBy(500);
+    await scrollBy(480);
+    expect(header().classList.contains("snapping")).toBe(false);
+    window.dispatchEvent(new Event("scrollend"));
+    await new Promise((r) => setTimeout(r, 300));
+    expect(header().classList.contains("snapping")).toBe(false);
+    expect(header().className).toBe("top");
+  });
+});
+
 describe("Back to top button", () => {
   it("is a 44px-class round control with an inline SVG arrow, labelled Back to top", async () => {
     await showFeedScreen();

@@ -262,12 +262,10 @@ test.describe("the compact feed header", () => {
     await page.evaluate(() => window.scrollTo(0, 400));
     // #307: it moves with the scroll, so it is out of view going down...
     await expect.poll(async () => (await box(row)).y + (await box(row)).height).toBeLessThanOrEqual(0);
-    // ...and after scrolling up 30px it snaps fully back when scrolling stops, stuck to the top edge.
-    const height = Math.round((await box(row)).height);
+    // ...and after scrolling up 30px it is 30px into view at rest (its bottom edge at 30px).
     await page.mouse.wheel(0, -30);
-    await expect
-      .poll(async () => Math.round((await box(row)).y + (await box(row)).height))
-      .toBe(height);
+    await page.waitForTimeout(300);
+    expect(Math.round((await box(row)).y + (await box(row)).height)).toBe(30);
   });
 
   test("while refreshing the button is disabled and spins; afterwards it is enabled again", async ({

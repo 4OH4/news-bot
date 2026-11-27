@@ -65,18 +65,10 @@ test("the header slides away going down and back going up, and is whole at the t
   await expect.poll(() => headerTop(page)).toBe(BODY_PAD);
 });
 
-test("the header moves exactly as far as the page is scrolled, 30px for 30px, mid-scroll", async ({
+test("the header moves exactly as far as the page is scrolled, 30px for 30px, and is still there at rest", async ({
   page,
 }) => {
-  // Programmatic scrolls end at once, which would snap straight away; ignore `scrollend` here so
-  // only the 120ms idle timeout is left, and sample before it.
-  await page.addInitScript(() => {
-    const add = window.addEventListener.bind(window);
-    window.addEventListener = ((type: string, ...rest: unknown[]) =>
-      type === "scrollend" ? undefined : (add as (...a: unknown[]) => void)(type, ...rest)) as typeof add;
-  });
   await openLongFeed(page);
-  // Sampled 60ms after the scroll, well before the idle snap.
   const tops = await page.evaluate(async () => {
     const top = () => document.querySelector("header.top")!.getBoundingClientRect().top;
     const frames = () => new Promise((r) => setTimeout(r, 60));
@@ -89,40 +81,51 @@ test("the header moves exactly as far as the page is scrolled, 30px for 30px, mi
   });
   // It rests BODY_PAD below the top; 30px of scroll leaves it 30px higher.
   expect(tops).toEqual([BODY_PAD - 30, BODY_PAD - 20]);
-  // With scrollend ignored, the 120ms idle timer alone finishes the slide: up, so fully shown.
-  await expect.poll(() => headerTop(page)).toBe(0);
+  await page.waitForTimeout(300);
+  expect(await headerTop(page)).toBe(BODY_PAD - 20);
 });
 
-test("near the top, a snap after a short downward scroll leaves no blank band", async ({ page }) => {
+test("near the top, a short downward scroll leaves no blank band", async ({ page }) => {
   await openLongFeed(page);
   for (const y of [20, 50]) {
     await jump(page, 0);
     await expect.poll(() => headerTop(page)).toBe(BODY_PAD);
     await page.mouse.wheel(0, y);
     await expect.poll(() => scrollY(page)).toBe(y);
-    // Poll until the snap has settled: the header bottom meets the first card's top.
-    await expect
-      .poll(async () => {
-        const h = (await header(page).boundingBox())!;
-        const card = (await page.getByTestId("feed-item").first().boundingBox())!;
-        return Math.abs(h.y + h.height - card.y);
-      })
-      .toBeLessThanOrEqual(1);
+    await page.waitForTimeout(300);
+    const h = (await header(page).boundingBox())!;
+    const card = (await page.getByTestId("feed-item").first().boundingBox())!;
+    expect(Math.abs(h.y + h.height - card.y)).toBeLessThanOrEqual(1);
   }
 });
 
-test("when scrolling stops the header snaps fully shown after up, fully hidden after down", async ({
+test("at rest the header stays where the scroll left it: 20px in after up, 20px out after down", async ({
   page,
 }) => {
   await openLongFeed(page);
   await jump(page, 3000);
   const h = (await header(page).boundingBox())!.height;
-  await page.mouse.wheel(0, 20);
   await expect.poll(() => headerTop(page)).toBe(-h);
   await page.mouse.wheel(0, -20);
+  await page.waitForTimeout(300);
+  // Bottom edge 20px below the top of the screen.
+  expect(await headerTop(page)).toBe(-h + 20);
+  await jump(page, 3000);
+  await page.mouse.wheel(0, -h);
   await expect.poll(() => headerTop(page)).toBe(0);
   await page.mouse.wheel(0, 20);
-  await expect.poll(() => headerTop(page)).toBe(-h);
+  await page.waitForTimeout(300);
+  expect(await headerTop(page)).toBe(-20);
+});
+
+test("the header has no snapping class and no transform transition", async ({ page }) => {
+  await openLongFeed(page);
+  await jump(page, 3000);
+  await page.mouse.wheel(0, -20);
+  await page.waitForTimeout(300);
+  await expect(header(page)).not.toHaveClass(/snapping/);
+  const transition = await header(page).evaluate((e) => getComputedStyle(e).transition);
+  expect(transition).not.toContain("transform");
 });
 
 test("the Back to top button is a 44px circle above the tab bar, bottom right", async ({ page }) => {
@@ -168,8 +171,7 @@ for (const scheme of ["light", "dark"] as const) {
     await page.mouse.wheel(0, 30);
     await page.mouse.wheel(0, -20);
     await expect(toTop(page)).toBeVisible();
-    // At rest after the snap: fully shown, nothing part-hidden.
-    await expect.poll(() => headerTop(page)).toBe(0);
+    // At rest the header is part-shown, exactly as far as the page moved.
     await page.waitForTimeout(300);
     await shot(page, `feed-scrolled-up-${scheme}`);
   });
