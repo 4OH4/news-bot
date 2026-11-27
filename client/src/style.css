@@ -150,6 +150,20 @@ button {
   letter-spacing: 0.04em;
 }
 
+/* Details lines (#412): break only between items. The separator dot is part of the item before
+   it, so it ends a line and never starts one; only the space after it is a break point. An item
+   wider than the line may still break inside rather than overflow. */
+.meta-item {
+  display: inline-block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.meta-item.meta-wrap {
+  display: inline;
+  max-width: none;
+}
+
 .card-meta a {
   color: inherit;
   text-decoration: none;

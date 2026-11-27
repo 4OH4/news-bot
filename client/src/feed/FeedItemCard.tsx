@@ -13,6 +13,7 @@ import { enqueueFeedback } from "../feedback/queue";
 import { isSeen, markSeen } from "../feedback/seen";
 import "./card-actions.css";
 import { explainBreakdown } from "./explain";
+import { MetaLine } from "./MetaLine";
 import { relativeTime } from "./time";
 import { storyKey, type FeedItem, type ViewName } from "./types";
 
@@ -172,13 +173,21 @@ export function FeedItemCard({ item, view: screen }: { item: FeedItem; view?: Vi
           </a>
         )}
       </h2>
-      <p class="card-meta">
-        <a href={item.url} target="_blank" rel="noopener noreferrer">
-          {item.domain}
-        </a>
-        {time ? <span> · {time}</span> : null}
-        {coverage >= 2 ? <span> · {coverage} sources</span> : null}
-      </p>
+      <MetaLine
+        className="card-meta"
+        items={[
+          {
+            key: "domain",
+            content: (
+              <a href={item.url} target="_blank" rel="noopener noreferrer">
+                {item.domain}
+              </a>
+            ),
+          },
+          ...(time ? [{ key: "time", content: time }] : []),
+          ...(coverage >= 2 ? [{ key: "sources", content: `${coverage} sources` }] : []),
+        ]}
+      />
       {item.summary ? <p class="card-summary">{item.summary}</p> : null}
       {isLink || status ? (
         <p class="card-flags">
