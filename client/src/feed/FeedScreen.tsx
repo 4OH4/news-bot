@@ -57,12 +57,12 @@ export function FeedScreen({ view = "feed" }: { view?: ViewName }) {
   }, []);
 
   const headerRef = useRef<HTMLElement>(null);
-  const { offset, showButton, snapping } = useScrollChrome(headerRef);
+  const { offset, showButton } = useScrollChrome(headerRef);
 
   return (
     <main>
       <header
-        class={snapping ? "top snapping" : "top"}
+        class="top"
         ref={headerRef}
         style={offset > 0 ? { transform: `translateY(-${offset}px)` } : undefined}
       >

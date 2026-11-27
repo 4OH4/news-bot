@@ -1,4 +1,4 @@
-/** Pure scroll-direction logic for the feed screens' moving header and Back to top button (#307). */
+/** Pure scroll logic for the feed screens' moving header and Back to top button (#307). */
 
 export interface ChromeState {
   /** Last scrollY seen. */
@@ -7,15 +7,15 @@ export interface ChromeState {
   offset: number;
   /** Whether the Back to top button shows. */
   showButton: boolean;
-  /** Direction of the last scroll move: -1 up, 1 down, 0 none yet. */
+  /** Direction of the last scroll move: -1 up, 1 down, 0 none yet. Not used for the header. */
   dir: -1 | 0 | 1;
 }
 
 export const INITIAL_CHROME: ChromeState = { y: 0, offset: 0, showButton: false, dir: 0 };
 
 /**
- * The next state after a scroll to `y`. The header follows the scroll delta (so it moves with the
- * page, not on a timer) and is fully shown at the top. The button shows once more than two screens
+ * The next state after a scroll to `y`. The header moves by the scroll distance and no more (so it
+ * moves only with the page, and rests wherever the scroll left it) and is fully shown at the top. The button shows once more than two screens
  * down and the last move was upward (`delta` above is the raw scroll change); it hides on scrolling down or within one screen of the top.
  */
 export function nextChrome(
@@ -35,17 +35,4 @@ export function nextChrome(
   else if (delta < 0 && y > 2 * viewport) showButton = true;
   const dir = delta < 0 ? -1 : delta > 0 ? 1 : prev.dir;
   return { y, offset, showButton, dir };
-}
-
-/**
- * The state once scrolling has stopped. A part-shown header (0 < offset < height) finishes its
- * slide: fully shown if the last move was upward, fully hidden if downward. At the top of the page
- * (`y <= gap`) it is always fully shown, and a fully shown or hidden header is left alone.
- */
-export function snapChrome(prev: ChromeState, headerHeight: number, gap = 0): ChromeState {
-  if (prev.y <= gap) return prev.offset === 0 ? prev : { ...prev, offset: 0 };
-  if (prev.offset <= 0 || prev.offset >= headerHeight) return prev;
-  // Hidden only as far as the page has scrolled past the sticky point: the header still occupies
-  // its space until then, so hiding it further would leave a blank band above the first card.
-  return { ...prev, offset: prev.dir < 0 ? 0 : Math.min(headerHeight, prev.y - gap) };
 }
